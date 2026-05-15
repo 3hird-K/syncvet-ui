@@ -1,0 +1,193 @@
+import {
+  Package,
+  AlertTriangle,
+  TrendingDown,
+  ShieldCheck,
+  Search,
+  Filter,
+  Plus,
+  ArrowDownToLine,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/dashboard/page-header";
+import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
+
+export const metadata = {
+  title: "Vaccine Inventory — SyncVet",
+  description:
+    "Real-time vaccine stock management with expiry tracking and reorder alerts for the CDO Veterinary Office.",
+};
+
+const metrics: PageMetric[] = [
+  {
+    title: "Total Stock (Doses)",
+    value: "19,240",
+    icon: Package,
+    gradient: "from-indigo-500/5",
+    iconClass: "text-indigo-400",
+    badge: "Optimal Level",
+    badgeClass: "text-emerald-400 bg-emerald-400/10",
+    sub: "All vaccine types",
+  },
+  {
+    title: "Adequate Stock",
+    value: "12",
+    icon: ShieldCheck,
+    gradient: "from-emerald-500/5",
+    iconClass: "text-emerald-400",
+    badge: "Sufficient",
+    badgeClass: "text-emerald-400 bg-emerald-400/10",
+    sub: "Batches above reorder",
+  },
+  {
+    title: "Low Stock Alerts",
+    value: "3",
+    icon: TrendingDown,
+    gradient: "from-amber-500/5",
+    iconClass: "text-amber-400",
+    badge: "Reorder Soon",
+    badgeClass: "text-amber-400 bg-amber-400/10",
+    sub: "Below threshold",
+  },
+  {
+    title: "Near Expiry",
+    value: "2",
+    icon: AlertTriangle,
+    gradient: "from-red-500/5",
+    iconClass: "text-red-400",
+    badge: "Urgent",
+    badgeClass: "text-red-400 bg-red-400/10",
+    sub: "Expiring within 30 days",
+  },
+];
+
+const inventory = [
+  { id: "INV-AR-001", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q3-2026-014", stock: 4200, unit: "doses", reorder: 3000, expiry: "Dec 2026", storage: "CDO Central — Zone 1", status: "adequate" },
+  { id: "INV-AR-002", vaccine: "Anti-Rabies (Feline)", batch: "AR-Q3-2026-015", stock: 1850, unit: "doses", reorder: 1500, expiry: "Nov 2026", storage: "CDO Central — Zone 1", status: "adequate" },
+  { id: "INV-PV-001", vaccine: "Anti-Parvovirus", batch: "PV-Q2-2026-008", stock: 3100, unit: "doses", reorder: 2500, expiry: "Oct 2026", storage: "CDO Central — Zone 2", status: "adequate" },
+  { id: "INV-DW-001", vaccine: "Deworming (Oral)", batch: "DW-Q2-2026-041", stock: 5200, unit: "tablets", reorder: 4000, expiry: "Sep 2026", storage: "CDO Central — Zone 3", status: "adequate" },
+  { id: "INV-AR-003", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q1-2026-007", stock: 420, unit: "doses", reorder: 3000, expiry: "Jun 2026", storage: "Brgy. Lapasan Satellite", status: "low" },
+  { id: "INV-PV-002", vaccine: "Anti-Parvovirus", batch: "PV-Q1-2026-003", stock: 180, unit: "doses", reorder: 2500, expiry: "Jul 2026", storage: "Brgy. Bulua Satellite", status: "low" },
+  { id: "INV-DW-002", vaccine: "Deworming (Oral)", batch: "DW-Q1-2026-019", stock: 340, unit: "tablets", reorder: 4000, expiry: "Jun 2026", storage: "Brgy. Carmen Satellite", status: "low" },
+  { id: "INV-AR-004", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q4-2025-022", stock: 90, unit: "doses", reorder: 3000, expiry: "May 30, 2026", storage: "CDO Central — Zone 1", status: "expiring" },
+  { id: "INV-DW-003", vaccine: "Deworming (Injectable)", batch: "DI-Q4-2025-011", stock: 65, unit: "vials", reorder: 500, expiry: "May 28, 2026", storage: "CDO Central — Zone 3", status: "expiring" },
+];
+
+function statusBadge(status: string) {
+  switch (status) {
+    case "adequate":
+      return <Badge className="bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25 text-[10px]">Adequate</Badge>;
+    case "low":
+      return <Badge className="bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 text-[10px]"><TrendingDown className="mr-1 size-3" />Low Stock</Badge>;
+    case "expiring":
+      return <Badge className="bg-red-500/15 text-red-500 hover:bg-red-500/25 text-[10px]"><AlertTriangle className="mr-1 size-3" />Near Expiry</Badge>;
+    default:
+      return null;
+  }
+}
+
+export default function VaccineInventoryPage() {
+  return (
+    <div className="flex-1 space-y-4 p-6 pt-6 bg-background min-h-screen text-foreground">
+      <PageHeader
+        supertitle="Resource Planning Module"
+        title="Vaccine Inventory"
+        subtitle={
+          <>
+            Real-time stock management with{" "}
+            <span className="text-foreground">expiry tracking</span>,{" "}
+            <span className="text-foreground">batch traceability</span>, and automated reorder alerts.
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="gap-2 text-xs">
+              <ArrowDownToLine className="size-3.5" /> Receive Stock
+            </Button>
+            <Button size="sm" className="gap-2 text-xs">
+              <Plus className="size-3.5" /> Add Batch
+            </Button>
+          </>
+        }
+      />
+
+      <PageMetricCards metrics={metrics} />
+
+      {/* ── Table ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold">Stock Ledger</CardTitle>
+              <CardDescription className="text-[11px] text-muted-foreground/60">
+                All vaccine batches across central storage and barangay satellite locations
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input placeholder="Search by vaccine or batch..." className="h-8 w-64 pl-8 text-xs" />
+              </div>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                <Filter className="size-3" /> Filter
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch ID</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccine</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch No.</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">In Stock</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Reorder Level</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Expiry</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Storage</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {inventory.map((item) => (
+                <TableRow key={item.id} className={cn("hover:bg-muted/50", item.status === "expiring" && "bg-red-500/5")}>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{item.id}</TableCell>
+                  <TableCell className="text-sm font-semibold">{item.vaccine}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{item.batch}</TableCell>
+                  <TableCell>
+                    <span className={cn("text-sm font-bold tabular-nums", item.status === "low" && "text-amber-500", item.status === "expiring" && "text-red-500")}>
+                      {item.stock.toLocaleString()}
+                    </span>
+                    <span className="ml-1 text-[10px] text-muted-foreground">{item.unit}</span>
+                  </TableCell>
+                  <TableCell className="text-xs tabular-nums text-muted-foreground">{item.reorder.toLocaleString()}</TableCell>
+                  <TableCell className={cn("text-xs", item.status === "expiring" && "font-semibold text-red-500")}>{item.expiry}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{item.storage}</TableCell>
+                  <TableCell>{statusBadge(item.status)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

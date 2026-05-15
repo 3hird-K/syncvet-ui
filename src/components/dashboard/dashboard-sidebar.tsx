@@ -5,8 +5,11 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  ClipboardList,
-  Clock,
+  PawPrint,
+  Syringe,
+  MapPin,
+  Package,
+  BarChart3,
   Settings,
   HelpCircle,
   MoreVertical,
@@ -19,13 +22,18 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   href: string | null;
+  /** Optional section divider label rendered above this item */
+  section?: string;
 };
 
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
   { label: "Manage Users", icon: Users, href: "/users" },
-  { label: "Manage Tasks", icon: ClipboardList, href: null },
-  { label: "Time Logs", icon: Clock, href: null },
+  { label: "Pet Registry", icon: PawPrint, href: "/pet-registry", section: "Animal Health" },
+  { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
+  { label: "Field Operations", icon: MapPin, href: "/field-operations" },
+  { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory", section: "Resource Planning" },
+  { label: "Barangay Analytics", icon: BarChart3, href: "/barangay-analytics" },
 ];
 
 export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
@@ -84,6 +92,17 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
               (item.href === "/"
                 ? pathname === "/"
                 : pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+            /* Section divider */
+            const sectionLabel =
+              !collapsed && item.section ? (
+                <p className="mt-5 mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  {item.section}
+                </p>
+              ) : (
+                collapsed && item.section ? <div className="my-2 h-px w-full bg-border/50" /> : null
+              );
+
             const content = (
               <>
                 <item.icon
@@ -106,11 +125,10 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
               active
                 ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              item.href == null && "cursor-not-allowed opacity-30",
             );
 
-            if (item.href == null) {
-              return (
+            const navElement =
+              item.href == null ? (
                 <span
                   key={item.label}
                   className={itemClass}
@@ -118,19 +136,23 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
                 >
                   {content}
                 </span>
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={itemClass}
+                  title={collapsed ? item.label : undefined}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {content}
+                </Link>
               );
-            }
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={itemClass}
-                title={collapsed ? item.label : undefined}
-                aria-current={active ? "page" : undefined}
-              >
-                {content}
-              </Link>
+              <div key={item.label}>
+                {sectionLabel}
+                {navElement}
+              </div>
             );
           })}
         </nav>
