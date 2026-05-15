@@ -5,13 +5,12 @@ import { PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="flex h-svh max-h-svh overflow-hidden bg-background text-foreground">
+    <div className="flex h-svh overflow-hidden bg-background text-foreground">
       <DashboardSidebar collapsed={collapsed} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -36,10 +35,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
         </header>
 
-        {/* ── Page content ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-background">
+        {/* ── Scrollable page content ── */}
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {children}
-        </div>
+        </main>
       </div>
     </div>
   );

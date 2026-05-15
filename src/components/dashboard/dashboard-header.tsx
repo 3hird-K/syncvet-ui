@@ -11,7 +11,7 @@ export function DashboardHeader() {
           {new Date().getHours() < 12 ? "Good Morning" : new Date().getHours() < 18 ? "Good Afternoon" : "Good Evening"}
         </h2>
         <p className="text-sm text-muted-foreground font-medium">
-          Here's the operational overview for <span className="text-foreground">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>.
+          Here&apos;s the operational overview for <span className="text-foreground">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>.
         </p>
       </div>
 

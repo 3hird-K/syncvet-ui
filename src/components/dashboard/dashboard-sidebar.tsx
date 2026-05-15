@@ -42,7 +42,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
   return (
     <aside
       className={cn(
-        "flex h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-6 transition-[width,padding] duration-200 ease-out",
+        "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-6 transition-[width,padding] duration-200 ease-out",
         collapsed ? "w-[68px] px-2" : "w-[16%] min-w-[250px] px-5",
       )}
     >
