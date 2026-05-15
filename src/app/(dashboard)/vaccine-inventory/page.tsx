@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useMemo } from "react";
 import {
   Package,
   AlertTriangle,
@@ -29,57 +32,16 @@ import {
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
-
-export const metadata = {
-  title: "Vaccine Inventory — SyncVet",
-  description:
-    "Real-time vaccine stock management with expiry tracking and reorder alerts for the CDO Veterinary Office.",
-};
+import { TablePagination } from "@/components/dashboard/table-pagination";
 
 const metrics: PageMetric[] = [
-  {
-    title: "Total Stock (Doses)",
-    value: "19,240",
-    icon: Package,
-    gradient: "from-indigo-500/5",
-    iconClass: "text-indigo-400",
-    badge: "Optimal Level",
-    badgeClass: "text-emerald-400 bg-emerald-400/10",
-    sub: "All vaccine types",
-  },
-  {
-    title: "Adequate Stock",
-    value: "12",
-    icon: ShieldCheck,
-    gradient: "from-emerald-500/5",
-    iconClass: "text-emerald-400",
-    badge: "Sufficient",
-    badgeClass: "text-emerald-400 bg-emerald-400/10",
-    sub: "Batches above reorder",
-  },
-  {
-    title: "Low Stock Alerts",
-    value: "3",
-    icon: TrendingDown,
-    gradient: "from-amber-500/5",
-    iconClass: "text-amber-400",
-    badge: "Reorder Soon",
-    badgeClass: "text-amber-400 bg-amber-400/10",
-    sub: "Below threshold",
-  },
-  {
-    title: "Near Expiry",
-    value: "2",
-    icon: AlertTriangle,
-    gradient: "from-red-500/5",
-    iconClass: "text-red-400",
-    badge: "Urgent",
-    badgeClass: "text-red-400 bg-red-400/10",
-    sub: "Expiring within 30 days",
-  },
+  { title: "Total Stock (Doses)", value: "19,240", icon: Package, gradient: "from-indigo-500/5", iconClass: "text-indigo-400", badge: "Optimal Level", badgeClass: "text-emerald-400 bg-emerald-400/10", sub: "All vaccine types" },
+  { title: "Adequate Stock", value: "12", icon: ShieldCheck, gradient: "from-emerald-500/5", iconClass: "text-emerald-400", badge: "Sufficient", badgeClass: "text-emerald-400 bg-emerald-400/10", sub: "Batches above reorder" },
+  { title: "Low Stock Alerts", value: "3", icon: TrendingDown, gradient: "from-amber-500/5", iconClass: "text-amber-400", badge: "Reorder Soon", badgeClass: "text-amber-400 bg-amber-400/10", sub: "Below threshold" },
+  { title: "Near Expiry", value: "2", icon: AlertTriangle, gradient: "from-red-500/5", iconClass: "text-red-400", badge: "Urgent", badgeClass: "text-red-400 bg-red-400/10", sub: "Expiring within 30 days" },
 ];
 
-const inventory = [
+const allInventory = [
   { id: "INV-AR-001", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q3-2026-014", stock: 4200, unit: "doses", reorder: 3000, expiry: "Dec 2026", storage: "CDO Central — Zone 1", status: "adequate" },
   { id: "INV-AR-002", vaccine: "Anti-Rabies (Feline)", batch: "AR-Q3-2026-015", stock: 1850, unit: "doses", reorder: 1500, expiry: "Nov 2026", storage: "CDO Central — Zone 1", status: "adequate" },
   { id: "INV-PV-001", vaccine: "Anti-Parvovirus", batch: "PV-Q2-2026-008", stock: 3100, unit: "doses", reorder: 2500, expiry: "Oct 2026", storage: "CDO Central — Zone 2", status: "adequate" },
@@ -89,6 +51,8 @@ const inventory = [
   { id: "INV-DW-002", vaccine: "Deworming (Oral)", batch: "DW-Q1-2026-019", stock: 340, unit: "tablets", reorder: 4000, expiry: "Jun 2026", storage: "Brgy. Carmen Satellite", status: "low" },
   { id: "INV-AR-004", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q4-2025-022", stock: 90, unit: "doses", reorder: 3000, expiry: "May 30, 2026", storage: "CDO Central — Zone 1", status: "expiring" },
   { id: "INV-DW-003", vaccine: "Deworming (Injectable)", batch: "DI-Q4-2025-011", stock: 65, unit: "vials", reorder: 500, expiry: "May 28, 2026", storage: "CDO Central — Zone 3", status: "expiring" },
+  { id: "INV-AR-005", vaccine: "Anti-Rabies (Canine)", batch: "AR-Q2-2026-010", stock: 2800, unit: "doses", reorder: 3000, expiry: "Aug 2026", storage: "CDO Central — Zone 1", status: "adequate" },
+  { id: "INV-PV-003", vaccine: "Anti-Parvovirus", batch: "PV-Q2-2026-009", stock: 1200, unit: "doses", reorder: 2500, expiry: "Sep 2026", storage: "Brgy. Kauswagan Satellite", status: "low" },
 ];
 
 function statusBadge(status: string) {
@@ -105,58 +69,55 @@ function statusBadge(status: string) {
 }
 
 export default function VaccineInventoryPage() {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allInventory;
+    return allInventory.filter(
+      (item) =>
+        item.vaccine.toLowerCase().includes(q) ||
+        item.batch.toLowerCase().includes(q) ||
+        item.storage.toLowerCase().includes(q)
+    );
+  }, [query]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <div className="flex-1 space-y-4 p-6 pt-6 bg-background min-h-screen text-foreground">
       <PageHeader
         supertitle="Resource Planning Module"
         title="Vaccine Inventory"
-        subtitle={
-          <>
-            Real-time stock management with{" "}
-            <span className="text-foreground">expiry tracking</span>,{" "}
-            <span className="text-foreground">batch traceability</span>, and automated reorder alerts.
-          </>
-        }
-        actions={
-          <>
-            <Button variant="outline" size="sm" className="gap-2 text-xs">
-              <ArrowDownToLine className="size-3.5" /> Receive Stock
-            </Button>
-            <Button size="sm" className="gap-2 text-xs">
-              <Plus className="size-3.5" /> Add Batch
-            </Button>
-          </>
-        }
+        subtitle={<>Real-time stock management with <span className="text-foreground">expiry tracking</span>, <span className="text-foreground">batch traceability</span>, and automated reorder alerts.</>}
+        actions={<><Button variant="outline" size="sm" className="gap-2 text-xs"><ArrowDownToLine className="size-3.5" /> Receive Stock</Button><Button size="sm" className="gap-2 text-xs"><Plus className="size-3.5" /> Add Batch</Button></>}
       />
-
       <PageMetricCards metrics={metrics} />
-
-      {/* ── Table ── */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="text-lg font-bold">Stock Ledger</CardTitle>
-              <CardDescription className="text-[11px] text-muted-foreground/60">
-                All vaccine batches across central storage and barangay satellite locations
-              </CardDescription>
+              <CardDescription className="text-[11px] text-muted-foreground/60">All vaccine batches across central storage and barangay satellite locations</CardDescription>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search by vaccine or batch..." className="h-8 w-64 pl-8 text-xs" />
+                <Input placeholder="Search by vaccine or batch..." className="h-8 w-64 pl-8 text-xs" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                <Filter className="size-3" /> Filter
-              </Button>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs"><Filter className="size-3" /> Filter</Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch ID</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Batch ID</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccine</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch No.</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">In Stock</TableHead>
@@ -167,15 +128,15 @@ export default function VaccineInventoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {inventory.map((item) => (
+              {rows.length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No batches match your search.</TableCell></TableRow>
+              ) : rows.map((item) => (
                 <TableRow key={item.id} className={cn("hover:bg-muted/50", item.status === "expiring" && "bg-red-500/5")}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{item.id}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground pl-6">{item.id}</TableCell>
                   <TableCell className="text-sm font-semibold">{item.vaccine}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{item.batch}</TableCell>
                   <TableCell>
-                    <span className={cn("text-sm font-bold tabular-nums", item.status === "low" && "text-amber-500", item.status === "expiring" && "text-red-500")}>
-                      {item.stock.toLocaleString()}
-                    </span>
+                    <span className={cn("text-sm font-bold tabular-nums", item.status === "low" && "text-amber-500", item.status === "expiring" && "text-red-500")}>{item.stock.toLocaleString()}</span>
                     <span className="ml-1 text-[10px] text-muted-foreground">{item.unit}</span>
                   </TableCell>
                   <TableCell className="text-xs tabular-nums text-muted-foreground">{item.reorder.toLocaleString()}</TableCell>
@@ -186,6 +147,7 @@ export default function VaccineInventoryPage() {
               ))}
             </TableBody>
           </Table>
+          <TablePagination page={safePage} totalPages={totalPages} pageSize={pageSize} totalItems={filtered.length} itemLabel="batches" onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} />
         </CardContent>
       </Card>
     </div>

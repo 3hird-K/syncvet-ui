@@ -2,17 +2,23 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
   Copy,
   Crown,
   Search,
   User,
+  Filter,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -23,8 +29,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { type SyncVetUser, formatRoleLabel } from "@/data/syncvet-users";
-
-const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
+import { TablePagination } from "@/components/dashboard/table-pagination";
 
 function truncateId(id: string) {
   if (id.length <= 16) return id;
@@ -52,13 +57,9 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
-
   const safePage = Math.min(page, totalPages);
   const pageSliceStart = (safePage - 1) * pageSize;
   const pageRows = filtered.slice(pageSliceStart, pageSliceStart + pageSize);
-
-  const goPrev = () => setPage((p) => Math.max(1, p - 1));
-  const goNext = () => setPage((p) => Math.min(totalPages, p + 1));
 
   const onSearchChange = (value: string) => {
     setQuery(value);
@@ -79,40 +80,56 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
   }, []);
 
   return (
-    <div className="space-y-3">
-      <div className="relative max-w-xl">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="h-9 pl-8"
-          placeholder="Search users, emails, or roles…"
-          value={query}
-          onChange={(e) => onSearchChange(e.target.value)}
-          aria-label="Search users"
-        />
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <Table className="table-fixed">
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-lg font-bold">User Directory</CardTitle>
+            <CardDescription className="text-[11px] text-muted-foreground/60">
+              All SyncVet accounts across the CDO City Veterinary Office
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-8 w-64 pl-8 text-xs"
+                placeholder="Search users, emails, or roles..."
+                value={query}
+                onChange={(e) => onSearchChange(e.target.value)}
+                aria-label="Search users"
+              />
+            </div>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+              <Filter className="size-3" /> Filter
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="px-0">
+        <Table>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[32%] min-w-0">User</TableHead>
-              <TableHead className="w-[30%] min-w-0">ID</TableHead>
-              <TableHead className="w-[26%] min-w-0">Role</TableHead>
-              <TableHead className="w-[12%] text-right">Actions</TableHead>
+            <TableRow>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">User</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest">User ID</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest">Email</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest">Role</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
+              <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {pageRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   No users match your search.
                 </TableCell>
               </TableRow>
             ) : (
               pageRows.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="min-w-0">
-                    <div className="flex max-w-full items-center gap-2">
+                <TableRow key={u.id} className="hover:bg-muted/50">
+                  <TableCell className="pl-6">
+                    <div className="flex items-center gap-3">
                       <Avatar className="size-8 shrink-0 border border-border">
                         <AvatarFallback
                           className={cn("text-[10px] font-semibold text-white", u.avatarClass)}
@@ -120,24 +137,18 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
                           {u.initials}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold leading-tight">
-                          {u.fullName}
-                        </p>
-                        <p className="truncate text-[11px] leading-tight text-muted-foreground">
-                          {u.email}
-                        </p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-tight truncate">{u.fullName}</p>
                         {u.pendingForecasts ? (
-                          <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-wide text-primary">
-                            {u.pendingForecasts} pending forecast
-                            {u.pendingForecasts > 1 ? "s" : ""}
+                          <p className="text-[10px] font-medium text-primary">
+                            {u.pendingForecasts} pending forecast{u.pendingForecasts > 1 ? "s" : ""}
                           </p>
                         ) : null}
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="min-w-0">
-                    <div className="flex max-w-full items-center gap-1">
+                  <TableCell>
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => copyId(u.id)}
@@ -146,33 +157,37 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
                       >
                         <Copy className="size-3" />
                       </button>
-                      <code className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+                      <code className="font-mono text-[10px] text-muted-foreground truncate">
                         {truncateId(u.id)}
                       </code>
                     </div>
                   </TableCell>
-                  <TableCell className="min-w-0">
-                    <div className="flex min-w-0 justify-start">
-                      {u.role === "administrator" ? (
-                        <Badge
-                          variant="roleAdmin"
-                          className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px]"
-                        >
-                          <Crown className="size-3 shrink-0" />
-                          <span className="truncate">{formatRoleLabel(u.role)}</span>
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="role"
-                          className="max-w-full truncate rounded-full px-2 py-0.5 text-[10px]"
-                        >
-                          <User className="size-3 shrink-0" />
-                          <span className="truncate">{formatRoleLabel(u.role)}</span>
-                        </Badge>
-                      )}
-                    </div>
+                  <TableCell className="text-xs text-muted-foreground">{u.email}</TableCell>
+                  <TableCell>
+                    {u.role === "administrator" ? (
+                      <Badge
+                        variant="roleAdmin"
+                        className="rounded-full px-2 py-0.5 text-[10px] gap-1"
+                      >
+                        <Crown className="size-3" />
+                        {formatRoleLabel(u.role)}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="role"
+                        className="rounded-full px-2 py-0.5 text-[10px] gap-1"
+                      >
+                        <User className="size-3" />
+                        {formatRoleLabel(u.role)}
+                      </Badge>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell>
+                    <Badge className={cn("text-[10px]", u.online ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25" : "bg-zinc-500/15 text-zinc-400 hover:bg-zinc-500/25")}>
+                      {u.online ? "Online" : "Offline"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right pr-6">
                     <Button
                       variant="outline"
                       size="sm"
@@ -187,55 +202,16 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
           </TableBody>
         </Table>
 
-        <div className="flex flex-col gap-2 border-t border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <span className="sr-only">Rows per page</span>
-              <select
-                value={pageSize}
-                onChange={(e) => onPageSizeChange(Number(e.target.value))}
-                className="h-8 cursor-pointer rounded-full border border-border bg-muted/50 px-2.5 pr-7 text-[10px] font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-ring/40"
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n} rows
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {totalFiltered} total users
-            </span>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Page {safePage} / {totalPages}
-            </span>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-8 rounded-full"
-                onClick={goPrev}
-                disabled={safePage <= 1}
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="size-3.5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-8 rounded-full"
-                onClick={goNext}
-                disabled={safePage >= totalPages}
-                aria-label="Next page"
-              >
-                <ChevronRight className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        <TablePagination
+          page={safePage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalFiltered}
+          itemLabel="users"
+          onPageChange={setPage}
+          onPageSizeChange={onPageSizeChange}
+        />
+      </CardContent>
+    </Card>
   );
 }
