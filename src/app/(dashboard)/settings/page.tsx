@@ -37,7 +37,7 @@ export default function SettingsPage() {
             variant="ghost" 
             onClick={() => setActiveTab("account")}
             className={cn(
-              "justify-start gap-3 h-10 px-3 transition-all",
+              "justify-start gap-3 h-9 px-3 transition-all",
               activeTab === "account" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent"
             )}
           >
@@ -48,7 +48,7 @@ export default function SettingsPage() {
             variant="ghost" 
             onClick={() => setActiveTab("office")}
             className={cn(
-              "justify-start gap-3 h-10 px-3 transition-all",
+              "justify-start gap-3 h-9 px-3 transition-all",
               activeTab === "office" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent"
             )}
           >
@@ -59,7 +59,7 @@ export default function SettingsPage() {
             variant="ghost" 
             onClick={() => setActiveTab("notifications")}
             className={cn(
-              "justify-start gap-3 h-10 px-3 transition-all",
+              "justify-start gap-3 h-9 px-3 transition-all",
               activeTab === "notifications" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent"
             )}
           >
@@ -70,7 +70,7 @@ export default function SettingsPage() {
             variant="ghost" 
             onClick={() => setActiveTab("security")}
             className={cn(
-              "justify-start gap-3 h-10 px-3 transition-all",
+              "justify-start gap-3 h-9 px-3 transition-all",
               activeTab === "security" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-accent"
             )}
           >

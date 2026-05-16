@@ -56,7 +56,10 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
         )}
       >
         <div
-          className="flex size-10 shrink-0 items-center justify-center overflow-hidden"
+          className={cn(
+            "flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200",
+            collapsed ? "size-8" : "size-10"
+          )}
           aria-hidden
         >
           {mounted && (
@@ -128,7 +131,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
             );
             const itemClass = cn(
               "group flex items-center rounded-lg text-left transition-colors duration-150",
-              collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2",
+              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
               active
                 ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -253,7 +256,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
     <aside
       className={cn(
         "hidden lg:flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-6 transition-[width,padding] duration-200 ease-out",
-        collapsed ? "w-[68px] px-2" : "w-[16%] min-w-[250px] px-5",
+        collapsed ? "w-[60px] px-1.5" : "w-[16%] min-w-[250px] px-5",
       )}
     >
       <SidebarContent collapsed={collapsed} />
