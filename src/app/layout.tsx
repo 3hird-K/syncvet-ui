@@ -9,9 +9,31 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CDO City Veterinary Office",
-  description:
-    "Animal health management with predictive resource forecasting for the Cagayan de Oro City Veterinary Office.",
+  title: "SyncVet — CDO City Veterinary Office",
+  description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+  metadataBase: new URL("https://syncvet-ui.vercel.app"),
+  openGraph: {
+    title: "SyncVet — CDO City Veterinary Office",
+    description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+    url: "https://syncvet-ui.vercel.app",
+    siteName: "SyncVet",
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "SyncVet Dashboard Preview",
+      },
+    ],
+    locale: "en_PH",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SyncVet — CDO City Veterinary Office",
+    description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+    images: ["/opengraph-image.png"],
+  },
   icons: {
     icon: "/icon.png",
     shortcut: "/favicon.ico",
