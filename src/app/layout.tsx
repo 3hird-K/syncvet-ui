@@ -19,10 +19,10 @@ export const metadata: Metadata = {
     siteName: "SyncVet",
     images: [
       {
-        url: "https://syncvet-ui.vercel.app/og-main.png",
+        url: "https://syncvet-ui.vercel.app/og-syncvet.png",
         width: 1200,
         height: 630,
-        alt: "SyncVet Dashboard Preview",
+        alt: "SyncVet Dashboard",
       },
     ],
     locale: "en_PH",
@@ -30,9 +30,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "CDO City Veterinary Office",
+    title: "SyncVet — CDO City Veterinary Office",
     description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
-    images: ["https://syncvet-ui.vercel.app/og-main.png"],
+    images: ["https://syncvet-ui.vercel.app/og-syncvet.png"],
   },
   icons: {
     icon: "/icon.png",
