@@ -41,10 +41,10 @@ export function DatePicker({ date, setDate, className, placeholder = "Pick a dat
           mode="single"
           selected={date}
           onSelect={setDate}
-          initialFocus
+          autoFocus
           captionLayout="dropdown"
-          fromYear={2020}
-          toYear={2030}
+          startMonth={new Date(2020, 0)}
+          endMonth={new Date(2030, 11)}
         />
       </PopoverContent>
     </Popover>
