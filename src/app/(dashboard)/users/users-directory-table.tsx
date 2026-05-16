@@ -81,26 +81,26 @@ export function UsersDirectoryTable({ users }: { users: SyncVetUser[] }) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="px-6 py-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="space-y-1">
             <CardTitle className="text-lg font-bold">User Directory</CardTitle>
             <CardDescription className="text-[11px] text-muted-foreground/60">
               All SyncVet accounts across the CDO City Veterinary Office
             </CardDescription>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="h-8 w-64 pl-8 text-xs"
+                className="h-8 w-full sm:w-64 pl-8 text-xs bg-muted/20"
                 placeholder="Search users, emails, or roles..."
                 value={query}
                 onChange={(e) => onSearchChange(e.target.value)}
                 aria-label="Search users"
               />
             </div>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs flex-1 sm:flex-none">
               <Filter className="size-3" /> Filter
             </Button>
           </div>

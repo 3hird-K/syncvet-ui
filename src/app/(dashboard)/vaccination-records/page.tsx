@@ -86,18 +86,18 @@ export default function VaccinationRecordsPage() {
       />
       <PageMetricCards metrics={metrics} />
       <Card>
-        <CardHeader>
+        <CardHeader className="px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+            <div className="space-y-1">
               <CardTitle className="text-lg font-bold">Vaccination Log</CardTitle>
               <CardDescription className="text-[11px] text-muted-foreground/60">All administered doses and overdue boosters across CDO barangays</CardDescription>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="relative">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 sm:flex-none">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search by pet, batch, or vet..." className="h-8 w-64 pl-8 text-xs" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
+                <Input placeholder="Search by pet, batch, or vet..." className="h-8 w-full sm:w-64 pl-8 text-xs bg-muted/20" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs"><Filter className="size-3" /> Filter</Button>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"><Filter className="size-3" /> Filter</Button>
             </div>
           </div>
         </CardHeader>

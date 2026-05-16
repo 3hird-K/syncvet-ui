@@ -43,11 +43,12 @@ export function TablePagination({
     <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-muted/20">
       <div className="flex flex-wrap items-center gap-2">
         <Select
+          key={`pagesize-${pageSize}`}
           value={pageSize.toString()}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          <SelectTrigger className="h-8 w-[100px] rounded-full border-border/50 bg-background px-3 text-[10px] font-bold uppercase tracking-wider focus:ring-1 focus:ring-primary/20">
-            <SelectValue placeholder={`${pageSize} Rows`} />
+          <SelectTrigger className="h-8 w-fit gap-2 rounded-full border-border/50 bg-background px-3 text-[10px] font-bold uppercase tracking-wider focus:ring-1 focus:ring-primary/20">
+            <SelectValue>{pageSize} Rows</SelectValue>
           </SelectTrigger>
           <SelectContent className="border-border/50 bg-popover">
             {PAGE_SIZE_OPTIONS.map((n) => (

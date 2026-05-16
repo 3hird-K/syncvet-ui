@@ -1,3 +1,4 @@
+"use client";
 import { PageHeader } from "@/components/dashboard/page-header";
 import {
   Card,

@@ -21,11 +21,11 @@ export function VaccineStockGauge() {
         return (
           <div key={row.vaccine} className="space-y-1.5">
             {/* Labels row */}
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-foreground">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-4 text-xs">
+              <span className="font-bold text-foreground truncate">
                 {row.vaccine}
               </span>
-              <span className="tabular-nums text-muted-foreground">
+              <div className="flex items-center gap-1 tabular-nums text-muted-foreground/80 flex-wrap">
                 <span
                   className="font-bold"
                   style={{
@@ -38,62 +38,58 @@ export function VaccineStockGauge() {
                 >
                   {row.forecastDoses}
                 </span>
-                <span className="mx-1 text-muted-foreground/40">need /</span>
-                <span>{row.currentStock}</span>
-                <span className="ml-0.5 text-muted-foreground/40">
-                  {" "}
-                  in stock
-                </span>
-                <span className="ml-1.5 text-[10px] text-muted-foreground/60">
+                <span className="text-[10px] opacity-40">need /</span>
+                <span className="font-semibold">{row.currentStock}</span>
+                <span className="text-[10px] opacity-40">stock</span>
+                <span className="ml-auto sm:ml-1 text-[10px] font-bold text-muted-foreground/60">
                   ({pct}%)
                 </span>
-              </span>
+              </div>
             </div>
 
             {/* Bullet bar */}
-            <div className="relative h-5 w-full overflow-hidden rounded-md bg-muted/30">
+            <div className="relative h-6 w-full overflow-hidden rounded-lg bg-muted/20 border border-border/5">
               {/* Stock zone backgrounds */}
               <div
-                className="absolute inset-y-0 left-0 rounded-md opacity-10"
+                className="absolute inset-y-0 left-0 opacity-10"
                 style={{ width: "70%", background: "#22c55e" }}
               />
               <div
-                className="absolute inset-y-0 rounded-md opacity-10"
+                className="absolute inset-y-0 opacity-10"
                 style={{ left: "70%", width: "15%", background: "#f59e0b" }}
               />
               <div
-                className="absolute inset-y-0 rounded-md opacity-10"
+                className="absolute inset-y-0 opacity-10"
                 style={{ left: "85%", width: "15%", background: "#ef4444" }}
               />
 
               {/* Forecasted demand bar */}
               <div
-                className="absolute inset-y-0 left-0 rounded-md transition-all duration-700 ease-out"
+                className="absolute inset-y-0 left-0 rounded-lg transition-all duration-1000 ease-out"
                 style={{
                   width: `${pct}%`,
-                  background: `linear-gradient(90deg, ${row.color}cc, ${row.color})`,
-                  boxShadow: `0 0 12px ${row.color}40`,
+                  background: `linear-gradient(90deg, ${row.color}bb, ${row.color})`,
+                  boxShadow: `0 0 15px ${row.color}30`,
                 }}
               />
 
               {/* Stock limit marker */}
               <div
-                className="absolute inset-y-0 w-0.5 bg-foreground/80"
+                className="absolute inset-y-0 w-1 bg-foreground/30"
                 style={{ left: "100%" }}
-                title={`Current stock: ${row.currentStock} doses`}
               />
 
               {/* 85% warning threshold */}
               <div
-                className="absolute inset-y-0 w-px bg-amber-500/60"
+                className="absolute inset-y-0 w-px bg-amber-500/40"
                 style={{ left: "85%" }}
               />
             </div>
 
             {/* Status indicator */}
-            <div className="flex items-center gap-1.5 text-[10px]">
+            <div className="flex items-start gap-2 text-[10px] leading-tight">
               <span
-                className="size-1.5 rounded-full"
+                className="mt-1 size-1.5 shrink-0 rounded-full animate-pulse"
                 style={{
                   background: isOverDemand
                     ? "#ef4444"
@@ -102,7 +98,7 @@ export function VaccineStockGauge() {
                     : "#22c55e",
                 }}
               />
-              <span className="text-muted-foreground">
+              <span className="font-medium text-muted-foreground/80">
                 {isOverDemand
                   ? "Stock may run out — reorder immediately"
                   : isNearStockout
@@ -115,19 +111,27 @@ export function VaccineStockGauge() {
       })}
 
       {/* Footer legend */}
-      <div className="flex items-center justify-center gap-5 border-t border-border/40 pt-3 text-[9px] font-medium text-muted-foreground/70">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-emerald-500/40" />
-          Adequate (&lt;70%)
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-amber-500/40" />
-          Low Stock (70-85%)
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-red-500/40" />
-          Critical (&gt;85%)
-        </span>
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 border-t border-border/40 pt-4">
+        {[
+          { label: "Adequate", color: "#22c55e", sub: "<70%" },
+          { label: "Low Stock", color: "#f59e0b", sub: "70-85%" },
+          { label: "Critical", color: "#ef4444", sub: ">85%" },
+        ].map((item) => (
+          <div key={item.label} className="flex items-center gap-2">
+            <span
+              className="size-2.5 rounded-sm opacity-50"
+              style={{ background: item.color }}
+            />
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 leading-none">
+                {item.label}
+              </span>
+              <span className="text-[8px] font-medium text-muted-foreground/40 mt-0.5">
+                {item.sub}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+"use client";
 import { Users, Shield, Stethoscope, Activity } from "lucide-react";
 import { SYNCVET_USERS, syncVetUserStats } from "@/data/syncvet-users";
 import { UsersDirectoryTable } from "./users-directory-table";

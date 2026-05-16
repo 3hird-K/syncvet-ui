@@ -38,7 +38,7 @@ const navItems: NavItem[] = [
   { label: "Barangay Analytics", icon: BarChart3, href: "/barangay-analytics" },
 ];
 
-export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
+export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?: boolean; onItemClick?: () => void }) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
@@ -46,14 +46,8 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
     setMounted(true);
   }, []);
 
-
   return (
-    <aside
-      className={cn(
-        "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-6 transition-[width,padding] duration-200 ease-out",
-        collapsed ? "w-[68px] px-2" : "w-[16%] min-w-[250px] px-5",
-      )}
-    >
+    <div className="flex h-full flex-col">
       {/* ── Brand ── */}
       <div
         className={cn(
@@ -156,6 +150,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
                   className={itemClass}
                   title={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
+                  onClick={onItemClick}
                 >
                   {content}
                 </Link>
@@ -184,6 +179,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             title={collapsed ? "Settings" : undefined}
+            onClick={onItemClick}
           >
             <Settings 
               className={cn("size-4", pathname === "/settings" ? "text-white" : "text-muted-foreground")} 
@@ -201,6 +197,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             title={collapsed ? "Get Help" : undefined}
+            onClick={onItemClick}
           >
             <HelpCircle 
               className={cn("size-4", pathname === "/get-help" ? "text-white" : "text-muted-foreground")} 
@@ -247,6 +244,19 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
+  return (
+    <aside
+      className={cn(
+        "hidden lg:flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-6 transition-[width,padding] duration-200 ease-out",
+        collapsed ? "w-[68px] px-2" : "w-[16%] min-w-[250px] px-5",
+      )}
+    >
+      <SidebarContent collapsed={collapsed} />
     </aside>
   );
 }
