@@ -8,10 +8,14 @@ export function DashboardHeader() {
           SyncVet Management System
         </p>
         <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent">
-          {new Date().getHours() < 12 ? "Good Morning" : new Date().getHours() < 18 ? "Good Afternoon" : "Good Evening"}
+          {new Intl.DateTimeFormat('en-PH', { hour: 'numeric', hour12: false, timeZone: 'Asia/Manila' }).format(new Date()) < "12" 
+            ? "Good Morning" 
+            : new Intl.DateTimeFormat('en-PH', { hour: 'numeric', hour12: false, timeZone: 'Asia/Manila' }).format(new Date()) < "18" 
+            ? "Good Afternoon" 
+            : "Good Evening"}
         </h2>
         <p className="text-sm text-muted-foreground font-medium">
-          Here&apos;s the operational overview for <span className="text-foreground">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>.
+          Here&apos;s the operational overview for <span className="text-foreground">{new Intl.DateTimeFormat('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date())}</span>.
         </p>
       </div>
 
