@@ -17,12 +17,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import Logo from "@/assets/logo-dark.png";
 
 type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   href: string | null;
-  /** Optional section divider label rendered above this item */
   section?: string;
 };
 
@@ -38,6 +40,12 @@ const navItems: NavItem[] = [
 
 export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
 
   return (
     <aside
@@ -54,12 +62,17 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
         )}
       >
         <div
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white p-1.5 shadow-sm"
+          className="flex size-10 shrink-0 items-center justify-center overflow-hidden"
           aria-hidden
         >
-          <div className="flex size-full items-center justify-center rounded-sm bg-zinc-900 text-[9px] font-extrabold text-white">
-            SV
-          </div>
+          {mounted && (
+            <Image
+              src={Logo}
+              alt="SyncVet Logo"
+              className="size-full object-contain"
+              priority
+            />
+          )}
         </div>
         {!collapsed && (
           <div className="min-w-0">
@@ -161,28 +174,40 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
       {/* ── Bottom actions ── */}
       <div className="mt-auto shrink-0 space-y-2 px-1 pt-4 border-t border-sidebar-border">
         <div className={cn("flex flex-col gap-0.5", collapsed ? "px-0" : "")}>
-          <button
-            type="button"
+          <Link
+            href="/settings"
             className={cn(
-              "flex items-center rounded-lg text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150",
               collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
+              pathname === "/settings"
+                ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             title={collapsed ? "Settings" : undefined}
           >
-            <Settings className="size-4" strokeWidth={2} />
+            <Settings 
+              className={cn("size-4", pathname === "/settings" ? "text-white" : "text-muted-foreground")} 
+              strokeWidth={2} 
+            />
             {!collapsed && <span>Settings</span>}
-          </button>
-          <button
-            type="button"
+          </Link>
+          <Link
+            href="/get-help"
             className={cn(
-              "flex items-center rounded-lg text-[12px] font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150",
               collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
+              pathname === "/get-help"
+                ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             title={collapsed ? "Get Help" : undefined}
           >
-            <HelpCircle className="size-4" strokeWidth={2} />
+            <HelpCircle 
+              className={cn("size-4", pathname === "/get-help" ? "text-white" : "text-muted-foreground")} 
+              strokeWidth={2} 
+            />
             {!collapsed && <span>Get Help</span>}
-          </button>
+          </Link>
         </div>
 
         {/* ── User card ── */}

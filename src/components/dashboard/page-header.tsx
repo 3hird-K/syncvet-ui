@@ -18,7 +18,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2">
+    <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-0">
       <div className="space-y-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary mb-1">
           {supertitle}

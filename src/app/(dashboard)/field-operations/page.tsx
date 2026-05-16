@@ -77,7 +77,7 @@ export default function FieldOperationsPage() {
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
-    <div className="flex-1 space-y-4 p-6 pt-6 bg-background min-h-screen text-foreground">
+    <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       <PageHeader
         supertitle="Animal Health Module"
         title="Field Operations"

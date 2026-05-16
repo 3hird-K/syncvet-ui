@@ -78,7 +78,7 @@ export function PredictiveForecastBarChart() {
             tickLine={false}
             width={36}
           />
-          <Tooltip content={<BarTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.35)" }} />
+          <Tooltip content={<BarTooltip />} cursor={false} />
           <Legend
             wrapperStyle={{ fontSize: 11, paddingTop: 12 }}
             formatter={(value) => (

@@ -3,6 +3,14 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 interface TablePaginationProps {
@@ -32,22 +40,27 @@ export function TablePagination({
   const safePage = Math.min(page, totalPages);
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+    <div className="flex flex-col gap-2 border-t border-border/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 bg-muted/20">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span className="sr-only">Rows per page</span>
-          <select
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="h-8 cursor-pointer rounded-full border border-border bg-muted/50 px-2.5 pr-7 text-[10px] font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-ring/40"
-          >
+        <Select
+          value={pageSize.toString()}
+          onValueChange={(value) => onPageSizeChange(Number(value))}
+        >
+          <SelectTrigger className="h-8 w-[100px] rounded-full border-border/50 bg-background px-3 text-[10px] font-bold uppercase tracking-wider focus:ring-1 focus:ring-primary/20">
+            <SelectValue placeholder={`${pageSize} Rows`} />
+          </SelectTrigger>
+          <SelectContent className="border-border/50 bg-popover">
             {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n} rows
-              </option>
+              <SelectItem 
+                key={n} 
+                value={n.toString()}
+                className="text-[10px] font-bold uppercase tracking-wider"
+              >
+                {n} Rows
+              </SelectItem>
             ))}
-          </select>
-        </label>
+          </SelectContent>
+        </Select>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {totalItems} total {itemLabel}
         </span>

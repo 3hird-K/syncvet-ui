@@ -79,8 +79,8 @@ export function AprilVsMayHorizontalChart() {
             layout="vertical"
             data={comparisonRows}
             margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
-            barGap={6}
-            barCategoryGap={22}
+            barGap={4}
+            barCategoryGap="15%"
           >
             <CartesianGrid strokeDasharray="3 3" className="stroke-border/80" horizontal={false} />
             <XAxis type="number" tick={{ fontSize: 10 }} className="text-muted-foreground" />
@@ -93,7 +93,7 @@ export function AprilVsMayHorizontalChart() {
               axisLine={false}
               tickLine={false}
             />
-            <Tooltip content={<HBarTooltip />} cursor={{ fill: "hsl(var(--muted) / 0.25)" }} />
+            <Tooltip content={<HBarTooltip />} cursor={false} />
             <Legend
               wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
               formatter={(v) => <span className="text-muted-foreground">{String(v)}</span>}
@@ -103,14 +103,14 @@ export function AprilVsMayHorizontalChart() {
               name="April (actual)"
               fill="#64748b"
               radius={[0, 4, 4, 0]}
-              maxBarSize={14}
+              barSize={12}
             />
             <Bar
               dataKey="mayForecast"
               name="May (forecast)"
               fill="#f97316"
               radius={[0, 4, 4, 0]}
-              maxBarSize={14}
+              barSize={12}
             />
           </BarChart>
         </ResponsiveContainer>

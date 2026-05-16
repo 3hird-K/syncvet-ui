@@ -19,7 +19,7 @@ import {
 
 export default function Home() {
   return (
-    <div className="flex-1 space-y-4 p-6 pt-6 bg-background min-h-screen text-foreground">
+    <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       {/* ── Header ── */}
       <DashboardHeader />
 

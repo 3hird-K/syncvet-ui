@@ -11,10 +11,10 @@ import {
  * Green (low risk) → Amber (moderate) → Red (high risk)
  */
 function riskColor(value: number): string {
-  if (value < 30) return `hsl(160, 55%, ${14 + value * 0.2}%)`;
-  if (value < 55) return `hsl(40, 75%, ${16 + (value - 30) * 0.4}%)`;
-  if (value < 75) return `hsl(20, 85%, ${22 + (value - 55) * 0.3}%)`;
-  return `hsl(5, 80%, ${28 + (value - 75) * 0.3}%)`;
+  if (value < 30) return `hsl(142, 76%, 36%)`; // Emerald
+  if (value < 55) return `hsl(45, 93%, 44%)`;  // Amber
+  if (value < 75) return `hsl(24, 94%, 50%)`;  // Orange
+  return `hsl(0, 84%, 45%)`;                   // Red
 }
 
 function riskLabel(value: number): string {
@@ -70,10 +70,7 @@ export function BarangayRiskHeatmap() {
                 style={{
                   background: riskColor(v),
                   height: 34,
-                  color:
-                    v > 45
-                      ? "rgba(255,255,255,0.95)"
-                      : "rgba(255,255,255,0.6)",
+                  color: "white",
                 }}
               >
                 {v}

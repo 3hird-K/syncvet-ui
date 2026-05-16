@@ -5,10 +5,7 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { Badge } from "@/components/ui/badge";
 
-export const metadata = {
-  title: "Users — SyncVet",
-  description: "Manage SyncVet accounts for the CDO City Veterinary Office.",
-};
+
 
 export default function UsersPage() {
   const stats = syncVetUserStats(SYNCVET_USERS);
@@ -57,7 +54,7 @@ export default function UsersPage() {
   ];
 
   return (
-    <div className="flex-1 space-y-4 p-6 pt-6 bg-background min-h-screen text-foreground">
+    <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       <PageHeader
         supertitle="Service Management"
         title="User Directory"

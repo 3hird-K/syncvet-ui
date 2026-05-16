@@ -9,9 +9,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SyncVet — CDO City Veterinary Office",
+  title: "CDO City Veterinary Office",
   description:
     "Animal health management with predictive resource forecasting for the Cagayan de Oro City Veterinary Office.",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/favicon.ico",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -27,7 +32,7 @@ export default function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           enableSystem={false}
           storageKey="syncvet-theme"
           disableTransitionOnChange
