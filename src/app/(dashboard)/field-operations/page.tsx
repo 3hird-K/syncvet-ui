@@ -8,9 +8,10 @@ import {
   Clock,
   Users,
   Search,
-  Filter,
+  Settings2,
   Plus,
 } from "lucide-react";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +31,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { ScheduleDriveDialog } from "@/components/dashboard/schedule-drive-dialog";
 
 const metrics: PageMetric[] = [
   { title: "Active Deployments", value: "6", icon: Truck, gradient: "from-primary/5", iconClass: "text-primary", badge: "In Field", badgeClass: "text-primary bg-primary/10", sub: "Mobile units deployed" },
@@ -60,6 +63,25 @@ export default function FieldOperationsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const columns = [
+    { id: "id", label: "Op ID" },
+    { id: "barangay", label: "Barangay", required: true },
+    { id: "type", label: "Operation Type" },
+    { id: "team", label: "Team" },
+    { id: "lead", label: "Lead" },
+    { id: "date", label: "Date" },
+    { id: "progress", label: "Progress" },
+    { id: "status", label: "Status" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map(c => c.id));
+
+  const toggleColumn = (id: string) => {
+    setVisibleColumns(prev => 
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allOps;
@@ -82,7 +104,7 @@ export default function FieldOperationsPage() {
         supertitle="Animal Health Module"
         title="Field Operations"
         subtitle={<>Barangay-level <span className="text-foreground">field vaccination drives</span> and mobile team deployment with <span className="text-foreground">offline-first data capture</span>.</>}
-        actions={<Button size="sm" className="gap-2 text-xs"><Plus className="size-3.5" /> Schedule Drive</Button>}
+        actions={<ScheduleDriveDialog />}
       />
       <PageMetricCards metrics={metrics} />
       <Card>
@@ -97,7 +119,11 @@ export default function FieldOperationsPage() {
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search by barangay or team..." className="h-8 w-64 pl-8 text-xs" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs"><Filter className="size-3" /> Filter</Button>
+              <TableColumnFilter 
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -105,46 +131,50 @@ export default function FieldOperationsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Op ID</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Operation Type</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Team</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Lead</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Date</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Progress</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
+                {visibleColumns.includes("id") && <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Op ID</TableHead>}
+                {visibleColumns.includes("barangay") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>}
+                {visibleColumns.includes("type") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Operation Type</TableHead>}
+                {visibleColumns.includes("team") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Team</TableHead>}
+                {visibleColumns.includes("lead") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Lead</TableHead>}
+                {visibleColumns.includes("date") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Date</TableHead>}
+                {visibleColumns.includes("progress") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Progress</TableHead>}
+                {visibleColumns.includes("status") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No operations match your search.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground">No operations match your search.</TableCell></TableRow>
               ) : rows.map((op) => {
                 const pct = op.petsTarget > 0 ? Math.round((op.petsVaccinated / op.petsTarget) * 100) : 0;
                 return (
                   <TableRow key={op.id} className="hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs text-muted-foreground pl-6">{op.id}</TableCell>
-                    <TableCell className="text-sm font-semibold">{op.barangay}</TableCell>
-                    <TableCell className="text-xs">{op.type}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{op.team}</TableCell>
-                    <TableCell className="text-xs">{op.lead}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{op.date}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                    {visibleColumns.includes("id") && <TableCell className="font-mono text-xs text-muted-foreground pl-6">{op.id}</TableCell>}
+                    {visibleColumns.includes("barangay") && <TableCell className="text-sm font-semibold">{op.barangay}</TableCell>}
+                    {visibleColumns.includes("type") && <TableCell className="text-xs">{op.type}</TableCell>}
+                    {visibleColumns.includes("team") && <TableCell className="text-xs text-muted-foreground">{op.team}</TableCell>}
+                    {visibleColumns.includes("lead") && <TableCell className="text-xs">{op.lead}</TableCell>}
+                    {visibleColumns.includes("date") && <TableCell className="text-xs text-muted-foreground">{op.date}</TableCell>}
+                    {visibleColumns.includes("progress") && (
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-[10px] tabular-nums text-muted-foreground">{op.petsVaccinated}/{op.petsTarget}</span>
                         </div>
-                        <span className="text-[10px] tabular-nums text-muted-foreground">{op.petsVaccinated}/{op.petsTarget}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn("text-[10px]",
-                        op.status === "completed" && "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25",
-                        op.status === "in-progress" && "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25",
-                        op.status === "scheduled" && "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25",
-                      )}>
-                        {op.status === "in-progress" ? <><Clock className="mr-1 size-3" /> In Progress</> : op.status === "completed" ? <><CheckCircle2 className="mr-1 size-3" /> Completed</> : "Scheduled"}
-                      </Badge>
-                    </TableCell>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("status") && (
+                      <TableCell>
+                        <Badge className={cn("text-[10px]",
+                          op.status === "completed" && "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25",
+                          op.status === "in-progress" && "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25",
+                          op.status === "scheduled" && "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25",
+                        )}>
+                          {op.status === "in-progress" ? <><Clock className="mr-1 size-3" /> In Progress</> : op.status === "completed" ? <><CheckCircle2 className="mr-1 size-3" /> Completed</> : "Scheduled"}
+                        </Badge>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}

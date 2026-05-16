@@ -8,9 +8,10 @@ import {
   QrCode,
   Search,
   Plus,
-  Filter,
+  Settings2,
   Download,
 } from "lucide-react";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +31,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 
 const metrics: PageMetric[] = [
   { title: "Total Registered", value: "12,842", icon: PawPrint, gradient: "from-indigo-500/5", iconClass: "text-indigo-400", badge: "CDO District", badgeClass: "text-indigo-400 bg-indigo-400/10", sub: "Dogs & cats combined" },
@@ -61,6 +64,25 @@ export default function PetRegistryPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const columns = [
+    { id: "id", label: "Pet ID" },
+    { id: "name", label: "Name", required: true },
+    { id: "species", label: "Species" },
+    { id: "breed", label: "Breed" },
+    { id: "owner", label: "Owner" },
+    { id: "barangay", label: "Barangay" },
+    { id: "vaccinated", label: "Vaccinated" },
+    { id: "qr", label: "QR Passport" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map(c => c.id));
+
+  const toggleColumn = (id: string) => {
+    setVisibleColumns(prev => 
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allPets;
@@ -77,13 +99,41 @@ export default function PetRegistryPage() {
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
+  const handleExport = () => {
+    toast.promise(new Promise(resolve => setTimeout(resolve, 1500)), {
+      loading: "Generating registry report...",
+      success: () => {
+        const content = "Pet ID,Name,Species,Breed,Owner,Barangay,Vaccinated\n" + 
+          allPets.map(p => `${p.id},${p.name},${p.species},${p.breed},${p.owner},${p.barangay},${p.vaccinated}`).join("\n");
+        const blob = new Blob([content], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `syncvet_registry_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        return "Registry exported successfully";
+      },
+      error: "Export failed",
+    });
+  };
+
   return (
     <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       <PageHeader
         supertitle="Animal Health Module"
         title="Pet Registry"
         subtitle={<>City-wide animal registration database with <span className="text-foreground">QR-coded digital health passports</span> for the CDO Veterinary Office.</>}
-        actions={<><Button variant="outline" size="sm" className="gap-2 text-xs"><Download className="size-3.5" /> Export CSV</Button><Button size="sm" className="gap-2 text-xs"><Plus className="size-3.5" /> Register Pet</Button></>}
+        actions={<>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2 text-xs"
+            onClick={handleExport}
+          >
+            <Download className="size-3.5" /> Export CSV
+          </Button>
+          <RegisterPetDialog />
+        </>}
       />
       <PageMetricCards metrics={metrics} />
       <Card>
@@ -98,7 +148,11 @@ export default function PetRegistryPage() {
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search by name, ID, or owner..." className="h-8 w-full sm:w-64 pl-8 text-xs bg-muted/20" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"><Filter className="size-3" /> Filter</Button>
+              <TableColumnFilter 
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -106,29 +160,29 @@ export default function PetRegistryPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Pet ID</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Name</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Species</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Breed</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccinated</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">QR Passport</TableHead>
+                {visibleColumns.includes("id") && <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Pet ID</TableHead>}
+                {visibleColumns.includes("name") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Name</TableHead>}
+                {visibleColumns.includes("species") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Species</TableHead>}
+                {visibleColumns.includes("breed") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Breed</TableHead>}
+                {visibleColumns.includes("owner") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner</TableHead>}
+                {visibleColumns.includes("barangay") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>}
+                {visibleColumns.includes("vaccinated") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccinated</TableHead>}
+                {visibleColumns.includes("qr") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">QR Passport</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No pets match your search.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground">No pets match your search.</TableCell></TableRow>
               ) : rows.map((pet) => (
                 <TableRow key={pet.id} className="hover:bg-muted/50">
-                  <TableCell className="font-mono text-xs text-muted-foreground pl-6">{pet.id}</TableCell>
-                  <TableCell className="text-sm font-semibold">{pet.name}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{pet.species === "Dog" ? "🐕" : "🐈"} {pet.species}</Badge></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{pet.breed}</TableCell>
-                  <TableCell className="text-xs">{pet.owner}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{pet.barangay}</TableCell>
-                  <TableCell><Badge className={cn("text-[10px]", pet.vaccinated ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25" : "bg-red-500/15 text-red-500 hover:bg-red-500/25")}>{pet.vaccinated ? "Vaccinated" : "Pending"}</Badge></TableCell>
-                  <TableCell>{pet.qr ? <QrCode className="size-4 text-emerald-500" /> : <span className="text-[10px] text-muted-foreground">—</span>}</TableCell>
+                  {visibleColumns.includes("id") && <TableCell className="font-mono text-xs text-muted-foreground pl-6">{pet.id}</TableCell>}
+                  {visibleColumns.includes("name") && <TableCell className="text-sm font-semibold">{pet.name}</TableCell>}
+                  {visibleColumns.includes("species") && <TableCell><Badge variant="outline" className="text-[10px]">{pet.species === "Dog" ? "🐕" : "🐈"} {pet.species}</Badge></TableCell>}
+                  {visibleColumns.includes("breed") && <TableCell className="text-xs text-muted-foreground">{pet.breed}</TableCell>}
+                  {visibleColumns.includes("owner") && <TableCell className="text-xs">{pet.owner}</TableCell>}
+                  {visibleColumns.includes("barangay") && <TableCell className="text-xs text-muted-foreground">{pet.barangay}</TableCell>}
+                  {visibleColumns.includes("vaccinated") && <TableCell><Badge className={cn("text-[10px]", pet.vaccinated ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25" : "bg-red-500/15 text-red-500 hover:bg-red-500/25")}>{pet.vaccinated ? "Vaccinated" : "Pending"}</Badge></TableCell>}
+                  {visibleColumns.includes("qr") && <TableCell>{pet.qr ? <QrCode className="size-4 text-emerald-500" /> : <span className="text-[10px] text-muted-foreground">—</span>}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>

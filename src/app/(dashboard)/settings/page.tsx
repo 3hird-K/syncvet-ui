@@ -112,7 +112,7 @@ export default function SettingsPage() {
                     <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">System Role</label>
                     <div className="flex items-center gap-2">
                       <Input defaultValue="Administrator" disabled className="bg-muted/50 border-border/50 cursor-not-allowed" />
-                      <Badge className="bg-zinc-900 text-white text-[10px] font-bold uppercase tracking-tighter">Root Access</Badge>
+                      <Badge className="bg-zinc-900 text-white text-[10px] font-extrabold uppercase tracking-widest whitespace-nowrap h-9 px-4 rounded-md">Root Access</Badge>
                     </div>
                   </div>
                   <div className="pt-2">

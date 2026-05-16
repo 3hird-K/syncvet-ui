@@ -7,9 +7,10 @@ import {
   AlertTriangle,
   CalendarCheck,
   Search,
-  Filter,
+  Settings2,
   Download,
 } from "lucide-react";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,9 +30,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { LogVaccinationDialog } from "@/components/dashboard/log-vaccination-dialog";
 
 const metrics: PageMetric[] = [
   { title: "Total Doses Given", value: "19,240", icon: Syringe, gradient: "from-blue-500/5", iconClass: "text-blue-400", badge: "All Types", badgeClass: "text-blue-400 bg-blue-400/10", sub: "Anti-Rabies / Parvo / Deworm" },
@@ -60,6 +63,25 @@ export default function VaccinationRecordsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const columns = [
+    { id: "id", label: "Vax ID" },
+    { id: "pet", label: "Pet", required: true },
+    { id: "vaccine", label: "Vaccine" },
+    { id: "batch", label: "Batch No." },
+    { id: "date", label: "Date" },
+    { id: "vet", label: "Veterinarian" },
+    { id: "nextDue", label: "Next Due" },
+    { id: "status", label: "Status" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map(c => c.id));
+
+  const toggleColumn = (id: string) => {
+    setVisibleColumns(prev => 
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allRecords;
@@ -76,13 +98,41 @@ export default function VaccinationRecordsPage() {
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
+  const handleExport = () => {
+    toast.promise(new Promise(resolve => setTimeout(resolve, 1500)), {
+      loading: "Generating vaccination report...",
+      success: () => {
+        const content = "Vax ID,Pet Name,Pet ID,Vaccine,Batch No.,Date,Veterinarian,Next Due,Status\n" + 
+          allRecords.map(r => `${r.id},${r.petName},${r.petId},${r.vaccine},${r.batch},${r.date},${r.vet},${r.nextDue},${r.status}`).join("\n");
+        const blob = new Blob([content], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `syncvet_vax_records_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        return "Records exported successfully";
+      },
+      error: "Export failed",
+    });
+  };
+
   return (
     <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       <PageHeader
         supertitle="Animal Health Module"
         title="Vaccination Records"
         subtitle={<>Anti-rabies, anti-parvovirus, and deworming dose tracking with <span className="text-foreground">batch traceability</span> and booster scheduling.</>}
-        actions={<><Button variant="outline" size="sm" className="gap-2 text-xs"><Download className="size-3.5" /> Export Records</Button><Button size="sm" className="gap-2 text-xs"><Syringe className="size-3.5" /> Log Vaccination</Button></>}
+        actions={<>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-2 text-xs"
+            onClick={handleExport}
+          >
+            <Download className="size-3.5" /> Export Records
+          </Button>
+          <LogVaccinationDialog />
+        </>}
       />
       <PageMetricCards metrics={metrics} />
       <Card>
@@ -97,7 +147,11 @@ export default function VaccinationRecordsPage() {
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search by pet, batch, or vet..." className="h-8 w-full sm:w-64 pl-8 text-xs bg-muted/20" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} />
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs flex-1 sm:flex-none"><Filter className="size-3" /> Filter</Button>
+              <TableColumnFilter 
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -105,35 +159,39 @@ export default function VaccinationRecordsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Vax ID</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Pet</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccine</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch No.</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Date</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Veterinarian</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Next Due</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
+                {visibleColumns.includes("id") && <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Vax ID</TableHead>}
+                {visibleColumns.includes("pet") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Pet</TableHead>}
+                {visibleColumns.includes("vaccine") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vaccine</TableHead>}
+                {visibleColumns.includes("batch") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Batch No.</TableHead>}
+                {visibleColumns.includes("date") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Date</TableHead>}
+                {visibleColumns.includes("vet") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Veterinarian</TableHead>}
+                {visibleColumns.includes("nextDue") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Next Due</TableHead>}
+                {visibleColumns.includes("status") && <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No records match your search.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground">No records match your search.</TableCell></TableRow>
               ) : rows.map((r) => (
                 <TableRow key={r.id} className="hover:bg-muted/50">
-                  <TableCell className="font-mono text-xs text-muted-foreground pl-6">{r.id}</TableCell>
-                  <TableCell>
-                    <div><p className="text-sm font-semibold">{r.petName}</p><p className="text-[10px] text-muted-foreground">{r.petId}</p></div>
-                  </TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px]">{r.vaccine}</Badge></TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{r.batch}</TableCell>
-                  <TableCell className="text-xs">{r.date}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.vet}</TableCell>
-                  <TableCell className="text-xs">{r.nextDue}</TableCell>
-                  <TableCell>
-                    <Badge className={cn("text-[10px]", r.status === "complete" ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25" : "bg-red-500/15 text-red-500 hover:bg-red-500/25")}>
-                      {r.status === "complete" ? "Complete" : "Overdue"}
-                    </Badge>
-                  </TableCell>
+                  {visibleColumns.includes("id") && <TableCell className="font-mono text-xs text-muted-foreground pl-6">{r.id}</TableCell>}
+                  {visibleColumns.includes("pet") && (
+                    <TableCell>
+                      <div><p className="text-sm font-semibold">{r.petName}</p><p className="text-[10px] text-muted-foreground">{r.petId}</p></div>
+                    </TableCell>
+                  )}
+                  {visibleColumns.includes("vaccine") && <TableCell><Badge variant="outline" className="text-[10px]">{r.vaccine}</Badge></TableCell>}
+                  {visibleColumns.includes("batch") && <TableCell className="font-mono text-xs text-muted-foreground">{r.batch}</TableCell>}
+                  {visibleColumns.includes("date") && <TableCell className="text-xs">{r.date}</TableCell>}
+                  {visibleColumns.includes("vet") && <TableCell className="text-xs text-muted-foreground">{r.vet}</TableCell>}
+                  {visibleColumns.includes("nextDue") && <TableCell className="text-xs">{r.nextDue}</TableCell>}
+                  {visibleColumns.includes("status") && (
+                    <TableCell>
+                      <Badge className={cn("text-[10px]", r.status === "complete" ? "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25" : "bg-red-500/15 text-red-500 hover:bg-red-500/25")}>
+                        {r.status === "complete" ? "Complete" : "Overdue"}
+                      </Badge>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

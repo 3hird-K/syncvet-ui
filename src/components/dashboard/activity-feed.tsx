@@ -50,7 +50,7 @@ export function ActivityFeed({ className }: { className?: string }) {
     <Card className={cn("flex h-full flex-col", className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
         <div>
-          <CardTitle className="text-lg font-bold tracking-tight text-white">
+          <CardTitle className="text-lg font-bold tracking-tight">
             System Activity
           </CardTitle>
           <CardDescription className="text-xs font-medium text-muted-foreground/40">
