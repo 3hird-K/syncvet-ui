@@ -1,144 +1,45 @@
-import { MetricCards } from "@/components/dashboard/metric-cards";
-import { ServiceImpactChart } from "@/components/dashboard/service-impact-chart";
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { PredictiveForecastBarChart } from "@/components/dashboard/predictive-forecast-bar-chart";
-import { MayForecastPie } from "@/components/dashboard/may-forecast-pie";
-import { AprilVsMayHorizontalChart } from "@/components/dashboard/april-vs-may-horizontal-chart";
-import { ConfidenceIntervalChart } from "@/components/dashboard/confidence-interval-chart";
-import { BarangayRiskHeatmap } from "@/components/dashboard/resource-heatmap";
-import { TrendDecompositionChart } from "@/components/dashboard/trend-decomposition-chart";
-import { VaccineStockGauge } from "@/components/dashboard/capacity-gauge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { LandingNavbar } from "@/components/landing/landing-navbar";
+import { LandingHero } from "@/components/landing/landing-hero";
+import { LandingValueProp } from "@/components/landing/landing-value-prop";
+import { LandingHealthShowcase } from "@/components/landing/landing-health-showcase";
+import { LandingAppointmentsShowcase } from "@/components/landing/landing-appointments-showcase";
+import { LandingHowItWorks } from "@/components/landing/landing-how-it-works";
+import { LandingEmotionalMoment } from "@/components/landing/landing-emotional-moment";
+import { LandingCta } from "@/components/landing/landing-cta";
+import { LandingFooter } from "@/components/landing/landing-footer";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
-      {/* ── Header ── */}
-      <DashboardHeader />
+    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
+      {/* 1. Floating Capsule Navigation Bar */}
+      <LandingNavbar />
 
-      {/* ── Metric cards ── */}
-      <MetricCards />
+      {/* Main Content */}
+      <main className="flex-1">
+        {/* 01 — Dedicated Android App Download Hero (Scannable QR & Direct APK) */}
+        <LandingHero />
 
-      {/* ── Chart + Activity row ── */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-              Service Impact Analysis
-            </CardTitle>
-            <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-              Analyzing correlations between pet registrations, field work, and clinical labor for the CDO Veterinary Office.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ServiceImpactChart />
-          </CardContent>
-        </Card>
-        <div className="lg:col-span-2">
-          <ActivityFeed />
-        </div>
-      </div>
+        {/* 02 — Product / Value Introduction */}
+        <LandingValueProp />
 
-      {/* ── Predictive forecast ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-            Predictive Resource Forecast
-          </CardTitle>
-          <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-            ML-driven forecasting predicting current month demand based on historical data patterns from previous months.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 lg:grid-cols-5">
-            <div className="lg:col-span-3">
-              <p className="mb-3 text-xs font-medium text-muted-foreground">
-                Monthly volume — grouped comparison
-              </p>
-              <PredictiveForecastBarChart />
-            </div>
-            <div className="border-t pt-4 lg:col-span-2 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-              <p className="mb-3 text-xs font-medium text-muted-foreground">
-                May projected mix
-              </p>
-              <MayForecastPie />
-            </div>
-          </div>
-          <AprilVsMayHorizontalChart />
-        </CardContent>
-      </Card>
+        {/* 03 — Pet Health & Digital Passport Showcase */}
+        <LandingHealthShowcase />
 
-      {/* ── Advanced Predictive Analytics ── */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Anti-Rabies Confidence Band */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-              Anti-Rabies Forecast Confidence
-            </CardTitle>
-            <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-              Predicted anti-rabies vaccination doses with upper/lower bounds — shaded band shows the ML model&apos;s 80% confidence interval for May demand.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ConfidenceIntervalChart />
-          </CardContent>
-        </Card>
+        {/* 04 — Appointments & Smart Reminders Showcase */}
+        <LandingAppointmentsShowcase />
 
-        {/* Vaccination Demand Decomposition */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-              Vaccination Demand Decomposition
-            </CardTitle>
-            <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-              Anti-rabies volume broken into clinic walk-ins, seasonal demand, and CVO field vaccination drives — helps allocate mobile teams vs. clinic staff.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TrendDecompositionChart />
-          </CardContent>
-        </Card>
-      </div>
+        {/* 05 — Simple How It Works Progression */}
+        <LandingHowItWorks />
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Barangay Risk Scoring */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-              Barangay Risk Scoring
-            </CardTitle>
-            <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-              Risk assessment across CDO barangays — prioritizes field vaccination deployment based on rabies cases, unvaccinated pets, stray population, and coverage gaps.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <BarangayRiskHeatmap />
-          </CardContent>
-        </Card>
+        {/* 06 — Emotional Pet Care Moment */}
+        <LandingEmotionalMoment />
 
-        {/* Vaccine Stock vs. Demand */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold tracking-tight text-foreground">
-              Vaccine Stock vs. Demand
-            </CardTitle>
-            <CardDescription className="text-[11px] font-medium text-muted-foreground/60">
-              May forecasted dose consumption measured against current inventory — flags vaccines nearing stockout for timely procurement.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <VaccineStockGauge />
-          </CardContent>
-        </Card>
-      </div>
+        {/* 07 — Confident Final Call to Action */}
+        <LandingCta />
+      </main>
+
+      {/* 08 — Restrained Modern Footer */}
+      <LandingFooter />
     </div>
   );
 }

@@ -10,12 +10,21 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CDO City Veterinary Office",
-  description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+  title: "SyncVet — Smarter Pet Care, Connected | Veterinary Platform",
+  description: "Keep your pet’s health information, appointments, vaccinations, and veterinary care organized in one simple and connected platform.",
   metadataBase: new URL("https://syncvet-ui.vercel.app"),
+  keywords: [
+    "veterinary care",
+    "pet health records",
+    "pet digital passport",
+    "vaccination tracker",
+    "veterinary appointments",
+    "pet care management",
+    "SyncVet",
+  ],
   openGraph: {
-    title: "CDO City Veterinary Office",
-    description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+    title: "SyncVet — Smarter Pet Care, Connected",
+    description: "Keep your pet’s health information, appointments, vaccinations, and veterinary care organized in one simple and connected platform.",
     url: "https://syncvet-ui.vercel.app",
     siteName: "SyncVet",
     images: [
@@ -23,7 +32,7 @@ export const metadata: Metadata = {
         url: "https://syncvet-ui.vercel.app/og-syncvet.png",
         width: 1200,
         height: 630,
-        alt: "SyncVet Dashboard",
+        alt: "SyncVet Veterinary Platform",
       },
     ],
     locale: "en_PH",
@@ -31,8 +40,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SyncVet — CDO City Veterinary Office",
-    description: "Animal health management and predictive resource forecasting system for Cagayan de Oro City.",
+    title: "SyncVet — Smarter Pet Care, Connected",
+    description: "Keep your pet’s health information, appointments, vaccinations, and veterinary care organized in one simple and connected platform.",
     images: ["https://syncvet-ui.vercel.app/og-syncvet.png"],
   },
   icons: {

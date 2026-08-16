@@ -29,7 +29,7 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Manage Users", icon: Users, href: "/users" },
   { label: "Pet Registry", icon: PawPrint, href: "/pet-registry", section: "Animal Health" },
   { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
