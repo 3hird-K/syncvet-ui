@@ -33,7 +33,7 @@ export function LandingHowItWorks() {
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             How It Works
           </p>
-          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight text-foreground leading-tight mb-3 sm:mb-4">
+          <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[40px] leading-[1.12] mb-3 sm:mb-4">
             Simple steps to connected pet care.
           </h2>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">

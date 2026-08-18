@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -13,13 +13,24 @@ import {
   Settings,
   HelpCircle,
   MoreVertical,
+  CircleUser,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
+import { useClerk, useUser } from "@clerk/nextjs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 
 type NavItem = {
   label: string;
@@ -40,11 +51,36 @@ const navItems: NavItem[] = [
 
 export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?: boolean; onItemClick?: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const { user, isLoaded } = useUser();
+  const clerk = useClerk();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const displayName = isLoaded && user ? user.fullName || user.username || "IT Officer" : "Neil Dime";
+  const userEmail = isLoaded && user?.primaryEmailAddress?.emailAddress ? user.primaryEmailAddress.emailAddress : "dime.neil03@gmail.com";
+  const userAvatarUrl = isLoaded && user?.imageUrl ? user.imageUrl : undefined;
+  const userInitials = isLoaded && user && user.fullName 
+    ? user.fullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    : "ND";
+  const userRole = metadata?.roleTitle || (metadata?.accountType === "pet_owner" ? "Pet Owner" : "Administrator");
+
+  const handleLogout = async () => {
+    if (clerk?.signOut) {
+      await clerk.signOut({ redirectUrl: "/sign-in" });
+    } else {
+      router.push("/sign-in");
+    }
+  };
+
+  const handleOpenAccount = () => {
+    setProfileOpen(true);
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -76,8 +112,8 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
             <p className="text-sm font-extrabold tracking-tight text-foreground leading-none">
               SYNCVET
             </p>
-            <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-widest text-primary">
-              Management System
+            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
+              MANAGEMENT SYSTEM
             </p>
           </div>
         )}
@@ -98,80 +134,56 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
         <nav className="flex flex-col gap-1">
           {navItems.map((item) => {
             const active =
-              item.href != null &&
-              (item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`));
-
-            /* Section divider */
-            const sectionLabel =
-              !collapsed && item.section ? (
-                <p className="mt-5 mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  {item.section}
-                </p>
-              ) : (
-                collapsed && item.section ? <div className="my-2 h-px w-full bg-border/50" /> : null
-              );
-
-            const content = (
-              <>
-                <item.icon
-                  className={cn(
-                    "size-4 shrink-0",
-                    active ? "text-white" : "text-muted-foreground",
-                  )}
-                  strokeWidth={2}
-                />
-                {!collapsed && (
-                  <span className="truncate text-[12px] font-semibold">
-                    {item.label}
-                  </span>
-                )}
-              </>
-            );
-            const itemClass = cn(
-              "group flex items-center rounded-lg text-left transition-colors duration-150",
-              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
-              active
-                ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
-            );
-
-            const navElement =
-              item.href == null ? (
-                <span
-                  key={item.label}
-                  className={itemClass}
-                  title={collapsed ? item.label : undefined}
-                >
-                  {content}
-                </span>
-              ) : (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={itemClass}
-                  title={collapsed ? item.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                  onClick={onItemClick}
-                >
-                  {content}
-                </Link>
-              );
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : item.href
+                  ? pathname.startsWith(item.href)
+                  : false;
+            const Icon = item.icon;
 
             return (
               <div key={item.label}>
-                {sectionLabel}
-                {navElement}
+                {item.section && !collapsed && (
+                  <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    {item.section}
+                  </p>
+                )}
+                <Link
+                  href={item.href || "#"}
+                  className={cn(
+                    "group flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150",
+                    collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                  title={collapsed ? item.label : undefined}
+                  onClick={onItemClick}
+                >
+                  <Icon
+                    className={cn(
+                      "size-4 shrink-0 transition-transform duration-150 group-hover:scale-105",
+                      active ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground",
+                    )}
+                    strokeWidth={active ? 2.5 : 2}
+                  />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </Link>
               </div>
             );
           })}
         </nav>
       </div>
 
-      {/* ── Bottom actions ── */}
-      <div className="mt-auto shrink-0 space-y-2 px-1 pt-4 border-t border-sidebar-border">
-        <div className={cn("flex flex-col gap-0.5", collapsed ? "px-0" : "")}>
+      {/* ── Bottom section: Support links + User profile with 3 dots menu ── */}
+      <div
+        className={cn(
+          "shrink-0 space-y-3 pt-3 border-t border-sidebar-border/60",
+          collapsed ? "px-0" : "px-1",
+        )}
+      >
+        {/* Support nav links */}
+        <div className="flex flex-col gap-1">
           <Link
             href="/settings"
             className={cn(
@@ -210,42 +222,91 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
           </Link>
         </div>
 
-        {/* ── User card ── */}
-        <div
-          className={cn(
-            "flex items-center rounded-lg bg-muted/50 p-2.5 transition-colors hover:bg-muted",
-            collapsed ? "flex-col gap-2" : "gap-3",
-          )}
-        >
-          <div className="relative">
-            <Avatar className="size-8 shrink-0 border border-border">
-              <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-[9px] font-bold text-white">
-                KK
-              </AvatarFallback>
-            </Avatar>
-            <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-sidebar bg-emerald-500" />
-          </div>
-          {!collapsed && (
-            <>
+        {/* ── User card with 3-Dots Dropdown Menu ── */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "group w-full flex items-center rounded-2xl bg-muted/40 p-2.5 transition-all hover:bg-muted/70 border border-border/50 text-left outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-primary/40",
+                collapsed ? "justify-center px-1.5" : "gap-2.5 justify-between",
+              )}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Avatar className="size-8.5 shrink-0 border border-border/80 shadow-2xs">
+                  {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-[10px] font-bold text-white">
+                    {userInitials}
+                  </AvatarFallback>
+                </Avatar>
+                {!collapsed && (
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-bold text-primary leading-tight group-hover:text-primary/90">
+                      {displayName}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-medium leading-tight">
+                      {userRole}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {!collapsed && (
+                <div className="flex size-6 items-center justify-center rounded-lg text-primary/70 group-hover:text-primary shrink-0 transition-colors">
+                  <MoreVertical className="size-4" />
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            side="right"
+            align="end"
+            sideOffset={14}
+            className="w-64 rounded-2xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95 z-50"
+          >
+            {/* Header info in popup */}
+            <div className="flex items-center gap-3 p-2">
+              <Avatar className="size-9 shrink-0 border border-border/80 shadow-xs">
+                {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
+                <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-[11px] font-bold text-white">
+                  {userInitials}
+                </AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-semibold text-foreground leading-tight">
-                  Koji Kiyotaka
+                <p className="truncate text-xs font-bold text-foreground leading-tight">
+                  {displayName}
                 </p>
-                <p className="text-[10px] text-primary">
-                  Administrator
+                <p className="truncate text-[11px] text-muted-foreground font-medium leading-tight mt-0.5">
+                  {userEmail}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <MoreVertical className="size-3.5" />
-                <span className="sr-only">Menu</span>
-              </Button>
-            </>
-          )}
-        </div>
+            </div>
+
+            <DropdownMenuSeparator className="my-1.5 bg-border/60" />
+
+            {/* Account Action */}
+            <DropdownMenuItem
+              onClick={handleOpenAccount}
+              className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+            >
+              <CircleUser className="size-4 text-muted-foreground" />
+              <span>Edit Profile</span>
+            </DropdownMenuItem>
+
+            {/* Logout Action */}
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors"
+            >
+              <LogOut className="size-4" />
+              <span>Logout</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Custom Edit Profile Dialog */}
+        <EditProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
       </div>
     </div>
   );

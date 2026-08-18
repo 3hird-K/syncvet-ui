@@ -71,12 +71,12 @@ export function LandingNavbar() {
               <PawPrint className="size-5 text-primary" />
             )}
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm sm:text-base font-bold tracking-tight text-foreground leading-none">
-              SyncVet
+          <div className="flex flex-col text-left">
+            <span className="text-[13px] sm:text-sm font-extrabold tracking-tight text-foreground leading-none">
+              SYNCVET
             </span>
-            <span className="text-[8px] sm:text-[8.5px] font-semibold uppercase tracking-wider text-primary mt-0.5 hidden xs:inline">
-              Veterinary Platform
+            <span className="mt-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest text-primary leading-none">
+              VETERINARY PLATFORM
             </span>
           </div>
         </Link>
@@ -98,7 +98,7 @@ export function LandingNavbar() {
         {/* Right Actions (Visible on md: >= 768px to stay synced with nav links) */}
         <div className="hidden md:flex items-center gap-2.5 lg:gap-3 shrink-0">
           <Link
-            href="/dashboard"
+            href="/sign-in"
             className="text-xs font-semibold text-muted-foreground hover:text-foreground px-2.5 py-1.5 transition-colors duration-150 whitespace-nowrap"
           >
             Sign In
@@ -109,7 +109,7 @@ export function LandingNavbar() {
             size="sm"
             className="h-8.5 px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
-            <Link href="/dashboard">
+            <Link href="/sign-in">
               Get Started
             </Link>
           </Button>
@@ -144,12 +144,12 @@ export function LandingNavbar() {
           </nav>
           <div className="flex flex-col gap-2.5 pt-4 border-t border-border/60">
             <Button asChild variant="outline" size="sm" className="w-full justify-center rounded-full text-xs font-semibold">
-              <Link href="/dashboard" onClick={() => setMobileOpen(false)}>
+              <Link href="/sign-in" onClick={() => setMobileOpen(false)}>
                 Sign In
               </Link>
             </Button>
             <Button asChild size="sm" className="w-full justify-center rounded-full text-xs font-semibold bg-primary text-primary-foreground">
-              <Link href="/dashboard" onClick={() => setMobileOpen(false)}>
+              <Link href="/sign-in" onClick={() => setMobileOpen(false)}>
                 Get Started
               </Link>
             </Button>

@@ -45,9 +45,14 @@ export function LandingFooter() {
                   <PawPrint className="size-5 text-primary" />
                 )}
               </div>
-              <span className="text-base font-bold tracking-tight text-foreground">
-                SyncVet
-              </span>
+              <div className="flex flex-col text-left">
+                <span className="text-[13px] sm:text-sm font-extrabold tracking-tight text-foreground leading-none">
+                  SYNCVET
+                </span>
+                <span className="mt-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest text-primary leading-none">
+                  VETERINARY PLATFORM
+                </span>
+              </div>
             </Link>
 
             <p className="text-xs text-muted-foreground leading-relaxed max-w-sm">

@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Download,
   QrCode,
-  Smartphone,
   PawPrint,
   ArrowRight,
   CheckCircle2,
@@ -36,12 +35,11 @@ export function LandingHero() {
           
           {/* ── LEFT: Headline & Primary Actions (sm: 7 cols, lg: 6 cols) ── */}
           <div className="sm:col-span-7 lg:col-span-6 space-y-3.5 sm:space-y-4 md:space-y-5 text-left">
-            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
-              <Smartphone className="size-3 sm:size-3.5" />
-              <span>SyncVet for Android • v1.0</span>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
+              SyncVet for Android • v1.0
+            </p>
 
-            <h1 className="text-2xl sm:text-3xl md:text-[2.4rem] lg:text-[3.25rem] font-extrabold tracking-tight text-foreground leading-[1.12]">
+            <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[40px] leading-[1.12]">
               Connected Pet Care, <br />
               <span className="text-primary">Right on Your Phone.</span>
             </h1>
@@ -74,7 +72,7 @@ export function LandingHero() {
                 size="lg"
                 className="h-9.5 sm:h-10 md:h-11 px-3.5 sm:px-4 md:px-5 rounded-xl text-xs sm:text-sm font-semibold border-border hover:bg-muted/80 text-foreground transition-all"
               >
-                <Link href="/dashboard" className="inline-flex items-center gap-1.5">
+                <Link href="/sign-in" className="inline-flex items-center gap-1.5">
                   <span>Web Portal</span>
                   <ArrowRight className="size-3.5" />
                 </Link>

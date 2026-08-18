@@ -39,8 +39,8 @@ export function LandingHealthShowcase() {
               <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 right-3 sm:right-auto bg-background/90 backdrop-blur-md border border-border/80 rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-md flex items-center gap-2.5">
                 <div className="size-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <div className="text-left">
-                  <p className="text-xs font-bold text-foreground">City Veterinary Health Network</p>
-                  <p className="text-[10px] text-muted-foreground">Certified Municipal & Private Clinic Integration</p>
+                  <p className="text-xs font-bold text-foreground">City Vet Network</p>
+                  <p className="text-[10px] text-muted-foreground">Certified clinic integration</p>
                 </div>
               </div>
             </div>
@@ -51,8 +51,8 @@ export function LandingHealthShowcase() {
                 <FileCheck2 className="size-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-foreground">100% Batch Traceable</p>
-                <p className="text-[11px] text-muted-foreground">Manufacturer lot & expiration verified</p>
+                <p className="text-xs font-bold text-foreground">100% Traceable</p>
+                <p className="text-[11px] text-muted-foreground">Verified lot & expiration</p>
               </div>
             </div>
           </div>
@@ -63,11 +63,11 @@ export function LandingHealthShowcase() {
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
                 Pet Health & Passports
               </p>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight text-foreground leading-tight mb-3 sm:mb-4">
-                Know your pet’s health at a glance.
+              <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[40px] leading-[1.12] mb-3 sm:mb-4">
+                Pet health at a glance.
               </h2>
               <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                Instantly access verified immunization status, clinical notes, and downloadable medical passports. Backed by real-time batch verification for complete peace of mind.
+                Access verified immunization records, clinical notes, and digital health passports anytime.
               </p>
             </div>
 
