@@ -21,16 +21,16 @@ export function LandingHealthShowcase() {
       <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[450px] h-[450px] bg-primary/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-10 lg:gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-10 lg:gap-16 items-center">
           
-          {/* ── LEFT: High-Quality Veterinary Photography (md: 6 cols) ── */}
-          <div className="md:col-span-6 relative">
+          {/* ── LEFT: High-Quality Veterinary Photography (lg: 6 cols) ── */}
+          <div className="lg:col-span-6 relative" data-aos="fade-right" data-aos-duration="800">
             <div className="relative rounded-3xl overflow-hidden border border-border/80 bg-card shadow-lg aspect-[4/3] group">
               <Image
                 src={LANDING_IMAGES.vetCareMoment}
                 alt="Compassionate veterinarian examining companion pet in a bright modern veterinary clinic"
                 fill
-                sizes="(max-width: 768px) 100vw, 50vw"
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover transition-transform duration-700 group-hover:scale-102"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
@@ -57,8 +57,8 @@ export function LandingHealthShowcase() {
             </div>
           </div>
 
-          {/* ── RIGHT: Editorial Copy & Realistic SyncVet Health Interface (md: 6 cols) ── */}
-          <div className="md:col-span-6 space-y-5 sm:space-y-6">
+          {/* ── RIGHT: Editorial Copy & Realistic SyncVet Health Interface (lg: 6 cols) ── */}
+          <div className="lg:col-span-6 space-y-5 sm:space-y-6" data-aos="fade-left" data-aos-duration="800">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
                 Pet Health & Passports

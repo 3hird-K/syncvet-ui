@@ -12,7 +12,11 @@ export function LandingCta() {
       {/* Background Soft Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-primary/10 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 space-y-5 sm:space-y-6">
+      <div
+        className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 space-y-5 sm:space-y-6"
+        data-aos="zoom-in"
+        data-aos-duration="700"
+      >
         <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[40px] leading-[1.12]">
           Take better care of <br className="hidden sm:inline" />
           what matters most.

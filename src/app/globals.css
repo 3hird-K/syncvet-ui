@@ -214,4 +214,58 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
+}
+
+/* ── Animate On Scroll (AOS) Core Styles ── */
+[data-aos] {
+  transition-property: transform, opacity;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition-duration: 700ms;
+}
+
+[data-aos].aos-animate {
+  opacity: 1 !important;
+  transform: translate3d(0, 0, 0) scale(1) !important;
+}
+
+[data-aos="fade-up"] {
+  opacity: 0;
+  transform: translate3d(0, 40px, 0);
+}
+
+[data-aos="fade-down"] {
+  opacity: 0;
+  transform: translate3d(0, -40px, 0);
+}
+
+[data-aos="fade-right"] {
+  opacity: 0;
+  transform: translate3d(-40px, 0, 0);
+}
+
+[data-aos="fade-left"] {
+  opacity: 0;
+  transform: translate3d(40px, 0, 0);
+}
+
+[data-aos="zoom-in"] {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+/* AOS Duration & Delays */
+[data-aos][data-aos-duration="500"] { transition-duration: 500ms; }
+[data-aos][data-aos-duration="600"] { transition-duration: 600ms; }
+[data-aos][data-aos-duration="700"] { transition-duration: 700ms; }
+[data-aos][data-aos-duration="800"] { transition-duration: 800ms; }
+[data-aos][data-aos-duration="1000"] { transition-duration: 1000ms; }
+
+[data-aos][data-aos-delay="50"].aos-animate { transition-delay: 50ms; }
+[data-aos][data-aos-delay="100"].aos-animate { transition-delay: 100ms; }
+[data-aos][data-aos-delay="150"].aos-animate { transition-delay: 150ms; }
+[data-aos][data-aos-delay="200"].aos-animate { transition-delay: 200ms; }
+[data-aos][data-aos-delay="250"].aos-animate { transition-delay: 250ms; }
+[data-aos][data-aos-delay="300"].aos-animate { transition-delay: 300ms; }
+[data-aos][data-aos-delay="350"].aos-animate { transition-delay: 350ms; }
+[data-aos][data-aos-delay="400"].aos-animate { transition-delay: 400ms; }
+

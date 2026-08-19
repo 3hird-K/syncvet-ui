@@ -25,14 +25,14 @@ export function LandingFooter() {
   };
 
   return (
-    <footer id="footer" className="border-t border-border/70 py-12 sm:py-16 text-foreground bg-background">
+    <footer id="footer" className="border-t border-border/70 py-12 sm:py-16 text-foreground bg-background" data-aos="fade-up" data-aos-duration="600">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
         
         {/* Top Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-12 gap-8 lg:gap-12 pb-10 sm:pb-12 border-b border-border/70">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-12 gap-8 lg:gap-12 pb-10 sm:pb-12 border-b border-border/70">
           
           {/* Brand Column (md: 6 cols) */}
-          <div className="col-span-2 md:col-span-6 space-y-3.5 sm:space-y-4">
+          <div className="col-span-2 sm:col-span-3 md:col-span-6 space-y-3.5 sm:space-y-4">
             <Link href="#hero" onClick={(e) => scrollToSection(e, "#hero")} className="flex items-center gap-2.5">
               <div className="size-8 flex items-center justify-center shrink-0">
                 {mounted ? (
@@ -61,7 +61,7 @@ export function LandingFooter() {
           </div>
 
           {/* Product Links (2 cols) */}
-          <div className="col-span-1 md:col-span-2 space-y-3">
+          <div className="col-span-1 sm:col-span-1 md:col-span-2 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-foreground">
               Product
             </p>
@@ -100,7 +100,7 @@ export function LandingFooter() {
           </div>
 
           {/* Company Links (2 cols) */}
-          <div className="col-span-1 md:col-span-2 space-y-3">
+          <div className="col-span-1 sm:col-span-1 md:col-span-2 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-foreground">
               Company
             </p>
@@ -124,7 +124,7 @@ export function LandingFooter() {
           </div>
 
           {/* Legal Links (2 cols) */}
-          <div className="col-span-1 md:col-span-2 space-y-3">
+          <div className="col-span-2 sm:col-span-1 md:col-span-2 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-foreground">
               Legal
             </p>

@@ -29,7 +29,7 @@ export function LandingHowItWorks() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
         
         {/* Section Header */}
-        <div className="max-w-2xl mb-12 sm:mb-16">
+        <div className="max-w-2xl mb-12 sm:mb-16" data-aos="fade-up" data-aos-duration="700">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             How It Works
           </p>
@@ -47,8 +47,14 @@ export function LandingHowItWorks() {
           {/* Subtle horizontal connecting line on large screens */}
           <div className="hidden lg:block absolute top-6 left-12 right-12 h-px bg-border/80 pointer-events-none -z-10" />
 
-          {steps.map((step) => (
-            <div key={step.number} className="space-y-3 sm:space-y-4 group">
+          {steps.map((step, index) => (
+            <div
+              key={step.number}
+              className="space-y-3 sm:space-y-4 group"
+              data-aos="fade-up"
+              data-aos-duration="700"
+              data-aos-delay={100 * (index + 1)}
+            >
               <div className="size-10 sm:size-11 rounded-2xl bg-card border border-border/80 flex items-center justify-center shadow-xs transition-colors group-hover:border-primary/50 group-hover:bg-primary/5">
                 <span className="text-xs sm:text-sm font-mono font-bold text-primary">
                   {step.number}

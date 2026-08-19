@@ -48,7 +48,7 @@ export function LandingValueProp() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
         
         {/* Section Header (Editorial alignment) */}
-        <div className="max-w-2xl mb-12 sm:mb-16">
+        <div className="max-w-2xl mb-12 sm:mb-16" data-aos="fade-up" data-aos-duration="700">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             Core Capabilities
           </p>
@@ -63,12 +63,15 @@ export function LandingValueProp() {
 
         {/* 4-Item Editorial Grid with subtle numbering and consistent icon weights */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10">
-          {capabilities.map((item) => {
+          {capabilities.map((item, index) => {
             const Icon = item.icon;
             return (
               <div
                 key={item.title}
                 className="group relative flex flex-col justify-between pt-5 sm:pt-6 border-t border-border/80 transition-colors hover:border-primary/50"
+                data-aos="fade-up"
+                data-aos-duration="700"
+                data-aos-delay={100 * (index + 1)}
               >
                 <div>
                   <div className="flex items-center justify-between mb-3.5 sm:mb-4">

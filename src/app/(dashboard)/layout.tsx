@@ -10,10 +10,10 @@ export default function DashboardGroupLayout({
 }) {
   const pathname = usePathname();
 
-  // Root landing page renders full-width without dashboard sidebar
   if (pathname === "/") {
     return <>{children}</>;
   }
 
   return <AppShell>{children}</AppShell>;
 }
+

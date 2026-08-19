@@ -30,11 +30,15 @@ export function LandingHero() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
         
-        {/* ── Direct Top-View Split: Responsive from Tablet & Mobile (sm: 640px+) to Desktop ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-5 sm:gap-6 md:gap-8 lg:gap-10 items-center">
+        {/* ── Direct Top-View Split: Responsive from Tablet & Mobile to Desktop (lg: 1024px+) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-10 lg:gap-12 items-center">
           
-          {/* ── LEFT: Headline & Primary Actions (sm: 7 cols, lg: 6 cols) ── */}
-          <div className="sm:col-span-7 lg:col-span-6 space-y-3.5 sm:space-y-4 md:space-y-5 text-left">
+          {/* ── LEFT: Headline & Primary Actions (lg: 7 cols, xl: 6 cols) ── */}
+          <div
+            className="lg:col-span-7 xl:col-span-6 space-y-3.5 sm:space-y-4 md:space-y-5 text-left"
+            data-aos="fade-right"
+            data-aos-duration="800"
+          >
             <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
               SyncVet for Android • v1.0
             </p>
@@ -96,12 +100,17 @@ export function LandingHero() {
             </div>
           </div>
 
-          {/* ── RIGHT: Direct Top-Level Scannable QR Code & Companion Preview (sm: 5 cols, lg: 6 cols) ── */}
-          <div className="sm:col-span-5 lg:col-span-6 w-full flex justify-center sm:justify-end">
-            <div className="w-full sm:max-w-md rounded-2xl sm:rounded-3xl border border-border/90 bg-card p-4 sm:p-5 md:p-6 lg:p-7 shadow-xl space-y-3.5 sm:space-y-4 md:space-y-5 relative overflow-hidden">
+          {/* ── RIGHT: Direct Top-Level Scannable QR Code & Companion Preview (lg: 5 cols, xl: 6 cols) ── */}
+          <div
+            className="lg:col-span-5 xl:col-span-6 w-full flex justify-center lg:justify-end"
+            data-aos="fade-left"
+            data-aos-duration="800"
+            data-aos-delay="150"
+          >
+            <div className="w-full rounded-2xl sm:rounded-3xl border border-border/90 bg-card p-4 sm:p-6 md:p-7 shadow-xl space-y-4 sm:space-y-5 relative overflow-hidden">
               
               {/* Header Label */}
-              <div className="flex items-center justify-between pb-2 sm:pb-2.5 md:pb-3 border-b border-border/70">
+              <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b border-border/70">
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <QrCode className="size-3.5 sm:size-4 text-primary" />
                   <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-foreground">
@@ -114,13 +123,13 @@ export function LandingHero() {
               </div>
 
               {/* Scannable QR Code & Camera Prompt */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 md:gap-5 p-3 sm:p-3.5 md:p-4 rounded-xl sm:rounded-2xl bg-muted/20 border border-border/70">
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5 md:gap-6 p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-muted/20 border border-border/70">
                 <a
                   href={APK_DOWNLOAD_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   download="syncvet.apk"
-                  className="relative size-28 sm:size-30 md:size-36 bg-white rounded-xl sm:rounded-2xl p-1.5 sm:p-2 shadow-md border border-border/80 flex items-center justify-center shrink-0 group transition-transform duration-200 hover:scale-102"
+                  className="relative size-32 sm:size-36 md:size-40 bg-white rounded-xl sm:rounded-2xl p-1.5 sm:p-2 shadow-sm border border-border/80 flex items-center justify-center shrink-0 group transition-transform duration-200 hover:scale-102"
                   title="Click or scan to download SyncVet APK"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -134,11 +143,11 @@ export function LandingHero() {
                   </div>
                 </a>
 
-                <div className="space-y-1 sm:space-y-1.5 text-center sm:text-left">
-                  <p className="text-xs font-bold text-foreground">
+                <div className="space-y-1.5 sm:space-y-2 text-center sm:text-left min-w-0 flex-1">
+                  <p className="text-sm sm:text-base font-bold text-foreground">
                     Scan with Phone Camera
                   </p>
-                  <p className="text-[10.5px] sm:text-[11px] md:text-xs text-muted-foreground leading-relaxed">
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                     Point your camera at the QR code to install directly on Android.
                   </p>
                   <a
@@ -146,18 +155,18 @@ export function LandingHero() {
                     target="_blank"
                     rel="noopener noreferrer"
                     download="syncvet.apk"
-                    className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-semibold text-primary hover:underline pt-0.5"
+                    className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-primary hover:underline pt-0.5"
                   >
-                    <Download className="size-3" />
+                    <Download className="size-3.5" />
                     <span>Click to download</span>
                   </a>
                 </div>
               </div>
 
               {/* Live Passport Status Preview Bar */}
-              <div className="p-2 sm:p-2.5 md:p-3 rounded-lg sm:rounded-xl bg-background border border-border/80 flex items-center justify-between">
-                <div className="flex items-center gap-2 sm:gap-2.5">
-                  <div className="relative size-6 sm:size-7 md:size-8 rounded-lg overflow-hidden border border-border shrink-0">
+              <div className="p-2.5 sm:p-3 md:p-3.5 rounded-lg sm:rounded-xl bg-background border border-border/80 flex items-center justify-between">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="relative size-7 sm:size-8 md:size-9 rounded-lg overflow-hidden border border-border shrink-0">
                     <Image
                       src={LANDING_IMAGES.petBantay}
                       alt="Bantay"
@@ -166,11 +175,11 @@ export function LandingHero() {
                     />
                   </div>
                   <div>
-                    <p className="text-[11px] sm:text-xs font-bold text-foreground leading-none">Bantay’s Passport</p>
-                    <p className="text-[9.5px] sm:text-[10px] text-muted-foreground mt-0.5">Anti-Rabies: Valid to 2027</p>
+                    <p className="text-xs sm:text-sm font-bold text-foreground leading-none">Bantay’s Passport</p>
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">Anti-Rabies: Valid to 2027</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9.5px] md:text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 sm:px-2 py-0.5 rounded-full">
+                <span className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] md:text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 sm:px-2.5 py-1 rounded-full">
                   <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live Sync
                 </span>

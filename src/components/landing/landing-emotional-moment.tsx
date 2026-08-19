@@ -14,7 +14,11 @@ export function LandingEmotionalMoment() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-14 items-center">
           
           {/* ── LEFT: Editorial Text & Key Companion Care Highlights (lg: 6 cols) ── */}
-          <div className="lg:col-span-6 space-y-5 sm:space-y-6 text-left">
+          <div
+            className="lg:col-span-6 space-y-5 sm:space-y-6 text-left"
+            data-aos="fade-right"
+            data-aos-duration="800"
+          >
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
                 Lifelong Companion Health
@@ -58,7 +62,12 @@ export function LandingEmotionalMoment() {
           </div>
 
           {/* ── RIGHT: Dog & Cat Companion Photography Showcase (lg: 6 cols) ── */}
-          <div className="lg:col-span-6 relative">
+          <div
+            className="lg:col-span-6 relative"
+            data-aos="fade-left"
+            data-aos-duration="800"
+            data-aos-delay="150"
+          >
             {/* Subtle glow accent behind image */}
             <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-tr from-primary/15 via-orange-500/10 to-transparent rounded-3xl blur-2xl -z-10 opacity-70" />
 

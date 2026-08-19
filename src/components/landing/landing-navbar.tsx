@@ -81,8 +81,8 @@ export function LandingNavbar() {
           </div>
         </Link>
 
-        {/* Center Nav Links (Visible on md: >= 768px) */}
-        <nav className="hidden md:flex items-center gap-4 lg:gap-7 text-xs lg:text-sm font-medium">
+        {/* Center Nav Links (Visible on lg: >= 1024px) */}
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-7 text-xs lg:text-sm font-medium">
           {navLinks.map((link) => (
             <a
               key={link.label}
@@ -95,28 +95,31 @@ export function LandingNavbar() {
           ))}
         </nav>
 
-        {/* Right Actions (Visible on md: >= 768px to stay synced with nav links) */}
-        <div className="hidden md:flex items-center gap-2.5 lg:gap-3 shrink-0">
-          <Link
-            href="/sign-in"
-            className="text-xs font-semibold text-muted-foreground hover:text-foreground px-2.5 py-1.5 transition-colors duration-150 whitespace-nowrap"
-          >
-            Sign In
-          </Link>
-
+        {/* Right Actions (Visible on lg: >= 1024px to stay synced with nav links) */}
+        <div className="hidden lg:flex items-center shrink-0">
           <Button
             asChild
             size="sm"
             className="h-8.5 px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
             <Link href="/sign-in">
-              Get Started
+              Sign In
             </Link>
           </Button>
         </div>
 
-        {/* Mobile Menu Trigger (Visible on < md: < 768px) */}
-        <div className="flex md:hidden items-center">
+        {/* Mobile Menu Trigger & Action (Visible on < lg: < 1024px) */}
+        <div className="flex lg:hidden items-center gap-2 sm:gap-2.5">
+          <Button
+            asChild
+            size="sm"
+            className="h-7.5 sm:h-8 px-3.5 sm:px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs active:scale-[0.98] whitespace-nowrap"
+          >
+            <Link href="/sign-in">
+              Sign In
+            </Link>
+          </Button>
+
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-1.5 sm:p-2 text-muted-foreground hover:text-foreground rounded-full border border-border/70 bg-card/40 backdrop-blur-md transition-colors"
@@ -129,8 +132,8 @@ export function LandingNavbar() {
 
       {/* Floating Mobile Drawer */}
       {mobileOpen && (
-        <div className="pointer-events-auto w-full max-w-6xl mt-2 rounded-3xl border border-border/70 bg-background/90 dark:bg-background/85 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl animate-fade-in-up">
-          <nav className="flex flex-col gap-3 text-sm font-medium mb-5">
+        <div className="pointer-events-auto w-full max-w-6xl mt-2 rounded-3xl border border-border/70 bg-background/95 dark:bg-background/90 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl animate-fade-in-up">
+          <nav className="flex flex-col gap-3 text-sm font-medium">
             {navLinks.map((link) => (
               <a
                 key={link.label}
@@ -142,18 +145,6 @@ export function LandingNavbar() {
               </a>
             ))}
           </nav>
-          <div className="flex flex-col gap-2.5 pt-4 border-t border-border/60">
-            <Button asChild variant="outline" size="sm" className="w-full justify-center rounded-full text-xs font-semibold">
-              <Link href="/sign-in" onClick={() => setMobileOpen(false)}>
-                Sign In
-              </Link>
-            </Button>
-            <Button asChild size="sm" className="w-full justify-center rounded-full text-xs font-semibold bg-primary text-primary-foreground">
-              <Link href="/sign-in" onClick={() => setMobileOpen(false)}>
-                Get Started
-              </Link>
-            </Button>
-          </div>
         </div>
       )}
     </header>
