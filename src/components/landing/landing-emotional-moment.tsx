@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { PawPrint, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 import { LANDING_IMAGES } from "@/lib/constants/images";
 
 export function LandingEmotionalMoment() {
@@ -37,7 +38,7 @@ export function LandingEmotionalMoment() {
             <div className="space-y-3 pt-1">
               <div className="flex items-start gap-3 p-3.5 rounded-2xl border border-border/80 bg-card/60 backdrop-blur-xs">
                 <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                  <PawPrint className="size-4" />
+                  <PawIcon className="size-4" />
                 </div>
                 <div>
                   <h3 className="text-xs sm:text-sm font-bold text-foreground">Tailored Care Schedules</h3>

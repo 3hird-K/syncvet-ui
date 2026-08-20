@@ -5,7 +5,9 @@ import Link from "next/link";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
-import { Menu, X, PawPrint } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
+import { useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -20,6 +22,7 @@ export function LandingNavbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { isSignedIn, isLoaded } = useUser();
 
   useEffect(() => {
     setMounted(true);
@@ -68,7 +71,7 @@ export function LandingNavbar() {
                 priority
               />
             ) : (
-              <PawPrint className="size-5 text-primary" />
+              <PawIcon className="size-5 text-primary" />
             )}
           </div>
           <div className="flex flex-col text-left">
@@ -102,8 +105,8 @@ export function LandingNavbar() {
             size="sm"
             className="h-8.5 px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
-            <Link href="/sign-in">
-              Sign In
+            <Link href={isLoaded && isSignedIn ? "/dashboard" : "/sign-in"}>
+              {isLoaded && isSignedIn ? "Dashboard" : "Sign In"}
             </Link>
           </Button>
         </div>
@@ -115,8 +118,8 @@ export function LandingNavbar() {
             size="sm"
             className="h-7.5 sm:h-8 px-3.5 sm:px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
-            <Link href="/sign-in">
-              Sign In
+            <Link href={isLoaded && isSignedIn ? "/dashboard" : "/sign-in"}>
+              {isLoaded && isSignedIn ? "Dashboard" : "Sign In"}
             </Link>
           </Button>
 

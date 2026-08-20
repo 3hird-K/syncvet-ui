@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  PawPrint,
   Syringe,
   MapPin,
   Package,
@@ -23,6 +22,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { useClerk, useUser } from "@clerk/nextjs";
+import { PawIcon } from "@/components/icons/paw-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +34,7 @@ import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 
 type NavItem = {
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof LayoutDashboard | typeof PawIcon;
   href: string | null;
   section?: string;
 };
@@ -42,7 +42,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Manage Users", icon: Users, href: "/users" },
-  { label: "Pet Registry", icon: PawPrint, href: "/pet-registry", section: "Animal Health" },
+  { label: "Pet Registry", icon: PawIcon, href: "/pet-registry", section: "Animal Health" },
   { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
   { label: "Field Operations", icon: MapPin, href: "/field-operations" },
   { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory", section: "Resource Planning" },
@@ -235,8 +235,8 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
               <div className="flex items-center gap-2.5 min-w-0">
                 <Avatar className="size-8.5 shrink-0 border border-border/80 shadow-2xs">
                   {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-[10px] font-bold text-white">
-                    {userInitials}
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-white flex items-center justify-center">
+                    <PawIcon className="size-4 text-white" />
                   </AvatarFallback>
                 </Avatar>
                 {!collapsed && (
@@ -269,8 +269,8 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
             <div className="flex items-center gap-3 p-2">
               <Avatar className="size-9 shrink-0 border border-border/80 shadow-xs">
                 {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
-                <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-[11px] font-bold text-white">
-                  {userInitials}
+                <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-white flex items-center justify-center">
+                  <PawIcon className="size-4.5 text-white" />
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, PawPrint, Loader2 } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +51,7 @@ export function RegisterPetDialog() {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <div className="flex items-center gap-2 text-primary">
-            <PawPrint className="size-5" />
+            <PawIcon className="size-5" />
             <DialogTitle className="text-xl font-bold">Register New Pet</DialogTitle>
           </div>
           <DialogDescription className="text-xs text-muted-foreground">

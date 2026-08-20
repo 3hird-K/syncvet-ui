@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import {
-  PawPrint,
   Dog,
   Cat,
   QrCode,
@@ -11,6 +10,7 @@ import {
   Settings2,
   Download,
 } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ import { TablePagination } from "@/components/dashboard/table-pagination";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 
 const metrics: PageMetric[] = [
-  { title: "Total Registered", value: "12,842", icon: PawPrint, gradient: "from-indigo-500/5", iconClass: "text-indigo-400", badge: "CDO District", badgeClass: "text-indigo-400 bg-indigo-400/10", sub: "Dogs & cats combined" },
+  { title: "Total Registered", value: "12,842", icon: PawIcon, gradient: "from-indigo-500/5", iconClass: "text-indigo-400", badge: "CDO District", badgeClass: "text-indigo-400 bg-indigo-400/10", sub: "Dogs & cats combined" },
   { title: "Dogs", value: "8,614", icon: Dog, gradient: "from-amber-500/5", iconClass: "text-amber-400", badge: "67% of Registry", badgeClass: "text-amber-400 bg-amber-400/10", sub: "All breeds & Aspins" },
   { title: "Cats", value: "4,228", icon: Cat, gradient: "from-blue-500/5", iconClass: "text-blue-400", badge: "33% of Registry", badgeClass: "text-blue-400 bg-blue-400/10", sub: "All breeds & Puspins" },
   { title: "QR Passports Issued", value: "11,390", icon: QrCode, gradient: "from-emerald-500/5", iconClass: "text-emerald-400", badge: "89% Coverage", badgeClass: "text-emerald-400 bg-emerald-400/10", sub: "Digital health records" },

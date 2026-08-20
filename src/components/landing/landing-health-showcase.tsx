@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import {
-  PawPrint,
   QrCode,
   ShieldCheck,
   Syringe,

@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  PawPrint,
   FileHeart,
   CalendarCheck,
   BellRing,
 } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 
 const capabilities = [
   {
     number: "01",
-    icon: PawPrint,
+    icon: PawIcon,
     title: "Pet Profiles",
     description:
       "Centralized companion identification with verifiable digital QR passports, breed lineage, and microchip registration.",

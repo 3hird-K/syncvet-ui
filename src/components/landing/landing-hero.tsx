@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Download,
   QrCode,
-  PawPrint,
   ArrowRight,
   CheckCircle2,
   ShieldCheck,

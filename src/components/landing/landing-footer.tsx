@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { useEffect, useState } from "react";
-import { PawPrint } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function LandingFooter() {
@@ -42,7 +42,7 @@ export function LandingFooter() {
                     className="size-full object-contain"
                   />
                 ) : (
-                  <PawPrint className="size-5 text-primary" />
+                  <PawIcon className="size-5 text-primary" />
                 )}
               </div>
               <div className="flex flex-col text-left">

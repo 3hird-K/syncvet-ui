@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useClerk, useSignIn, useSignUp, useUser } from "@clerk/nextjs";
-import { ShieldCheck, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -14,22 +15,29 @@ interface GoogleSignInButtonProps {
 export function GoogleSignInButton({
   className = "",
 }: GoogleSignInButtonProps) {
+  const router = useRouter();
   const clerk = useClerk();
   const signInHook = useSignIn() as unknown as { signIn?: { authenticateWithRedirect?: Function } };
   const signUpHook = useSignUp() as unknown as { signUp?: { authenticateWithRedirect?: Function } };
   const { isSignedIn, isLoaded: isUserLoaded, user } = useUser();
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (isUserLoaded && isSignedIn && user) {
+      router.replace("/dashboard");
+    }
+  }, [isUserLoaded, isSignedIn, user, router]);
+
   if (isUserLoaded && isSignedIn && user) {
     return (
       <div className="w-full space-y-3">
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 text-sm font-bold text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="size-4" />
-            <span>Signed in as {user.fullName || user.primaryEmailAddress?.emailAddress}</span>
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 text-center space-y-2">
+          <div className="flex items-center justify-center gap-2 text-sm font-bold text-primary">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            <span>Redirecting to Dashboard...</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            You have an active SyncVet session.
+            Signed in as {user.fullName || user.primaryEmailAddress?.emailAddress}
           </p>
         </div>
 

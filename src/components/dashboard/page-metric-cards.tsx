@@ -10,7 +10,7 @@ import {
 export type PageMetric = {
   title: string;
   value: string;
-  icon: LucideIcon;
+  icon: LucideIcon | React.ComponentType<{ className?: string; size?: number | string }>;
   gradient: string;
   iconClass: string;
   badge: string;

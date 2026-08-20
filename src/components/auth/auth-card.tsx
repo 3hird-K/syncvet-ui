@@ -7,10 +7,10 @@ import { GoogleSignInButton } from "./google-sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Lock,
-  PawPrint,
   HeartHandshake,
   QrCode,
 } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 
 export function AuthCard() {
   return (
@@ -80,7 +80,7 @@ export function AuthCard() {
               </span>
             </div>
             <div className="flex flex-col items-center gap-1 p-1 border-x border-border/50">
-              <PawPrint className="size-4 text-emerald-500" />
+              <PawIcon className="size-4 text-emerald-500" />
               <span className="text-[10px] font-medium text-foreground">
                 Vax Records
               </span>

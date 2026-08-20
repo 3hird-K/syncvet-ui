@@ -7,10 +7,10 @@ import {
   TrendingUp,
   MapPin,
   CheckCircle2,
-  PawPrint,
   Target,
   Award,
 } from "lucide-react";
+import { PawIcon } from "@/components/icons/paw-icon";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 
@@ -61,7 +61,7 @@ export function AuthHeroVisual() {
         {/* Main Headline */}
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 rounded-lg bg-card/60 px-3 py-1 text-xs font-semibold text-foreground/80 border border-border/60 shadow-2xs backdrop-blur-md">
-            <PawPrint className="size-3.5 text-primary" />
+            <PawIcon className="size-3.5 text-primary" />
             <span>Next-Generation Municipal Animal Health</span>
           </div>
           <h1 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-foreground leading-[1.15]">

@@ -268,4 +268,18 @@
 [data-aos][data-aos-delay="300"].aos-animate { transition-delay: 300ms; }
 [data-aos][data-aos-delay="350"].aos-animate { transition-delay: 350ms; }
 [data-aos][data-aos-delay="400"].aos-animate { transition-delay: 400ms; }
+
+/* ── Sonner Toast ── */
+[data-sonner-toast] [data-icon] {
+  display: none !important;
+}
+
+[data-sonner-toast][data-styled="true"] [data-description] {
+  color: var(--muted-foreground);
+}
+
+[data-sonner-toast][data-styled="true"] [data-title] {
+  color: var(--foreground);
+  font-weight: 600;
+}
 
