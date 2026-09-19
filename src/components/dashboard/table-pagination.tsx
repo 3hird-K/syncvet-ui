@@ -47,7 +47,7 @@ export function TablePagination({
           value={pageSize.toString()}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          <SelectTrigger className="h-8 w-fit gap-2 rounded-full border-border/50 bg-background px-3 text-[10px] font-bold uppercase tracking-wider focus:ring-1 focus:ring-primary/20">
+          <SelectTrigger className="h-8 w-fit gap-2 rounded-md border-border/50 bg-background px-3 text-[10px] font-bold uppercase tracking-wider focus:ring-1 focus:ring-primary/20">
             <SelectValue>{pageSize} Rows</SelectValue>
           </SelectTrigger>
           <SelectContent className="border-border/50 bg-popover">
@@ -74,7 +74,7 @@ export function TablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="size-8 rounded-full"
+            className="size-8 rounded-md"
             onClick={() => onPageChange(Math.max(1, safePage - 1))}
             disabled={safePage <= 1}
             aria-label="Previous page"
@@ -84,7 +84,7 @@ export function TablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="size-8 rounded-full"
+            className="size-8 rounded-md"
             onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
             disabled={safePage >= totalPages}
             aria-label="Next page"

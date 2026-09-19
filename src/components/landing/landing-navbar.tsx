@@ -49,7 +49,7 @@ export function LandingNavbar() {
       {/* Floating Main Translucent Capsule Container */}
       <div
         className={cn(
-          "pointer-events-auto w-full max-w-6xl rounded-full border transition-all duration-300",
+          "pointer-events-auto w-full max-w-6xl rounded-xl border transition-all duration-300",
           "px-3.5 sm:px-5 md:px-6 py-2 sm:py-2.5 flex items-center justify-between",
           isScrolled
             ? "bg-background/85 dark:bg-background/75 backdrop-blur-2xl backdrop-saturate-150 border-border/80 shadow-lg shadow-black/5 dark:shadow-black/25"
@@ -103,7 +103,7 @@ export function LandingNavbar() {
           <Button
             asChild
             size="sm"
-            className="h-8.5 px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 shadow-xs active:scale-[0.98] whitespace-nowrap"
+            className="h-8.5 px-4 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-150 shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
             <Link href={isLoaded && isSignedIn ? "/dashboard" : "/sign-in"}>
               {isLoaded && isSignedIn ? "Dashboard" : "Sign In"}
@@ -116,7 +116,7 @@ export function LandingNavbar() {
           <Button
             asChild
             size="sm"
-            className="h-7.5 sm:h-8 px-3.5 sm:px-4 rounded-full text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs active:scale-[0.98] whitespace-nowrap"
+            className="h-7.5 sm:h-8 px-3.5 sm:px-4 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-xs active:scale-[0.98] whitespace-nowrap"
           >
             <Link href={isLoaded && isSignedIn ? "/dashboard" : "/sign-in"}>
               {isLoaded && isSignedIn ? "Dashboard" : "Sign In"}
@@ -125,7 +125,7 @@ export function LandingNavbar() {
 
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-1.5 sm:p-2 text-muted-foreground hover:text-foreground rounded-full border border-border/70 bg-card/40 backdrop-blur-md transition-colors"
+            className="p-1.5 sm:p-2 text-muted-foreground hover:text-foreground rounded-md border border-border/70 bg-card/40 backdrop-blur-md transition-colors"
             aria-label="Toggle navigation menu"
           >
             {mobileOpen ? <X className="size-4.5" /> : <Menu className="size-4.5" />}
@@ -135,7 +135,7 @@ export function LandingNavbar() {
 
       {/* Floating Mobile Drawer */}
       {mobileOpen && (
-        <div className="pointer-events-auto w-full max-w-6xl mt-2 rounded-3xl border border-border/70 bg-background/95 dark:bg-background/90 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl animate-fade-in-up">
+        <div className="pointer-events-auto w-full max-w-6xl mt-2 rounded-xl border border-border/70 bg-background/95 dark:bg-background/90 backdrop-blur-2xl p-5 sm:p-6 shadow-2xl animate-fade-in-up">
           <nav className="flex flex-col gap-3 text-sm font-medium">
             {navLinks.map((link) => (
               <a

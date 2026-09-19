@@ -37,7 +37,7 @@ export function AuthHeroVisual() {
               <span className="text-sm font-black tracking-tight text-foreground">
                 SYNCVET
               </span>
-              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary border border-primary/20">
+              <span className="rounded-sm bg-primary/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary border border-primary/20">
                 Official Platform
               </span>
             </div>
@@ -47,7 +47,7 @@ export function AuthHeroVisual() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-500 border border-emerald-500/20 backdrop-blur-md">
+        <div className="flex items-center gap-1.5 rounded-sm bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-500 border border-emerald-500/20 backdrop-blur-md">
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
@@ -93,7 +93,7 @@ export function AuthHeroVisual() {
                   </p>
                 </div>
               </div>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-500 border border-emerald-500/20">
+              <span className="rounded-sm bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-500 border border-emerald-500/20">
                 Active
               </span>
             </div>
@@ -122,7 +122,7 @@ export function AuthHeroVisual() {
                   </p>
                 </div>
               </div>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold text-primary border border-primary/20">
+              <span className="rounded-sm bg-primary/10 px-2 py-0.5 text-[9px] font-bold text-primary border border-primary/20">
                 +12% MoM
               </span>
             </div>

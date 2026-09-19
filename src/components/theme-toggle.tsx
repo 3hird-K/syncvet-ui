@@ -15,7 +15,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <div className="size-9 rounded-full bg-muted/20" aria-hidden />
+      <div className="size-9 rounded-md bg-muted/20" aria-hidden />
     );
   }
 
@@ -26,7 +26,7 @@ export function ThemeToggle() {
       type="button"
       variant="ghost"
       size="icon"
-      className="size-9 rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+      className="size-9 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >

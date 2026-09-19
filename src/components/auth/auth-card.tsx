@@ -21,7 +21,7 @@ export function AuthCard() {
           href="/"
           className="group inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
         >
-          <span className="flex size-7 items-center justify-center rounded-full bg-muted/60 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+          <span className="flex size-7 items-center justify-center rounded-md bg-muted/60 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
             ←
           </span>
           <span>Back to Home</span>

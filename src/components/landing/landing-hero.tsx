@@ -178,7 +178,7 @@ export function LandingHero() {
                     <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">Anti-Rabies: Valid to 2027</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] md:text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 sm:px-2.5 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] md:text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 sm:px-2.5 py-1 rounded-sm">
                   <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live Sync
                 </span>

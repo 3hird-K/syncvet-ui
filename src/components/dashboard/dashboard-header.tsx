@@ -47,7 +47,7 @@ export function DashboardHeader() {
 
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Sleek Live Clock */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/20 border border-border/50">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/20 border border-border/50">
           <Clock className="size-3 text-primary/70" />
           <p className="text-[12px] font-bold tabular-nums tracking-tight text-foreground/90 min-w-[85px] text-right">
             {mounted ? time : "00:00:00 AM"}
