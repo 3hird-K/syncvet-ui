@@ -1,16 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, ShieldCheck, Check, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 export function CookieConsent() {
+  const pathname = usePathname();
+  const isLandingPage = pathname === "/";
+
   const [isOpen, setIsOpen] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
 
   useEffect(() => {
+    if (!isLandingPage) return;
+
     // Check if consent has already been given
     const consent = localStorage.getItem("syncvet_cookie_consent");
     if (!consent) {
@@ -20,9 +26,11 @@ export function CookieConsent() {
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [isLandingPage]);
 
   useEffect(() => {
+    if (!isLandingPage) return;
+
     // Listen for custom event triggered by footer "Cookie Preferences" button
     const handleOpenPreferences = () => {
       const stored = localStorage.getItem("syncvet_cookie_consent");
@@ -37,7 +45,11 @@ export function CookieConsent() {
 
     window.addEventListener("open-cookie-preferences", handleOpenPreferences);
     return () => window.removeEventListener("open-cookie-preferences", handleOpenPreferences);
-  }, []);
+  }, [isLandingPage]);
+
+  if (!isLandingPage) {
+    return null;
+  }
 
   const handleAcceptAll = () => {
     localStorage.setItem("syncvet_cookie_consent", "accepted");

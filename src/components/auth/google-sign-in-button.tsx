@@ -6,7 +6,6 @@ import { useClerk, useSignIn, useSignUp, useUser } from "@clerk/nextjs";
 import { BadgeCheck, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AuthLoadingScreen } from "./auth-loading-screen";
 
 interface GoogleSignInButtonProps {
   mode?: "sign-in" | "sign-up";
@@ -117,14 +116,6 @@ export function GoogleSignInButton({
 
   return (
     <div className="w-full space-y-3">
-      {/* Full-screen professional loading overlay during redirect */}
-      {loading && (
-        <AuthLoadingScreen
-          title="Connecting with Google..."
-          subtitle="Redirecting to Google Secure Authentication for SyncVet..."
-        />
-      )}
-
       <button
         type="button"
         id="google-oauth-btn"
