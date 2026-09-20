@@ -2,6 +2,7 @@
 
 import { AppShell } from "@/components/dashboard/app-shell";
 import { usePathname } from "next/navigation";
+import { UserSyncProvider } from "@/components/auth/user-sync-provider";
 
 export default function DashboardGroupLayout({
   children,
@@ -14,6 +15,11 @@ export default function DashboardGroupLayout({
     return <>{children}</>;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <UserSyncProvider>
+      <AppShell>{children}</AppShell>
+    </UserSyncProvider>
+  );
 }
+
 
