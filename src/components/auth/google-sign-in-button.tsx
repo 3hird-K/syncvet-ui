@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useClerk, useSignIn, useSignUp, useUser } from "@clerk/nextjs";
-import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { BadgeCheck, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -114,9 +114,6 @@ export function GoogleSignInButton({
     }
   };
 
-  const buttonText =
-    mode === "sign-up" ? "Create Account with Google" : "Continue with Google";
-
   return (
     <div className="w-full space-y-3">
       <button
@@ -162,15 +159,15 @@ export function GoogleSignInButton({
               />
             </svg>
             <span className="font-semibold tracking-tight text-foreground">
-              {buttonText}
+              Continue with Google
             </span>
           </>
         )}
       </button>
 
       {/* Official Government & Healthcare Trust Seal */}
-      <div className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground/75">
-        <ShieldCheck className="size-3.5 text-emerald-500 shrink-0" />
+      <div className="flex items-center justify-center gap-1.5 text-center text-[11.5px] text-muted-foreground/80 font-medium">
+        <BadgeCheck className="size-4 text-emerald-500 shrink-0" />
         <span>One-click verified login • Direct access to Dashboard</span>
       </div>
     </div>

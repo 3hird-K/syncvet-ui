@@ -10,9 +10,9 @@ export const metadata: Metadata = {
 
 export default function SignUpPage() {
   return (
-    <main className="min-h-screen w-full bg-background flex">
-      <div className="grid min-h-screen w-full lg:grid-cols-2">
-        {/* Left Section: Hero Visual Showcase */}
+    <main className="min-h-screen w-full bg-background flex overflow-hidden">
+      <div className="grid min-h-screen w-full lg:grid-cols-12 overflow-hidden">
+        {/* Left Section: Hero Visual Showcase (expanded space) */}
         <AuthHeroVisual />
 
         {/* Right Section: Authentication Card */}
