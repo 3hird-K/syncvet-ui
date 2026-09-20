@@ -1,4 +1,5 @@
 export const LANDING_IMAGES = {
+  heroBg: "/hero-bg.jpg",
   heroCompanion:
     "https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1200&auto=format&fit=crop",
   vetCareMoment:

@@ -4,21 +4,22 @@ import Image from "next/image";
 import { ShieldCheck } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { LANDING_IMAGES } from "@/lib/constants/images";
+import { MotionFadeIn } from "./motion-wrapper";
 
 export function LandingEmotionalMoment() {
   return (
-    <section id="about" className="py-16 md:py-24 lg:py-32 border-t border-border/70 relative overflow-hidden scroll-mt-24">
+    <section id="care-philosophy" className="py-16 md:py-24 lg:py-32 border-t border-border/70 relative overflow-hidden scroll-mt-24">
       {/* Background Ambience */}
       <div className="absolute top-1/2 right-0 -translate-y-1/2 w-[400px] h-[400px] bg-primary/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-14 items-center">
           
           {/* ── LEFT: Editorial Text & Key Companion Care Highlights (lg: 6 cols) ── */}
-          <div
+          <MotionFadeIn
+            direction="up"
+            amount={0.2}
             className="lg:col-span-6 space-y-5 sm:space-y-6 text-left"
-            data-aos="fade-right"
-            data-aos-duration="800"
           >
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
@@ -60,14 +61,14 @@ export function LandingEmotionalMoment() {
                 </div>
               </div>
             </div>
-          </div>
+          </MotionFadeIn>
 
           {/* ── RIGHT: Dog & Cat Companion Photography Showcase (lg: 6 cols) ── */}
-          <div
+          <MotionFadeIn
+            direction="right"
+            amount={0.2}
+            delay={0.12}
             className="lg:col-span-6 relative"
-            data-aos="fade-left"
-            data-aos-duration="800"
-            data-aos-delay="150"
           >
             {/* Subtle glow accent behind image */}
             <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-tr from-primary/15 via-orange-500/10 to-transparent rounded-3xl blur-2xl -z-10 opacity-70" />
@@ -95,7 +96,7 @@ export function LandingEmotionalMoment() {
                 </div>
               </div>
             </div>
-          </div>
+          </MotionFadeIn>
 
         </div>
       </div>

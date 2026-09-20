@@ -36,7 +36,7 @@
   --sidebar-border: oklch(0.9401 0 0);
   --sidebar-ring: oklch(0 0 0);
   --font-sans: Plus Jakarta Sans, sans-serif;
-  --font-serif: Lora, serif;
+  --font-serif: var(--font-playfair), "Playfair Display", Lora, Georgia, serif;
   --font-mono: IBM Plex Mono, monospace;
   --radius: 0.25rem;
   --shadow-x: 0;
@@ -91,7 +91,7 @@
   --sidebar-border: oklch(0.3289 0.0092 268.3843);
   --sidebar-ring: oklch(0.6404 0.2153 35.9003);
   --font-sans: Plus Jakarta Sans, sans-serif;
-  --font-serif: Lora, serif;
+  --font-serif: var(--font-playfair), "Playfair Display", Georgia, serif;
   --font-mono: IBM Plex Mono, monospace;
   --radius: 0.25rem;
   --shadow-x: 0;
@@ -220,58 +220,6 @@
   }
 }
 
-/* ── Animate On Scroll (AOS) Core Styles ── */
-[data-aos] {
-  transition-property: transform, opacity;
-  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  transition-duration: 700ms;
-}
-
-[data-aos].aos-animate {
-  opacity: 1 !important;
-  transform: translate3d(0, 0, 0) scale(1) !important;
-}
-
-[data-aos="fade-up"] {
-  opacity: 0;
-  transform: translate3d(0, 40px, 0);
-}
-
-[data-aos="fade-down"] {
-  opacity: 0;
-  transform: translate3d(0, -40px, 0);
-}
-
-[data-aos="fade-right"] {
-  opacity: 0;
-  transform: translate3d(-40px, 0, 0);
-}
-
-[data-aos="fade-left"] {
-  opacity: 0;
-  transform: translate3d(40px, 0, 0);
-}
-
-[data-aos="zoom-in"] {
-  opacity: 0;
-  transform: scale(0.92);
-}
-
-/* AOS Duration & Delays */
-[data-aos][data-aos-duration="500"] { transition-duration: 500ms; }
-[data-aos][data-aos-duration="600"] { transition-duration: 600ms; }
-[data-aos][data-aos-duration="700"] { transition-duration: 700ms; }
-[data-aos][data-aos-duration="800"] { transition-duration: 800ms; }
-[data-aos][data-aos-duration="1000"] { transition-duration: 1000ms; }
-
-[data-aos][data-aos-delay="50"].aos-animate { transition-delay: 50ms; }
-[data-aos][data-aos-delay="100"].aos-animate { transition-delay: 100ms; }
-[data-aos][data-aos-delay="150"].aos-animate { transition-delay: 150ms; }
-[data-aos][data-aos-delay="200"].aos-animate { transition-delay: 200ms; }
-[data-aos][data-aos-delay="250"].aos-animate { transition-delay: 250ms; }
-[data-aos][data-aos-delay="300"].aos-animate { transition-delay: 300ms; }
-[data-aos][data-aos-delay="350"].aos-animate { transition-delay: 350ms; }
-[data-aos][data-aos-delay="400"].aos-animate { transition-delay: 400ms; }
 
 /* ── Sonner Toast ── */
 [data-sonner-toast] [data-icon] {
@@ -285,5 +233,72 @@
 [data-sonner-toast][data-styled="true"] [data-title] {
   color: var(--foreground);
   font-weight: 600;
+}
+
+/* ── Seamless Marquee Ticker ── */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* ── Cinematic Moving Hero Background (Ken Burns Effect) ── */
+@keyframes kenburns {
+  0% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.07) translate3d(-1.2%, -0.8%, 0);
+  }
+  100% {
+    transform: scale(1.03) translate3d(0.8%, -1.2%, 0);
+  }
+}
+
+.animate-kenburns {
+  animation: kenburns 24s ease-in-out infinite alternate;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.font-serif {
+  font-family: var(--font-playfair), "Playfair Display", Georgia, serif !important;
+}
+
+/* ── Modern Thin Scrollbar ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 20%, transparent);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 40%, transparent);
 }
 

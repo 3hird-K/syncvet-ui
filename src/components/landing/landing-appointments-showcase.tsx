@@ -2,18 +2,15 @@
 
 import Image from "next/image";
 import {
-  Calendar,
   Bell,
   Clock,
   MapPin,
-  CheckCircle2,
   Syringe,
-  AlertCircle,
   CalendarCheck2,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LANDING_IMAGES } from "@/lib/constants/images";
+import { MotionFadeIn } from "./motion-wrapper";
 
 export function LandingAppointmentsShowcase() {
   return (
@@ -21,10 +18,10 @@ export function LandingAppointmentsShowcase() {
       {/* Background Ambience */}
       <div className="absolute bottom-0 right-0 w-[500px] h-[400px] bg-orange-500/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-10">
         
         {/* Section Header */}
-        <div className="max-w-2xl mb-12 sm:mb-16" data-aos="fade-up" data-aos-duration="700">
+        <MotionFadeIn direction="up" amount={0.2} className="max-w-2xl mb-12 sm:mb-16">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             Appointments & Tracking
           </p>
@@ -34,16 +31,16 @@ export function LandingAppointmentsShowcase() {
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             From routine wellness consultations to community field vaccination drives, SyncVet automates reminder timelines and syncs appointments directly with your accredited local veterinary station.
           </p>
-        </div>
+        </MotionFadeIn>
 
         {/* ── Asymmetric Multi-Tier Schedule & Care Hub UI ── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
           
           {/* Main Schedule Hub Card (lg: 7 cols) */}
-          <div
+          <MotionFadeIn
+            direction="left"
+            amount={0.2}
             className="lg:col-span-7 rounded-3xl border border-border/90 bg-card p-5 sm:p-7 lg:p-8 shadow-md space-y-5 sm:space-y-6"
-            data-aos="fade-right"
-            data-aos-duration="800"
           >
             <div className="flex items-center justify-between pb-3.5 sm:pb-4 border-b border-border/70">
               <div className="flex items-center gap-2.5 sm:gap-3">
@@ -119,16 +116,15 @@ export function LandingAppointmentsShowcase() {
               </div>
             </div>
 
-          </div>
+          </MotionFadeIn>
 
           {/* Right Side: Smart Booster Intelligence & Alerts (lg: 5 cols) */}
-          <div
+          <MotionFadeIn
+            direction="right"
+            amount={0.2}
+            delay={0.12}
             className="lg:col-span-5 space-y-4"
-            data-aos="fade-left"
-            data-aos-duration="800"
-            data-aos-delay="150"
           >
-            
             {/* Intelligent Countdown Card */}
             <div className="rounded-3xl border border-border/90 bg-card p-5 sm:p-6 shadow-md space-y-4">
               <div className="flex items-center justify-between">
@@ -189,7 +185,7 @@ export function LandingAppointmentsShowcase() {
               </p>
             </div>
 
-          </div>
+          </MotionFadeIn>
 
         </div>
 

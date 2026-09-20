@@ -7,11 +7,10 @@ import {
   Syringe,
   CheckCircle2,
   FileCheck2,
-  Clock,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LANDING_IMAGES } from "@/lib/constants/images";
+import { MotionFadeIn, MotionStagger, MotionItem } from "./motion-wrapper";
 
 export function LandingHealthShowcase() {
   return (
@@ -19,11 +18,15 @@ export function LandingHealthShowcase() {
       {/* Background Ambience */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[450px] h-[450px] bg-primary/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-10 lg:gap-16 items-center">
           
           {/* ── LEFT: High-Quality Veterinary Photography (lg: 6 cols) ── */}
-          <div className="lg:col-span-6 relative" data-aos="fade-right" data-aos-duration="800">
+          <MotionFadeIn
+            direction="left"
+            amount={0.2}
+            className="lg:col-span-6 relative"
+          >
             <div className="relative rounded-3xl overflow-hidden border border-border/80 bg-card shadow-lg aspect-[4/3] group">
               <Image
                 src={LANDING_IMAGES.vetCareMoment}
@@ -54,10 +57,15 @@ export function LandingHealthShowcase() {
                 <p className="text-[11px] text-muted-foreground">Verified lot & expiration</p>
               </div>
             </div>
-          </div>
+          </MotionFadeIn>
 
           {/* ── RIGHT: Editorial Copy & Realistic SyncVet Health Interface (lg: 6 cols) ── */}
-          <div className="lg:col-span-6 space-y-5 sm:space-y-6" data-aos="fade-left" data-aos-duration="800">
+          <MotionFadeIn
+            direction="up"
+            amount={0.2}
+            delay={0.1}
+            className="lg:col-span-6 space-y-5 sm:space-y-6"
+          >
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
                 Pet Health & Passports
@@ -150,7 +158,7 @@ export function LandingHealthShowcase() {
               </div>
 
             </div>
-          </div>
+          </MotionFadeIn>
 
         </div>
       </div>

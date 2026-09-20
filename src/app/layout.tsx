@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { CookieConsent } from "@/components/cookie-consent";
 import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+});
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  variable: "--font-playfair",
 });
 
 export const metadata: Metadata = {
@@ -61,7 +68,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body
-          className={`${inter.variable} font-sans antialiased`}
+          className={`${inter.variable} ${playfair.variable} font-sans antialiased`}
           style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
         >
           <ThemeProvider
@@ -72,6 +79,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             {children}
+            <CookieConsent />
             <Toaster position="bottom-right" expand={true} />
           </ThemeProvider>
         </body>

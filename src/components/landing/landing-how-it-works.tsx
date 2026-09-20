@@ -1,5 +1,7 @@
 "use client";
 
+import { MotionFadeIn, MotionStagger, MotionItem } from "./motion-wrapper";
+
 const steps = [
   {
     number: "01",
@@ -26,10 +28,10 @@ const steps = [
 export function LandingHowItWorks() {
   return (
     <section id="how-it-works" className="py-16 md:py-24 lg:py-32 border-t border-border/70 relative scroll-mt-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-10">
         
         {/* Section Header */}
-        <div className="max-w-2xl mb-12 sm:mb-16" data-aos="fade-up" data-aos-duration="700">
+        <MotionFadeIn direction="up" amount={0.2} className="max-w-2xl mb-12 sm:mb-16">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             How It Works
           </p>
@@ -39,21 +41,22 @@ export function LandingHowItWorks() {
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             Designed to remove friction from veterinary recordkeeping and keep your pets protected throughout their lives.
           </p>
-        </div>
+        </MotionFadeIn>
 
         {/* 4 Steps with subtle connecting line & clean editorial hierarchy */}
-        <div className="relative grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10">
-          
+        <MotionStagger
+          staggerDelay={0.12}
+          amount={0.15}
+          className="relative grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10"
+        >
           {/* Subtle horizontal connecting line on large screens */}
           <div className="hidden lg:block absolute top-6 left-12 right-12 h-px bg-border/80 pointer-events-none -z-10" />
 
-          {steps.map((step, index) => (
-            <div
+          {steps.map((step) => (
+            <MotionItem
               key={step.number}
+              variant="fadeUp"
               className="space-y-3 sm:space-y-4 group"
-              data-aos="fade-up"
-              data-aos-duration="700"
-              data-aos-delay={100 * (index + 1)}
             >
               <div className="size-10 sm:size-11 rounded-2xl bg-card border border-border/80 flex items-center justify-center shadow-xs transition-colors group-hover:border-primary/50 group-hover:bg-primary/5">
                 <span className="text-xs sm:text-sm font-mono font-bold text-primary">
@@ -69,9 +72,9 @@ export function LandingHowItWorks() {
                   {step.description}
                 </p>
               </div>
-            </div>
+            </MotionItem>
           ))}
-        </div>
+        </MotionStagger>
 
       </div>
     </section>

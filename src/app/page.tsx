@@ -1,48 +1,53 @@
-import { AosProvider } from "@/components/landing/aos-provider";
 import { LandingNavbar } from "@/components/landing/landing-navbar";
 import { LandingHero } from "@/components/landing/landing-hero";
-import { LandingValueProp } from "@/components/landing/landing-value-prop";
-import { LandingHealthShowcase } from "@/components/landing/landing-health-showcase";
-import { LandingAppointmentsShowcase } from "@/components/landing/landing-appointments-showcase";
-import { LandingHowItWorks } from "@/components/landing/landing-how-it-works";
-import { LandingEmotionalMoment } from "@/components/landing/landing-emotional-moment";
-import { LandingCta } from "@/components/landing/landing-cta";
+import { LandingTicker } from "@/components/landing/landing-ticker";
+import { LandingAbout } from "@/components/landing/landing-about";
+import { LandingPathways } from "@/components/landing/landing-pathways";
+import { LandingAffiliations } from "@/components/landing/landing-affiliations";
+import { LandingGallery } from "@/components/landing/landing-gallery";
+import { LandingServices } from "@/components/landing/landing-services";
+import { LandingContact } from "@/components/landing/landing-contact";
+import { LandingMap } from "@/components/landing/landing-map";
 import { LandingFooter } from "@/components/landing/landing-footer";
 
 export default function LandingPage() {
   return (
-    <AosProvider>
-      <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
-        {/* 1. Floating Capsule Navigation Bar */}
-        <LandingNavbar />
+    <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
+      {/* 1. Floating Capsule Navigation Bar */}
+      <LandingNavbar />
 
-        {/* Main Content */}
-        <main className="flex-1">
-          {/* 01 — Dedicated Android App Download Hero (Scannable QR & Direct APK) */}
-          <LandingHero />
+      {/* Main Content */}
+      <main className="flex-1">
+        {/* 01 — Dedicated Android App Download Hero */}
+        <LandingHero />
 
-          {/* 02 — Product / Value Introduction */}
-          <LandingValueProp />
+        {/* 01.5 — System Capabilities Infinite Ticker Tape */}
+        <LandingTicker />
 
-          {/* 03 — Pet Health & Digital Passport Showcase */}
-          <LandingHealthShowcase />
+        {/* 02 — About Cagayan de Oro City Veterinary Office (Dr. Helen Ann P. Tacandong) */}
+        <LandingAbout />
 
-          {/* 04 — Appointments & Smart Reminders Showcase */}
-          <LandingAppointmentsShowcase />
+        {/* 03 — Three Pathways Care Ecosystem (Alternating Editorial Features) */}
+        <LandingPathways />
 
-          {/* 05 — Simple How It Works Progression */}
-          <LandingHowItWorks />
+        {/* 03.5 — Institutional Partnerships & Accreditations Infinite Marquee */}
+        <LandingAffiliations />
 
-          {/* 06 — Emotional Pet Care Moment */}
-          <LandingEmotionalMoment />
+        {/* 03.7 — Field Moments & Curated System Bento Gallery */}
+        <LandingGallery />
 
-          {/* 07 — Confident Final Call to Action */}
-          <LandingCta />
-        </main>
+        {/* 04 — Our Services Section (Municipal Care Architecture) */}
+        <LandingServices />
 
-        {/* 08 — Restrained Modern Footer */}
-        <LandingFooter />
-      </div>
-    </AosProvider>
+        {/* 05 — Contact City Veterinary Office & Municipal Inquiries */}
+        <LandingContact />
+
+        {/* 06 — Office Location & Driving Directions Map */}
+        <LandingMap />
+      </main>
+
+      {/* 07 — Restrained Modern Footer */}
+      <LandingFooter />
+    </div>
   );
 }

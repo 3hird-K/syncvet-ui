@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { MotionFadeIn } from "./motion-wrapper";
 
 const APK_DOWNLOAD_URL =
   "https://www.dropbox.com/scl/fi/fz9maf2qy55zx7683mxwf/syncvet.apk?rlkey=bpow4wzey0ylnzj3z73ynp2kq&st=6gwsgp8u&dl=1";
@@ -12,10 +13,10 @@ export function LandingCta() {
       {/* Background Soft Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-primary/10 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div
+      <MotionFadeIn
+        direction="up"
+        amount={0.25}
         className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 space-y-5 sm:space-y-6"
-        data-aos="zoom-in"
-        data-aos-duration="700"
       >
         <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl lg:text-[40px] leading-[1.12]">
           Take better care of <br className="hidden sm:inline" />
@@ -53,7 +54,7 @@ export function LandingCta() {
             </Link>
           </Button>
         </div>
-      </div>
+      </MotionFadeIn>
     </section>
   );
 }

@@ -6,6 +6,8 @@ import {
   BellRing,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
+import { motion } from "framer-motion";
+import { MotionFadeIn, MotionStagger, MOTION_VARIANTS } from "./motion-wrapper";
 
 const capabilities = [
   {
@@ -45,10 +47,10 @@ const capabilities = [
 export function LandingValueProp() {
   return (
     <section id="overview" className="py-16 md:py-24 lg:py-28 border-t border-border/70 relative scroll-mt-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-10">
         
-        {/* Section Header (Editorial alignment) */}
-        <div className="max-w-2xl mb-12 sm:mb-16" data-aos="fade-up" data-aos-duration="700">
+        {/* Section Header with bidirectional Framer Motion entrance */}
+        <MotionFadeIn direction="up" amount={0.2} className="max-w-2xl mb-12 sm:mb-16">
           <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2.5">
             Core Capabilities
           </p>
@@ -59,19 +61,23 @@ export function LandingValueProp() {
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             A unified platform engineered for pet guardians and veterinary providers to collaborate effortlessly on lifelong companion wellbeing.
           </p>
-        </div>
+        </MotionFadeIn>
 
-        {/* 4-Item Editorial Grid with subtle numbering and consistent icon weights */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10">
-          {capabilities.map((item, index) => {
+        {/* 4-Item Staggered Grid */}
+        <MotionStagger
+          staggerDelay={0.12}
+          delayChildren={0.08}
+          amount={0.15}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 lg:gap-10"
+        >
+          {capabilities.map((item) => {
             const Icon = item.icon;
             return (
-              <div
+              <motion.div
                 key={item.title}
-                className="group relative flex flex-col justify-between pt-5 sm:pt-6 border-t border-border/80 transition-colors hover:border-primary/50"
-                data-aos="fade-up"
-                data-aos-duration="700"
-                data-aos-delay={100 * (index + 1)}
+                variants={MOTION_VARIANTS.fadeUp}
+                whileHover={{ y: -4, transition: { duration: 0.25 } }}
+                className="group relative flex flex-col justify-between pt-5 sm:pt-6 border-t border-border/80 transition-colors hover:border-primary/50 cursor-default"
               >
                 <div>
                   <div className="flex items-center justify-between mb-3.5 sm:mb-4">
@@ -97,10 +103,10 @@ export function LandingValueProp() {
                     {item.tag}
                   </span>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </MotionStagger>
 
       </div>
     </section>
