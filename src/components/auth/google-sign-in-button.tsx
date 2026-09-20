@@ -13,6 +13,7 @@ interface GoogleSignInButtonProps {
 }
 
 export function GoogleSignInButton({
+  mode = "sign-in",
   className = "",
 }: GoogleSignInButtonProps) {
   const router = useRouter();
@@ -113,6 +114,9 @@ export function GoogleSignInButton({
     }
   };
 
+  const buttonText =
+    mode === "sign-up" ? "Create Account with Google" : "Continue with Google";
+
   return (
     <div className="w-full space-y-3">
       <button
@@ -120,10 +124,10 @@ export function GoogleSignInButton({
         id="google-oauth-btn"
         disabled={loading}
         onClick={handleGoogleSignIn}
-        className={`group relative flex w-full items-center justify-center gap-3.5 rounded-2xl border border-border/80 bg-card px-5 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:border-primary/50 hover:bg-accent/40 hover:shadow-md hover:shadow-primary/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-60 dark:bg-card/70 dark:hover:bg-card cursor-pointer ${className}`}
+        className={`group relative flex h-12 w-full items-center justify-center gap-3.5 rounded-xl border border-border/80 bg-card px-5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:border-primary/50 hover:bg-accent/60 hover:shadow-md hover:shadow-primary/5 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-60 cursor-pointer ${className}`}
       >
         {/* Ambient subtle glow on hover */}
-        <span className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/10 via-transparent to-primary/10" />
+        <span className="pointer-events-none absolute -inset-px rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/10 via-transparent to-primary/10" />
 
         {loading ? (
           <>
@@ -158,14 +162,14 @@ export function GoogleSignInButton({
               />
             </svg>
             <span className="font-semibold tracking-tight text-foreground">
-              Continue with Google
+              {buttonText}
             </span>
           </>
         )}
       </button>
 
       {/* Official Government & Healthcare Trust Seal */}
-      <div className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground/70">
+      <div className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground/75">
         <ShieldCheck className="size-3.5 text-emerald-500 shrink-0" />
         <span>One-click verified login • Direct access to Dashboard</span>
       </div>
