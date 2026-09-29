@@ -44,7 +44,7 @@ export function getMayForecastMix() {
     {
       name: "Spay/neuter",
       value: may.spayNeuter,
-      fill: "#f97316",
+      fill: "#059669",
       pct: total ? Math.round((may.spayNeuter / total) * 100) : 0,
     },
     {

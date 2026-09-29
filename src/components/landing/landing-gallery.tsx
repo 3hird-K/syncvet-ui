@@ -285,7 +285,7 @@ export function LandingGallery() {
                   Dr. Helen Ann P. Tacandong
                 </p>
                 <p className="text-[9.5px] sm:text-[10px] tracking-[0.2em] font-semibold text-primary uppercase mt-0.5">
-                  City Veterinarian · CVO Cagayan de Oro
+                  City Veterinarian · Cagayan de Oro
                 </p>
               </div>
             </MotionFadeIn>
@@ -359,7 +359,7 @@ export function LandingGallery() {
                     <h3 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white tracking-tight leading-snug">
                       {currentItem.title}
                     </h3>
-                    <p className="text-xs sm:text-sm font-semibold text-amber-700 dark:text-amber-500 tracking-wider">
+                    <p className="text-xs sm:text-sm font-semibold text-primary tracking-wider">
                       {selectedIndex + 1} / {GALLERY_ITEMS.length}
                     </p>
                   </div>

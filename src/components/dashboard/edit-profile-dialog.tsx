@@ -188,7 +188,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                 {currentAvatarSrc && (
                   <AvatarImage src={currentAvatarSrc} alt={displayName} className="object-cover" />
                 )}
-                <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-white flex items-center justify-center">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center">
                   <PawIcon className="size-6 text-white" />
                 </AvatarFallback>
               </Avatar>

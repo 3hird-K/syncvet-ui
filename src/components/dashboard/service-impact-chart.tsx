@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
-const ORANGE = "#f97316";
+const GREEN = "#059669";
 const BLUE = "#3b82f6";
 const CYAN = "#06b6d4";
 
@@ -47,7 +47,7 @@ function ChartTooltip({
       </p>
       <div className="space-y-0.5">
         <p>
-          <span className="font-semibold" style={{ color: ORANGE }}>
+          <span className="font-semibold" style={{ color: GREEN }}>
             {row.users}
           </span>{" "}
           <span className="text-muted-foreground">pet registrations</span>
@@ -80,8 +80,8 @@ export function ServiceImpactChart() {
           >
             <defs>
               <linearGradient id="fillUsers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={ORANGE} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={ORANGE} stopOpacity={0} />
+                <stop offset="5%" stopColor={GREEN} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={GREEN} stopOpacity={0} />
               </linearGradient>
               <linearGradient id="fillTasks" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={BLUE} stopOpacity={0.25} />
@@ -115,7 +115,7 @@ export function ServiceImpactChart() {
             <Area
               type="monotone"
               dataKey="users"
-              stroke={ORANGE}
+              stroke={GREEN}
               strokeWidth={2}
               fill="url(#fillUsers)"
             />
@@ -142,7 +142,7 @@ export function ServiceImpactChart() {
         <span className="inline-flex items-center gap-2">
           <span
             className="size-2 rounded-full"
-            style={{ background: ORANGE }}
+            style={{ background: GREEN }}
           />
           Pet Registrations
         </span>

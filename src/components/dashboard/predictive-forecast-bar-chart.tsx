@@ -13,7 +13,7 @@ import {
 import { RESOURCE_FORECAST_CHART_ROWS } from "@/data/resource-forecast";
 import { cn } from "@/lib/utils";
 
-const BAR_ORANGE = "#f97316";
+const BAR_GREEN = "#059669";
 const BAR_BLUE = "#38bdf8";
 const BAR_VIOLET = "#a855f7";
 
@@ -38,7 +38,7 @@ function BarTooltip({
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
         {projected ? (
-          <span className="ml-2 text-orange-500 dark:text-orange-400">· Forecast</span>
+          <span className="ml-2 text-emerald-600 dark:text-emerald-400">· Forecast</span>
         ) : null}
       </p>
       <ul className="space-y-1">
@@ -88,7 +88,7 @@ export function PredictiveForecastBarChart() {
           <Bar
             dataKey="spayNeuter"
             name="Spay/neuter"
-            fill={BAR_ORANGE}
+            fill={BAR_GREEN}
             radius={[4, 4, 0, 0]}
             maxBarSize={28}
           />

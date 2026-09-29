@@ -161,7 +161,7 @@ export const VACCINE_STOCK_DATA: VaccineStockRow[] = [
     vaccine: "Anti-Parvovirus",
     forecastDoses: Math.round(MAY_FORECAST_ROW.spayNeuter * 0.8),
     currentStock: 55,
-    color: "#f97316",
+    color: "#059669",
   },
   {
     vaccine: "Deworming Doses",

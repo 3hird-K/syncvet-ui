@@ -235,7 +235,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
               <div className="flex items-center gap-2.5 min-w-0">
                 <Avatar className="size-8.5 shrink-0 border border-border/80 shadow-2xs">
                   {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-white flex items-center justify-center">
+                  <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center">
                     <PawIcon className="size-4 text-white" />
                   </AvatarFallback>
                 </Avatar>
@@ -269,7 +269,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
             <div className="flex items-center gap-3 p-2">
               <Avatar className="size-9 shrink-0 border border-border/80 shadow-xs">
                 {userAvatarUrl && <AvatarImage src={userAvatarUrl} alt={displayName} />}
-                <AvatarFallback className="bg-gradient-to-br from-primary to-orange-500 text-white flex items-center justify-center">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center">
                   <PawIcon className="size-4.5 text-white" />
                 </AvatarFallback>
               </Avatar>

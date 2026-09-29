@@ -16,7 +16,7 @@ export function LandingAppointmentsShowcase() {
   return (
     <section id="appointments" className="py-16 md:py-24 lg:py-32 border-t border-border/70 relative overflow-hidden bg-muted/15 scroll-mt-24">
       {/* Background Ambience */}
-      <div className="absolute bottom-0 right-0 w-[500px] h-[400px] bg-orange-500/5 rounded-full blur-3xl pointer-events-none -z-10" />
+      <div className="absolute bottom-0 right-0 w-[500px] h-[400px] bg-primary/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
       <div className="max-w-7xl mx-auto px-5 sm:px-10">
         

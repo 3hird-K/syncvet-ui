@@ -108,7 +108,7 @@ export function AprilVsMayHorizontalChart() {
             <Bar
               dataKey="mayForecast"
               name="May (forecast)"
-              fill="#f97316"
+              fill="#059669"
               radius={[0, 4, 4, 0]}
               barSize={12}
             />

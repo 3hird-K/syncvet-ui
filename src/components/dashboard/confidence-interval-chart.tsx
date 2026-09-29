@@ -39,7 +39,7 @@ function CITooltip({
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
         {projected ? (
-          <span className="ml-2 text-orange-500 dark:text-orange-400">
+          <span className="ml-2 text-emerald-600 dark:text-emerald-400">
             · ML Forecast
           </span>
         ) : null}

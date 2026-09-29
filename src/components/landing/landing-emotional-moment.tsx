@@ -71,7 +71,7 @@ export function LandingEmotionalMoment() {
             className="lg:col-span-6 relative"
           >
             {/* Subtle glow accent behind image */}
-            <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-tr from-primary/15 via-orange-500/10 to-transparent rounded-3xl blur-2xl -z-10 opacity-70" />
+            <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-tr from-primary/15 via-emerald-500/10 to-transparent rounded-3xl blur-2xl -z-10 opacity-70" />
 
             <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden border border-border/80 bg-card shadow-2xl aspect-[4/3] group">
               <Image

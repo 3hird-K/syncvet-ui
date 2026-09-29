@@ -29,7 +29,7 @@ export const SYNCVET_USERS: SyncVetUser[] = [
     email: "m.santos@cdovet.gov.ph",
     role: "administrator",
     initials: "MS",
-    avatarClass: "bg-gradient-to-br from-orange-600 to-amber-700",
+    avatarClass: "bg-gradient-to-br from-emerald-600 to-teal-800",
     online: true,
   },
   {
