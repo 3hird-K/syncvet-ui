@@ -9,7 +9,19 @@ const isPublicRoute = createRouteMatcher([
   "/api/public(.*)",
 ]);
 
+const isAuthRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+]);
+
 export default clerkMiddleware(async (auth, request) => {
+  const { userId } = await auth();
+
+  // If user is already authenticated and visits sign-in or sign-up, redirect to dashboard
+  if (userId && isAuthRoute(request)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   if (!isPublicRoute(request)) {
     await auth.protect();
   }

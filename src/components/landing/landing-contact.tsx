@@ -34,7 +34,7 @@ export function LandingContact() {
       // Trigger Sonner toast notification
       toast.success("Inquiry sent successfully!", {
         description:
-          "The City Veterinary Office has received your message and will respond within 1 business day.",
+          "The City Veterinary Office has received your message and will attend to your inquiry shortly.",
         duration: 4500,
       });
 
@@ -388,12 +388,7 @@ export function LandingContact() {
                 </div>
 
                 {/* Form Footer */}
-                <div className="mt-5 flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Mail className="size-3.5 text-primary" />
-                    <span>Replies within 1 business day</span>
-                  </div>
-
+                <div className="mt-5 flex items-center justify-end pt-2">
                   <button
                     type="submit"
                     disabled={loading}

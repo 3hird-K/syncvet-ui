@@ -1,13 +1,25 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MotionFadeIn } from "./motion-wrapper";
+import { useUser } from "@clerk/nextjs";
+import { LayoutDashboard } from "lucide-react";
 
 const APK_DOWNLOAD_URL =
   "https://www.dropbox.com/scl/fi/fz9maf2qy55zx7683mxwf/syncvet.apk?rlkey=bpow4wzey0ylnzj3z73ynp2kq&st=6gwsgp8u&dl=1";
 
 export function LandingCta() {
+  const [mounted, setMounted] = useState(false);
+  const { isSignedIn, isLoaded } = useUser();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isAuthenticated = mounted && isLoaded && !!isSignedIn;
+
   return (
     <section className="py-20 md:py-28 lg:py-36 border-t border-border/70 text-center relative overflow-hidden bg-muted/20">
       {/* Background Soft Glow */}
@@ -43,16 +55,18 @@ export function LandingCta() {
             </a>
           </Button>
 
-          <Button
-            asChild
-            variant="outline"
-            size="lg"
-            className="h-10 sm:h-11 px-5 sm:px-7 rounded-xl text-xs sm:text-sm font-semibold border-border hover:bg-muted/80 text-foreground transition-all"
-          >
-            <Link href="/sign-in">
-              Sign In to Portal
-            </Link>
-          </Button>
+          {!isAuthenticated && (
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-10 sm:h-11 px-5 sm:px-7 rounded-xl text-xs sm:text-sm font-semibold border-border hover:bg-muted/80 text-foreground transition-all"
+            >
+              <Link href="/sign-in">
+                Sign In to Portal
+              </Link>
+            </Button>
+          )}
         </div>
       </MotionFadeIn>
     </section>

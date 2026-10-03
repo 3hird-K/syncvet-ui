@@ -6,10 +6,11 @@ import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Menu, X, Phone, Globe, Mail } from "lucide-react";
+import { Menu, X, Phone, Globe, Mail, LayoutDashboard } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
+import { useUser } from "@clerk/nextjs";
 
 const navLinks = [
   { num: "01", label: "About", href: "#about" },
@@ -39,6 +40,8 @@ export function LandingNavbar() {
   const [mounted, setMounted] = useState(false);
   const [activeSection, setActiveSection] = useState<string>("");
   const isProgrammaticScrollRef = useRef(false);
+  const { isSignedIn, isLoaded } = useUser();
+  const isAuthenticated = mounted && isLoaded && !!isSignedIn;
 
   useEffect(() => {
     setMounted(true);
@@ -224,16 +227,31 @@ export function LandingNavbar() {
             <span className="font-semibold tracking-wide whitespace-nowrap">(088) 857-2260</span>
           </a>
 
-          {/* Sign In CTA (h-9, borderless) */}
-          <Button
-            asChild
-            size="sm"
-            className="h-9 px-4 inline-flex items-center justify-center rounded-md text-xs font-semibold border-0 bg-card/80 hover:bg-accent hover:text-foreground text-foreground transition-all shadow-none whitespace-nowrap shrink-0 box-border cursor-pointer"
-          >
-            <Link href="/sign-in">
-              Sign In
-            </Link>
-          </Button>
+          {/* Sign In CTA / Dashboard icon if authenticated */}
+          {isAuthenticated ? (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-md border-0 bg-card/60 text-muted-foreground hover:text-foreground hover:bg-accent transition-all shadow-none cursor-pointer inline-flex items-center justify-center p-0 shrink-0 box-border"
+              title="Dashboard"
+              aria-label="Go to Dashboard"
+            >
+              <Link href="/dashboard">
+                <LayoutDashboard className="size-4 text-foreground" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              asChild
+              size="sm"
+              className="h-9 px-4 inline-flex items-center justify-center rounded-md text-xs font-semibold border-0 bg-card/80 hover:bg-accent hover:text-foreground text-foreground transition-all shadow-none whitespace-nowrap shrink-0 box-border cursor-pointer"
+            >
+              <Link href="/sign-in">
+                Sign In
+              </Link>
+            </Button>
+          )}
         </div>
 
         {/* ── TABLET & MOBILE CONTROLS (Visible on < lg: phone, theme toggle, and burger) ── */}
@@ -249,15 +267,30 @@ export function LandingNavbar() {
             <span className="font-semibold whitespace-nowrap">(088) 857-2260</span>
           </a>
 
-          <Button
-            asChild
-            size="sm"
-            className="h-9 px-3 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-border/70 bg-card/70 hover:bg-accent hover:text-foreground text-foreground transition-all shadow-none whitespace-nowrap shrink-0 box-border cursor-pointer"
-          >
-            <Link href="/sign-in">
-              Sign In
-            </Link>
-          </Button>
+          {isAuthenticated ? (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-md border border-border/70 bg-card/70 text-foreground hover:bg-accent transition-all shadow-none cursor-pointer inline-flex items-center justify-center p-0 shrink-0 box-border"
+              title="Dashboard"
+              aria-label="Go to Dashboard"
+            >
+              <Link href="/dashboard">
+                <LayoutDashboard className="size-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              asChild
+              size="sm"
+              className="h-9 px-3 inline-flex items-center justify-center rounded-md text-xs font-semibold border border-border/70 bg-card/70 hover:bg-accent hover:text-foreground text-foreground transition-all shadow-none whitespace-nowrap shrink-0 box-border cursor-pointer"
+            >
+              <Link href="/sign-in">
+                Sign In
+              </Link>
+            </Button>
+          )}
 
           <button
             onClick={() => setMobileOpen(true)}
@@ -401,18 +434,36 @@ export function LandingNavbar() {
                   </a>
                 </div>
 
-                <Button
-                  asChild
-                  size="sm"
-                  className="h-10 px-5 rounded-md text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer"
-                >
-                  <Link
-                    href="/sign-in"
-                    onClick={() => setMobileOpen(false)}
+                {isAuthenticated ? (
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className="size-10 rounded-md border border-border/70 bg-card/70 text-foreground hover:bg-accent transition-all cursor-pointer inline-flex items-center justify-center p-0"
+                    title="Dashboard"
+                    aria-label="Go to Dashboard"
                   >
-                    Sign In
-                  </Link>
-                </Button>
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <LayoutDashboard className="size-4.5" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    asChild
+                    size="sm"
+                    className="h-10 px-5 rounded-md text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer"
+                  >
+                    <Link
+                      href="/sign-in"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Sign In
+                    </Link>
+                  </Button>
+                )}
               </div>
             </div>
           </motion.div>

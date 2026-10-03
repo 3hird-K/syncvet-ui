@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
   User,
   Mail,
   ShieldCheck,
-  BadgeCheck,
   Loader2,
   Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +34,12 @@ interface EditProfileDialogProps {
 
 export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps) {
   const { user, isLoaded } = useUser();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [roleTitle, setRoleTitle] = useState("Administrator");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -48,8 +50,6 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       if (user) {
         setFirstName(user.firstName || "");
         setLastName(user.lastName || "");
-        const metadata = user.unsafeMetadata as { roleTitle?: string } | undefined;
-        if (metadata?.roleTitle) setRoleTitle(metadata.roleTitle);
       }
       setSelectedFile(null);
       setPreviewUrl(null);
@@ -125,18 +125,33 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
         await user.setProfileImage({ file: null });
       }
 
-      // 2. Update user name & metadata
+      // 2. Update user name in Clerk
       await user.update({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        unsafeMetadata: {
-          ...user.unsafeMetadata,
-          roleTitle: roleTitle.trim(),
-        },
       });
 
       // 3. Reload user to refresh cached resources
       await user.reload();
+
+      // 4. Synchronize updated avatar and name to Supabase immediately
+      const supabase = getPublicSupabaseClient();
+      const updatedFullName = `${firstName.trim()} ${lastName.trim()}`.trim() || user.fullName || "";
+      const updatedAvatarUrl = user.imageUrl || null;
+
+      await supabase
+        .from("users")
+        .update({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          full_name: updatedFullName,
+          avatar_url: updatedAvatarUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
+      // Invalidate TanStack query cache for realtime UI update
+      queryClient.invalidateQueries({ queryKey: ["users"] });
 
       toast.success("Profile Updated", {
         description: selectedFile
@@ -156,8 +171,14 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px] rounded-3xl border border-border/80 bg-card p-6 shadow-2xl">
-        <DialogHeader className="space-y-1.5 pb-2">
+      <DialogContent className="sm:max-w-[440px] rounded-3xl border border-border/80 bg-card p-6 shadow-2xl overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className="space-y-4"
+        >
+          <DialogHeader className="space-y-1.5 pb-2">
           <div className="flex items-center gap-2 text-primary font-bold text-base">
             <User className="size-4.5" />
             <DialogTitle className="text-lg font-extrabold tracking-tight">
@@ -236,6 +257,12 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                 <Mail className="size-3 text-muted-foreground/70 shrink-0" />
                 <span className="truncate">{userEmail}</span>
               </p>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <Badge variant="outline" className="text-[10px] font-bold text-primary border-primary/20 bg-primary/10 px-2 py-0.5 rounded-full">
+                  <ShieldCheck className="size-3 mr-1 text-primary" />
+                  {(user?.unsafeMetadata?.roleTitle as string) || (user?.publicMetadata?.role as string) || "Administrator"}
+                </Badge>
+              </div>
             </div>
           </div>
         </div>
@@ -269,20 +296,6 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                 required
               />
             </div>
-          </div>
-
-          {/* Role / Job Title */}
-          <div className="space-y-1.5">
-            <Label htmlFor="roleTitle" className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <BadgeCheck className="size-3.5 text-primary" /> Role / Title
-            </Label>
-            <Input
-              id="roleTitle"
-              value={roleTitle}
-              onChange={(e) => setRoleTitle(e.target.value)}
-              placeholder="e.g. Administrator, IT Officer"
-              className="h-10 rounded-xl text-xs"
-            />
           </div>
 
           {/* Readonly Verified Email Notice */}
@@ -323,6 +336,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
             </Button>
           </div>
         </form>
+        </motion.div>
       </DialogContent>
     </Dialog>
   );

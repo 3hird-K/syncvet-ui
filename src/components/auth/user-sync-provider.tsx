@@ -3,20 +3,24 @@
 import { useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useClerkSupabaseClient } from "@/lib/supabase/client";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
 
 export function UserSyncProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, isSignedIn } = useUser();
   const supabase = useClerkSupabaseClient();
-  const hasSynced = useRef(false);
+  const lastSyncedSignature = useRef<string>("");
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !user || hasSynced.current) return;
+    if (!isLoaded || !isSignedIn || !user) return;
+
+    const signature = `${user.id}-${user.imageUrl || ""}-${user.fullName || ""}`;
+    if (lastSyncedSignature.current === signature) return;
 
     const currentUser = user;
 
     async function syncUserToSupabase() {
       try {
-        hasSynced.current = true;
+        lastSyncedSignature.current = signature;
         const email = currentUser.primaryEmailAddress?.emailAddress ?? "";
         const fullName =
           currentUser.fullName ||
@@ -27,12 +31,28 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
         const publicMeta = (currentUser.publicMetadata || {}) as Record<string, unknown>;
         const combinedMeta = { ...publicMeta, ...unsafeMeta };
 
-        // Normalize specific fields from Clerk metadata
-        const role =
+        // Check if user already exists in Supabase to preserve any admin-assigned role
+        const { data: existingUser } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+
+        const rawRole =
           (unsafeMeta.roleTitle as string) ||
           (publicMeta.roleTitle as string) ||
           (publicMeta.role as string) ||
-          "citizen";
+          (unsafeMeta.accountType === "pet_owner" ? "Pet Owner" : "");
+
+        // Newly created users default to Pet Owner; preserve existing role if already assigned in database
+        let role = "Pet Owner";
+        if (existingUser?.role) {
+          role = normalizeSyncVetRole(existingUser.role);
+        } else if (rawRole) {
+          role = normalizeSyncVetRole(rawRole);
+        } else {
+          role = "Pet Owner";
+        }
         const address =
           (unsafeMeta.address as string) || (publicMeta.address as string) || null;
         const phoneNumber =

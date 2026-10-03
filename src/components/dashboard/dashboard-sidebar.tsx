@@ -22,6 +22,9 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { useClerk, useUser } from "@clerk/nextjs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { PawIcon } from "@/components/icons/paw-icon";
 import {
   DropdownMenu,
@@ -56,19 +59,71 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, isLoaded } = useUser();
   const clerk = useClerk();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Fetch current user's database role and profile from Supabase
+  const { data: dbUser } = useQuery({
+    queryKey: ["current-user-role", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const supabase = getPublicSupabaseClient();
+      const { data } = await supabase
+        .from("users")
+        .select("role, avatar_url, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: isLoaded && !!user?.id,
+  });
+
+  // Supabase Realtime subscription for instant role & profile updates
+  useEffect(() => {
+    if (!user?.id) return;
+    const supabase = getPublicSupabaseClient();
+    const channel = supabase
+      .channel(`sidebar-user-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as { role?: string; avatar_url?: string; full_name?: string };
+          if (updated) {
+            queryClient.setQueryData(["current-user-role", user.id], (old: any) => ({
+              ...old,
+              ...updated,
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
+
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
-  const displayName = isLoaded && user ? user.fullName || user.username || "IT Officer" : "Neil Dime";
+  const displayName = isLoaded && user ? dbUser?.full_name || user.fullName || user.username || "IT Officer" : "Neil Dime";
   const userEmail = isLoaded && user?.primaryEmailAddress?.emailAddress ? user.primaryEmailAddress.emailAddress : "dime.neil03@gmail.com";
-  const userAvatarUrl = isLoaded && user?.imageUrl ? user.imageUrl : undefined;
-  const userInitials = isLoaded && user && user.fullName 
-    ? user.fullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+  const userAvatarUrl = dbUser?.avatar_url || (isLoaded && user?.imageUrl ? user.imageUrl : undefined);
+  const userInitials = isLoaded && user && displayName 
+    ? displayName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
     : "ND";
-  const userRole = metadata?.roleTitle || (metadata?.accountType === "pet_owner" ? "Pet Owner" : "Administrator");
+  const userRole = normalizeSyncVetRole(
+    dbUser?.role ||
+    metadata?.roleTitle ||
+    (metadata?.accountType === "pet_owner" ? "Pet Owner" : "Administrator")
+  );
 
   const handleLogout = async () => {
     if (clerk?.signOut) {
@@ -85,15 +140,17 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   return (
     <div className="flex h-full flex-col">
       {/* ── Brand ── */}
-      <div
+      <Link
+        href="/"
+        title="Return to SyncVet Landing Page"
         className={cn(
-          "flex shrink-0 items-center gap-3",
+          "group flex shrink-0 items-center gap-3 transition-opacity duration-150 hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg cursor-pointer",
           collapsed ? "flex-col items-center px-0" : "px-2",
         )}
       >
         <div
           className={cn(
-            "flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200",
+            "flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200 group-hover:scale-105",
             collapsed ? "size-8" : "size-10"
           )}
           aria-hidden
@@ -109,7 +166,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-extrabold tracking-tight text-foreground leading-none">
+            <p className="text-sm font-extrabold tracking-tight text-foreground leading-none group-hover:text-primary transition-colors">
               SYNCVET
             </p>
             <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
@@ -117,7 +174,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
             </p>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* ── Nav section ── */}
       <div
