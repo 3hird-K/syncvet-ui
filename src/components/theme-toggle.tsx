@@ -5,7 +5,9 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
-export function ThemeToggle() {
+import { cn } from "@/lib/utils";
+
+export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -15,7 +17,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <div className="size-9 rounded-md border-0 bg-card/60 shrink-0 box-border" aria-hidden />
+      <div className={cn("size-8 rounded-md bg-card/60 shrink-0 box-border", className)} aria-hidden />
     );
   }
 
@@ -26,7 +28,10 @@ export function ThemeToggle() {
       type="button"
       variant="ghost"
       size="icon"
-      className="size-9 rounded-md border-0 bg-card/60 text-muted-foreground hover:text-foreground hover:bg-accent transition-all shadow-none cursor-pointer inline-flex items-center justify-center p-0 shrink-0 box-border"
+      className={cn(
+        "size-8 rounded-md border-0 bg-transparent text-muted-foreground hover:text-foreground hover:bg-accent transition-all shadow-none cursor-pointer inline-flex items-center justify-center p-0 shrink-0 box-border",
+        className
+      )}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >

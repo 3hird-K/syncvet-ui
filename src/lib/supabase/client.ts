@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { useSession } from "@clerk/nextjs";
 import { useMemo } from "react";
 
@@ -7,11 +7,17 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
+let publicSupabaseClient: SupabaseClient | null = null;
+
 /**
  * Public Supabase client for unauthenticated or public queries.
+ * Returns a singleton instance to avoid infinite re-render loops and duplicated client connections.
  */
-export function getPublicSupabaseClient() {
-  return createClient(supabaseUrl, supabaseAnonKey);
+export function getPublicSupabaseClient(): SupabaseClient {
+  if (!publicSupabaseClient) {
+    publicSupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return publicSupabaseClient;
 }
 
 /**

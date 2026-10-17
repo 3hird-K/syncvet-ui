@@ -23,11 +23,15 @@ export function GoogleSignInButton({
   const { isSignedIn, isLoaded: isUserLoaded, user } = useUser();
   const [loading, setLoading] = useState(false);
 
+  const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const isOwner = metadata?.accountType === "pet_owner" || metadata?.roleTitle === "Pet Owner";
+  const destination = isOwner ? "/pet-owner" : "/dashboard";
+
   useEffect(() => {
     if (isUserLoaded && isSignedIn && user) {
-      router.replace("/dashboard");
+      router.replace(destination);
     }
-  }, [isUserLoaded, isSignedIn, user, router]);
+  }, [isUserLoaded, isSignedIn, user, router, destination]);
 
   if (isUserLoaded && isSignedIn && user) {
     return (
@@ -35,7 +39,7 @@ export function GoogleSignInButton({
         <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 text-center space-y-2">
           <div className="flex items-center justify-center gap-2 text-sm font-bold text-primary">
             <Loader2 className="size-4 animate-spin text-primary" />
-            <span>Redirecting to Dashboard...</span>
+            <span>Redirecting to {isOwner ? "Pet Owner Portal" : "Dashboard"}...</span>
           </div>
           <p className="text-xs text-muted-foreground">
             Signed in as {user.fullName || user.primaryEmailAddress?.emailAddress}
@@ -43,10 +47,10 @@ export function GoogleSignInButton({
         </div>
 
         <Link
-          href="/dashboard"
+          href={destination}
           className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-bold text-primary-foreground shadow-md transition-all duration-200 hover:bg-primary/90 active:scale-[0.985]"
         >
-          <span>Go to Dashboard</span>
+          <span>{isOwner ? "Go to Pet Owner Portal" : "Go to Dashboard"}</span>
           <ArrowRight className="size-4" />
         </Link>
       </div>

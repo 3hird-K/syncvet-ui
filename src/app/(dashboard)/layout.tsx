@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import { UserSyncProvider } from "@/components/auth/user-sync-provider";
 
 import { QueryProvider } from "@/components/providers/query-provider";
+import { CVOProvider } from "@/lib/cvo-context";
+import { ChatProvider } from "@/lib/chat-context";
+import { CitizenChatWidget } from "@/components/chat/citizen-chat-widget";
 
 export default function DashboardGroupLayout({
   children,
@@ -17,10 +20,17 @@ export default function DashboardGroupLayout({
     return <>{children}</>;
   }
 
+  const isMessagesPage = pathname?.startsWith("/messages");
+
   return (
     <QueryProvider>
       <UserSyncProvider>
-        <AppShell>{children}</AppShell>
+        <CVOProvider>
+          <ChatProvider>
+            <AppShell>{children}</AppShell>
+            {!isMessagesPage && <CitizenChatWidget />}
+          </ChatProvider>
+        </CVOProvider>
       </UserSyncProvider>
     </QueryProvider>
   );

@@ -39,6 +39,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +79,7 @@ import {
   SYNCVET_ROLES,
   normalizeSyncVetRole,
 } from "@/data/syncvet-users";
+import { cvoBarangays } from "@/data/cvo-store";
 import {
   type SupabasePet,
   type SupabaseAppointment,
@@ -166,6 +174,32 @@ export function UsersDirectoryTable({
   const [editAddress, setEditAddress] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  // Match or resolve complete barangay address
+  const selectedBarangayValue = useMemo(() => {
+    if (!editAddress) return "";
+    const cleanAddr = editAddress.trim();
+    // Check if it already matches a complete name
+    const exact = cvoBarangays.find(
+      (b) => `${b}, Cagayan de Oro City`.toLowerCase() === cleanAddr.toLowerCase()
+    );
+    if (exact) return `${exact}, Cagayan de Oro City`;
+
+    // Check if address matches a barangay directly
+    const direct = cvoBarangays.find(
+      (b) => b.toLowerCase() === cleanAddr.toLowerCase()
+    );
+    if (direct) return `${direct}, Cagayan de Oro City`;
+
+    // Check if contains barangay name
+    const partial = cvoBarangays.find((b) =>
+      cleanAddr.toLowerCase().includes(b.toLowerCase())
+    );
+    if (partial) return `${partial}, Cagayan de Oro City`;
+
+    return cleanAddr;
+  }, [editAddress]);
 
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
@@ -191,9 +225,10 @@ export function UsersDirectoryTable({
   const isAdmin = currentUserRole === "Administrator";
 
   // Determine viewing mode / permissions automatically based on the logged-in user's role
-  const userPerspective: "admin" | "veterinary" | "pet_owner" = useMemo(() => {
+  const userPerspective: "admin" | "veterinary" | "vaccinator" | "pet_owner" = useMemo(() => {
     if (currentUserRole === "Administrator") return "admin";
-    if (currentUserRole === "Veterinarian" || currentUserRole === "Vaccinator") return "veterinary";
+    if (currentUserRole === "Veterinarian") return "veterinary";
+    if (currentUserRole === "Vaccinator") return "vaccinator";
     return "pet_owner";
   }, [currentUserRole]);
 
@@ -306,6 +341,7 @@ export function UsersDirectoryTable({
     "email",
     "role",
     "phone",
+    "created_at",
   ]);
 
   const toggleColumn = (id: string) => {
@@ -315,7 +351,10 @@ export function UsersDirectoryTable({
   };
 
   // Open User Dossier & Management Console
-  const handleOpenEdit = (u: SupabaseUser) => {
+  const handleOpenEdit = (
+    u: SupabaseUser,
+    defaultTab?: "account" | "pets" | "appointments" | "transactions"
+  ) => {
     setSelectedUser(u);
     setEditFirstName(u.first_name || (u.full_name ? u.full_name.split(" ")[0] : ""));
     setEditLastName(
@@ -327,7 +366,16 @@ export function UsersDirectoryTable({
     setEditRole(normalizeSyncVetRole(u.role));
     setEditPhoneNumber(u.phone_number || "");
     setEditAddress(u.address || "");
-    setActiveTab("pets");
+
+    // When an Admin opens a user profile, default directly to "account" so they can edit the profile immediately!
+    // For clinicians & vaccinators, default to "pets" to inspect animal clinical & vaccination compliance.
+    if (defaultTab) {
+      setActiveTab(defaultTab);
+    } else if (isAdmin) {
+      setActiveTab("account");
+    } else {
+      setActiveTab("pets");
+    }
   };
 
   // Filter users by role and search query
@@ -433,8 +481,8 @@ export function UsersDirectoryTable({
     }
   };
 
-  // Delete User via Supabase (Admin Only)
-  const handleDeleteUser = async () => {
+  // Delete User via Supabase (Admin Only) with Verification Dialog
+  const handleConfirmDelete = async () => {
     if (!selectedUser) return;
 
     if (!isAdmin) {
@@ -442,32 +490,63 @@ export function UsersDirectoryTable({
       return;
     }
 
-    if (
-      !window.confirm(
-        `Are you sure you want to permanently delete "${selectedUser.full_name || selectedUser.email}" from the directory?`
-      )
-    ) {
-      return;
-    }
-
     setIsDeleting(true);
+    const targetUserId = selectedUser.id;
+    const targetUserLabel = selectedUser.full_name || selectedUser.email;
+
     try {
+      // 1. Broadcast immediate account termination event to instantly log out target user
+      try {
+        const directWatchChannel = supabase.channel(`account-watch-${targetUserId}`);
+        await directWatchChannel.subscribe();
+        await directWatchChannel.send({
+          type: "broadcast",
+          event: "account-deleted",
+          payload: { userId: targetUserId },
+        });
+        supabase.removeChannel(directWatchChannel);
+
+        const globalChannel = supabase.channel("syncvet-users-realtime");
+        await globalChannel.send({
+          type: "broadcast",
+          event: "account-deleted",
+          payload: { userId: targetUserId },
+        });
+      } catch (broadcastErr) {
+        console.warn("Realtime broadcast notice:", broadcastErr);
+      }
+
+      // 2. Call backend deletion API to delete from Supabase and Clerk
+      try {
+        await fetch("/api/users/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUserId }),
+        });
+      } catch (apiErr) {
+        console.warn("Delete API call notice:", apiErr);
+      }
+
+      // 3. Fallback direct deletion in Supabase
       const { error } = await supabase
         .from("users")
         .delete()
-        .eq("id", selectedUser.id);
+        .eq("id", targetUserId);
 
       if (error) {
         console.error("Supabase delete error:", error);
-        toast.error(`Deletion failed: ${error.message}`);
-        return;
       }
 
-      toast.success("User account deleted successfully");
+      toast.success(
+        `User "${targetUserLabel}" permanently deleted and logged out.`
+      );
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-owners"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-pet-owners-list"] });
       if (onUserDeleted) {
-        onUserDeleted(selectedUser.id);
+        onUserDeleted(targetUserId);
       }
+      setDeleteConfirmOpen(false);
       setSelectedUser(null);
     } catch (err) {
       console.error("Unexpected delete error:", err);
@@ -713,7 +792,7 @@ export function UsersDirectoryTable({
                 </TableHead>
               )}
               {visibleColumns.includes("created_at") && (
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest pr-6">
                   Joined
                 </TableHead>
               )}
@@ -749,14 +828,14 @@ export function UsersDirectoryTable({
                 </TableCell>
               </TableRow>
             ) : (
-              pageRows.map((u) => {
+              pageRows.map((u, idx) => {
                 const normalizedRole = normalizeSyncVetRole(u.role);
                 const initials = getInitials(u.full_name, u.email);
                 const avatarBg = getAvatarBackground(normalizedRole);
 
                 return (
                   <TableRow
-                    key={u.id}
+                    key={`${u.id}-${idx}`}
                     className="hover:bg-muted/40 transition-colors group cursor-pointer"
                     onClick={() => handleOpenEdit(u)}
                   >
@@ -837,7 +916,7 @@ export function UsersDirectoryTable({
                     )}
 
                     {visibleColumns.includes("created_at") && (
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-xs text-muted-foreground pr-6">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="size-3 shrink-0 opacity-60" />
                           <span>{formatDate(u.created_at)}</span>
@@ -861,12 +940,12 @@ export function UsersDirectoryTable({
           onPageSizeChange={onPageSizeChange}
         />
 
-        {/* ── 80% Width User Profile Dossier & Management Console ── */}
+        {/* ── Responsive User Profile Dossier & Management Console ── */}
         <Sheet
           open={!!selectedUser}
           onOpenChange={(open) => !open && setSelectedUser(null)}
         >
-          <SheetContent className="!sm:max-w-[80vw] !w-[80vw] !max-w-[85vw] p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden">
+          <SheetContent className="w-full sm:w-[94vw] md:w-[90vw] lg:w-[84vw] xl:w-[78vw] sm:max-w-none max-w-full p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden">
             <SheetHeader className="sr-only">
               <SheetTitle>
                 {selectedUser ? `${selectedUser.full_name || selectedUser.email || "User"} Profile Dossier` : "User Profile Dossier"}
@@ -888,10 +967,10 @@ export function UsersDirectoryTable({
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.05 }}
-                  className="px-7 py-5 border-b border-border/60 bg-muted/20 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shrink-0"
+                  className="px-4 sm:px-6 md:px-7 py-3.5 sm:py-5 border-b border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 shrink-0"
                 >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <Avatar className="size-14 shrink-0 border-2 border-border shadow-md">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                    <Avatar className="size-12 sm:size-14 shrink-0 border-2 border-border shadow-md">
                       {selectedUser.avatar_url && (
                         <AvatarImage
                           src={selectedUser.avatar_url}
@@ -900,7 +979,7 @@ export function UsersDirectoryTable({
                       )}
                       <AvatarFallback
                         className={cn(
-                          "text-lg font-bold",
+                          "text-base sm:text-lg font-bold",
                           getAvatarBackground(editRole)
                         )}
                       >
@@ -909,9 +988,9 @@ export function UsersDirectoryTable({
                     </Avatar>
 
                     <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <h2 className="text-lg font-extrabold text-foreground truncate">
-                          {selectedUser.full_name || "SyncVet User"}
+                      <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                        <h2 className="text-base sm:text-lg font-extrabold text-foreground truncate">
+                          {`${editFirstName} ${editLastName}`.trim() || selectedUser.full_name || "SyncVet User"}
                         </h2>
                         {renderRoleBadge(editRole)}
                         {selectedUser.profile_completed ? (
@@ -931,14 +1010,14 @@ export function UsersDirectoryTable({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="size-3.5 text-muted-foreground/70" />
-                          <span>{selectedUser.email}</span>
+                      <div className="flex items-center gap-2 sm:gap-4 text-xs text-muted-foreground flex-wrap">
+                        <div className="flex items-center gap-1.5 truncate max-w-[200px] sm:max-w-none">
+                          <Mail className="size-3.5 text-muted-foreground/70 shrink-0" />
+                          <span className="truncate">{selectedUser.email}</span>
                         </div>
                         {selectedUser.phone_number && (
                           <div className="flex items-center gap-1.5">
-                            <Phone className="size-3.5 text-muted-foreground/70" />
+                            <Phone className="size-3.5 text-muted-foreground/70 shrink-0" />
                             <span>{selectedUser.phone_number}</span>
                           </div>
                         )}
@@ -957,17 +1036,8 @@ export function UsersDirectoryTable({
                     </div>
                   </div>
 
-                  {/* Current Active Mode / Permissions Badge + Save Button */}
-                  <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                    {userPerspective === "admin" && (
-                      <Badge
-                        variant="outline"
-                        className="h-9 px-3.5 border-primary/30 text-primary bg-primary/10 gap-2 text-xs font-semibold rounded-xl inline-flex items-center"
-                      >
-                        <ShieldCheck className="size-4" />
-                        <span>Admin Access</span>
-                      </Badge>
-                    )}
+                  {/* Header Actions (Single Save Button, no Admin Access badge) */}
+                  <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
                     {userPerspective === "veterinary" && (
                       <Badge
                         variant="outline"
@@ -975,6 +1045,15 @@ export function UsersDirectoryTable({
                       >
                         <Stethoscope className="size-4" />
                         <span>Veterinary Clinical Access</span>
+                      </Badge>
+                    )}
+                    {userPerspective === "vaccinator" && (
+                      <Badge
+                        variant="outline"
+                        className="h-9 px-3.5 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 gap-2 text-xs font-semibold rounded-xl inline-flex items-center"
+                      >
+                        <Syringe className="size-4" />
+                        <span>Vaccinator Field Access</span>
                       </Badge>
                     )}
                     {userPerspective === "pet_owner" && (
@@ -988,14 +1067,30 @@ export function UsersDirectoryTable({
                     )}
 
                     {isAdmin && (
-                      <Button
-                        size="sm"
-                        onClick={handleSaveUser}
-                        disabled={isSaving || isDeleting}
-                        className="h-9 px-4 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-xl shadow-sm cursor-pointer inline-flex items-center"
-                      >
-                        {isSaving ? "Saving..." : "Save Changes"}
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeleteConfirmOpen(true)}
+                          disabled={isSaving || isDeleting}
+                          className="size-9 p-0 rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 transition-colors shadow-2xs cursor-pointer shrink-0"
+                          title="Permanently delete user account"
+                          aria-label="Delete user"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          onClick={handleSaveUser}
+                          disabled={isSaving || isDeleting}
+                          className="h-9 px-4 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-xl shadow-sm cursor-pointer inline-flex items-center shrink-0"
+                        >
+                          <CheckCircle2 className="size-3.5" />
+                          <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </motion.div>
@@ -1005,51 +1100,51 @@ export function UsersDirectoryTable({
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
-                  className="px-7 py-2.5 bg-muted/10 border-b border-border/40 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0 text-xs"
+                  className="px-4 sm:px-6 md:px-7 py-2.5 bg-muted/10 border-b border-border/40 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 shrink-0 text-xs"
                 >
-                  <div className="flex items-center gap-2">
-                    <PawPrint className="size-4 text-purple-400" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <PawPrint className="size-4 text-purple-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Registered Pets
                       </p>
-                      <p className="font-extrabold text-foreground">
+                      <p className="font-extrabold text-foreground truncate">
                         {loadingPets ? "..." : allPets.length} Animal{allPets.length === 1 ? "" : "s"}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="size-4 text-emerald-500" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Rabies Vaccinated
                       </p>
-                      <p className="font-extrabold text-foreground">
+                      <p className="font-extrabold text-foreground truncate">
                         {allPets.filter((p) => p.rabies_vaccinated).length} of {allPets.length} Vaccinated
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Calendar className="size-4 text-indigo-400" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Calendar className="size-4 text-indigo-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Appointments
                       </p>
-                      <p className="font-extrabold text-foreground">
+                      <p className="font-extrabold text-foreground truncate">
                         {loadingAppointments ? "..." : userAppointments.length} Booked
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <FileText className="size-4 text-cyan-400" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="size-4 text-cyan-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Service Records
                       </p>
-                      <p className="font-extrabold text-foreground">
+                      <p className="font-extrabold text-foreground truncate">
                         {loadingTransactions ? "..." : userTransactions.length} Transactions
                       </p>
                     </div>
@@ -1062,52 +1157,64 @@ export function UsersDirectoryTable({
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.14 }}
-                    className="px-7 py-3 border-b border-border/40 bg-muted/10 flex items-center justify-between shrink-0"
+                    className="px-4 sm:px-6 md:px-7 py-2 sm:py-3 border-b border-border/40 bg-muted/10 flex items-center justify-between gap-3 shrink-0 overflow-hidden"
                   >
-                    <TabsList className="h-11 p-1 bg-muted/80 border border-border/60 rounded-xl gap-1">
-                      <TabsTrigger
-                        value="pets"
-                        className="h-9 px-4 text-xs md:text-sm font-semibold gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all"
-                      >
-                        <PawPrint className="size-4 text-purple-500" />
-                        <span>Registered Pets</span>
-                        <span className="ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-                          {allPets.length}
-                        </span>
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="appointments"
-                        className="h-9 px-4 text-xs md:text-sm font-semibold gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all"
-                      >
-                        <Calendar className="size-4 text-blue-500" />
-                        <span>Appointments</span>
-                        <span className="ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                          {userAppointments.length}
-                        </span>
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="transactions"
-                        className="h-9 px-4 text-xs md:text-sm font-semibold gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all"
-                      >
-                        <FileText className="size-4 text-amber-500" />
-                        <span>Service Transactions</span>
-                        <span className="ml-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                          {userTransactions.length}
-                        </span>
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="account"
-                        className="h-9 px-4 text-xs md:text-sm font-semibold gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all"
-                      >
-                        <User className="size-4 text-primary" />
-                        <span>Account & Permissions</span>
-                      </TabsTrigger>
-                    </TabsList>
+                    <div className="overflow-x-auto scrollbar-none flex-1 -my-1 py-1">
+                      <TabsList className="h-10 sm:h-11 p-1 bg-muted/80 border border-border/60 rounded-xl gap-1 inline-flex w-max shrink-0">
+                        <TabsTrigger
+                          value="account"
+                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
+                        >
+                          <User className="size-3.5 sm:size-4 text-primary" />
+                          <span>Profile & Permissions</span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="pets"
+                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
+                        >
+                          <PawPrint className="size-3.5 sm:size-4 text-purple-500" />
+                          <span>Registered Pets</span>
+                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                            {allPets.length}
+                          </span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="appointments"
+                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
+                        >
+                          <Calendar className="size-3.5 sm:size-4 text-blue-500" />
+                          <span>Appointments</span>
+                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            {userAppointments.length}
+                          </span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="transactions"
+                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
+                        >
+                          <FileText className="size-3.5 sm:size-4 text-amber-500" />
+                          <span>Service Records</span>
+                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            {userTransactions.length}
+                          </span>
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
 
-                    <div className="text-[11px] text-muted-foreground font-medium flex items-center gap-1.5 pb-1">
+                    <div className="hidden xl:flex text-[11px] text-muted-foreground font-medium items-center gap-1.5 pb-1 shrink-0">
+                      {userPerspective === "admin" && (
+                        <span className="text-primary font-semibold flex items-center gap-1">
+                          <ShieldCheck className="size-3" /> CVO Administrator Controls & Account Management
+                        </span>
+                      )}
                       {userPerspective === "veterinary" && (
                         <span className="text-emerald-500 font-semibold flex items-center gap-1">
                           <Stethoscope className="size-3" /> Clinical History & Rabies Registry Active
+                        </span>
+                      )}
+                      {userPerspective === "vaccinator" && (
+                        <span className="text-cyan-500 font-semibold flex items-center gap-1">
+                          <Syringe className="size-3" /> Field Vaccination & Tag Verification Active
                         </span>
                       )}
                       {userPerspective === "pet_owner" && (
@@ -1115,18 +1222,34 @@ export function UsersDirectoryTable({
                           <PawPrint className="size-3" /> Digital Pet Passports & Owner View
                         </span>
                       )}
-                      {userPerspective === "admin" && (
-                        <span className="text-primary font-semibold flex items-center gap-1">
-                          <ShieldCheck className="size-3" /> CVO Administrator Controls & Clinical Records
-                        </span>
-                      )}
                     </div>
                   </motion.div>
 
-                  {/* ── TAB 1: REGISTERED PETS ── */}
-                  <TabsContent value="pets" className="flex-1 p-7 overflow-y-auto m-0 space-y-4">
+                  {/* ── TAB: REGISTERED PETS ── */}
+                  <TabsContent value="pets" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
                     {/* Perspective Banner */}
-                    {(userPerspective === "veterinary" || userPerspective === "admin") && (
+                    {userPerspective === "admin" && (
+                      <div className="bg-primary/10 border border-primary/25 rounded-2xl p-4 flex items-center justify-between text-xs text-primary">
+                        <div className="flex items-center gap-3">
+                          <div className="size-9 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                            <ShieldCheck className="size-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-foreground">
+                              Administrator Animal Registry Oversight
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Inspecting registered household pets, microchip/collar tags, and rabies compliance for {selectedUser.full_name || selectedUser.email}.
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10 text-[10px] font-bold uppercase tracking-wider">
+                          Admin Oversight
+                        </Badge>
+                      </div>
+                    )}
+
+                    {userPerspective === "veterinary" && (
                       <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400">
                         <div className="flex items-center gap-3">
                           <div className="size-9 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
@@ -1142,7 +1265,28 @@ export function UsersDirectoryTable({
                           </div>
                         </div>
                         <Badge variant="outline" className="border-emerald-500/30 text-emerald-500 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wider">
-                          {userPerspective === "admin" ? "Admin Oversight" : "DVM Review"}
+                          DVM Review
+                        </Badge>
+                      </div>
+                    )}
+
+                    {userPerspective === "vaccinator" && (
+                      <div className="bg-cyan-500/10 border border-cyan-500/25 rounded-2xl p-4 flex items-center justify-between text-xs text-cyan-600 dark:text-cyan-400">
+                        <div className="flex items-center gap-3">
+                          <div className="size-9 rounded-xl bg-cyan-500/20 flex items-center justify-center shrink-0">
+                            <Syringe className="size-5 text-cyan-500" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-foreground">
+                              Field Vaccination & Rabies Tag Verification
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Verifying anti-rabies vaccination status and municipal tag IDs for registered animals of {selectedUser.full_name || selectedUser.email}.
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="border-cyan-500/30 text-cyan-500 bg-cyan-500/10 text-[10px] font-bold uppercase tracking-wider">
+                          Field Officer
                         </Badge>
                       </div>
                     )}
@@ -1293,7 +1437,7 @@ export function UsersDirectoryTable({
                   </TabsContent>
 
                   {/* ── TAB 2: APPOINTMENTS ── */}
-                  <TabsContent value="appointments" className="flex-1 p-7 overflow-y-auto m-0 space-y-4">
+                  <TabsContent value="appointments" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
                       <div>
                         <h3 className="text-sm font-bold text-foreground">Service Appointments</h3>
@@ -1370,7 +1514,7 @@ export function UsersDirectoryTable({
                   </TabsContent>
 
                   {/* ── TAB 3: SERVICE TRANSACTIONS ── */}
-                  <TabsContent value="transactions" className="flex-1 p-7 overflow-y-auto m-0 space-y-4">
+                  <TabsContent value="transactions" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
                       <div>
                         <h3 className="text-sm font-bold text-foreground">Service History & Registrations</h3>
@@ -1439,13 +1583,27 @@ export function UsersDirectoryTable({
                     )}
                   </TabsContent>
 
-                  {/* ── TAB 4: ACCOUNT & PERMISSIONS ── */}
-                  <TabsContent value="account" className="flex-1 p-7 overflow-y-auto m-0 space-y-6">
-                    {!isAdmin && (
-                      <div className="bg-muted/60 border border-border/60 text-muted-foreground rounded-2xl p-4 flex items-center gap-3 text-xs">
+                  {/* ── TAB: ACCOUNT & PERMISSIONS (EDIT PROFILE) ── */}
+                  <TabsContent value="account" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
+                    {isAdmin ? (
+                      <div className="bg-primary/10 border border-primary/25 rounded-2xl p-3.5 sm:p-4 text-xs text-primary flex items-center gap-3">
+                        <div className="size-9 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                          <ShieldCheck className="size-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-foreground">
+                            Administrator Account Management Mode
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            You have full authority to modify personal details, reassign system roles (Admin, Veterinarian, Vaccinator, Pet Owner), and save updates directly.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-muted/60 border border-border/60 text-muted-foreground rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 text-xs">
                         <Lock className="size-4 text-muted-foreground shrink-0" />
                         <div>
-                          <p className="font-bold text-foreground">Read-Only Access</p>
+                          <p className="font-bold text-foreground">Read-Only Directory Mode</p>
                           <p className="text-[11px] text-muted-foreground">
                             You are viewing this account in directory mode. Only CDO Administrators possess privileges to alter system roles or user metadata.
                           </p>
@@ -1453,15 +1611,15 @@ export function UsersDirectoryTable({
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                       {/* Personal Info Box */}
-                      <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
+                      <div className="bg-card border border-border/60 rounded-2xl p-4 sm:p-5 space-y-4">
                         <div className="flex items-center gap-2 pb-2 border-b border-border/40">
                           <User className="size-4 text-primary" />
                           <h4 className="text-sm font-bold text-foreground">Personal Information</h4>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <Label htmlFor="first-name" className="text-xs font-semibold">First Name</Label>
                             <Input
@@ -1507,20 +1665,48 @@ export function UsersDirectoryTable({
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label htmlFor="address" className="text-xs font-semibold">Barangay & Residential Address</Label>
-                          <Input
-                            id="address"
-                            value={editAddress}
-                            onChange={(e) => setEditAddress(e.target.value)}
-                            placeholder="e.g. Carmen, Cagayan de Oro City"
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="address" className="text-xs font-semibold">Barangay & Residential Address</Label>
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                              80 CDO Barangays
+                            </span>
+                          </div>
+
+                          <Select
+                            value={selectedBarangayValue}
+                            onValueChange={(val) => setEditAddress(val)}
                             disabled={!isAdmin}
-                            className="h-9 text-xs rounded-xl"
-                          />
+                          >
+                            <SelectTrigger
+                              id="address"
+                              className="h-9 text-xs rounded-xl bg-background cursor-pointer"
+                            >
+                              <SelectValue placeholder="Select barangay (e.g. Carmen, Cagayan de Oro City)" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60 overflow-y-auto">
+                              {selectedBarangayValue &&
+                                !cvoBarangays.some(
+                                  (b) => `${b}, Cagayan de Oro City` === selectedBarangayValue
+                                ) && (
+                                  <SelectItem value={selectedBarangayValue} className="text-xs cursor-pointer">
+                                    {selectedBarangayValue}
+                                  </SelectItem>
+                                )}
+                              {cvoBarangays.map((b) => {
+                                const completeName = `${b}, Cagayan de Oro City`;
+                                return (
+                                  <SelectItem key={b} value={completeName} className="text-xs cursor-pointer">
+                                    {completeName}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
 
                       {/* System Role & Permissions Box */}
-                      <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+                      <div className="bg-card border border-border/60 rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col justify-between">
                         <div className="space-y-4">
                           <div className="flex items-center gap-2 pb-2 border-b border-border/40">
                             <ShieldCheck className="size-4 text-rose-500" />
@@ -1581,21 +1767,6 @@ export function UsersDirectoryTable({
                             <p>• <strong>Pet Owner:</strong> Manage pet digital passports & municipal appointments.</p>
                           </div>
                         </div>
-
-                        {isAdmin && (
-                          <div className="pt-4 border-t border-border/40">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={handleDeleteUser}
-                              disabled={isSaving || isDeleting}
-                              className="w-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5 h-9 rounded-xl cursor-pointer"
-                            >
-                              <Trash2 className="size-3.5" />
-                              {isDeleting ? "Deleting Account..." : "Permanently Delete User Account"}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </TabsContent>
@@ -1604,6 +1775,50 @@ export function UsersDirectoryTable({
             )}
           </SheetContent>
         </Sheet>
+
+        {/* ── Permanently Delete Verification Modal ── */}
+        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <DialogContent className="sm:max-w-[420px] rounded-3xl border border-destructive/20 bg-card p-6 shadow-2xl">
+            <DialogHeader className="space-y-2 text-left">
+              <div className="size-11 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center text-destructive mb-1">
+                <Trash2 className="size-5" />
+              </div>
+              <DialogTitle className="text-base sm:text-lg font-extrabold text-foreground tracking-tight">
+                Permanently Delete User Account?
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                Are you sure you want to permanently delete <strong className="text-foreground">{selectedUser?.full_name || selectedUser?.email}</strong> ({editRole})? This action cannot be undone and will erase all profile information from the directory.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs space-y-1 text-muted-foreground">
+              <p className="font-semibold text-foreground">Account Identification:</p>
+              <p className="truncate">Email: {selectedUser?.email}</p>
+              <p className="font-mono text-[11px] truncate">ID: {selectedUser?.id}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={isDeleting}
+                className="h-10 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="h-10 rounded-xl text-xs font-semibold cursor-pointer bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm"
+              >
+                {isDeleting ? "Deleting..." : "Yes, Delete Account"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

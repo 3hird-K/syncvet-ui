@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
 import {
   Users,
   Shield,
@@ -11,8 +12,11 @@ import {
   ShieldCheck,
   PawPrint,
   Users as UsersIcon,
+  Lock,
+  ArrowRight,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@clerk/nextjs";
 import { UsersDirectoryTable } from "./users-directory-table";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
@@ -37,6 +41,7 @@ export default function UsersPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
+  const { user: currentClerkUser, isLoaded } = useUser();
 
   // TanStack Query for caching and reactivity
   const {
@@ -221,6 +226,53 @@ export default function UsersPage() {
       sub: "Vaccination Officers",
     },
   ];
+
+  const currentUserRole = useMemo(() => {
+    if (!currentClerkUser) return "Pet Owner";
+    const userInDb = users.find(
+      (u) =>
+        u.id === currentClerkUser.id ||
+        (currentClerkUser.primaryEmailAddress?.emailAddress &&
+          u.email.toLowerCase() ===
+            currentClerkUser.primaryEmailAddress.emailAddress.toLowerCase())
+    );
+    const roleString =
+      userInDb?.role ||
+      (currentClerkUser.unsafeMetadata?.roleTitle as string) ||
+      (currentClerkUser.publicMetadata?.role as string);
+    return normalizeSyncVetRole(roleString);
+  }, [currentClerkUser, users]);
+
+  if (isLoaded && currentUserRole === "Pet Owner") {
+    return (
+      <div className="flex-1 space-y-4 p-6 pt-16 bg-background min-h-screen text-foreground flex flex-col items-center justify-center">
+        <div className="max-w-md w-full text-center space-y-4 p-8 border border-border/70 rounded-3xl bg-card shadow-lg">
+          <div className="size-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 mx-auto flex items-center justify-center text-purple-500">
+            <Lock className="size-7" />
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-xl font-extrabold text-foreground tracking-tight">
+              CVO Staff Directory Restricted
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              The User Directory is reserved for City Veterinary Office staff (Administrators, Clinicians, and Vaccinators). As a registered Pet Owner, you have full access to manage your own pets and appointments.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+            <Button asChild variant="outline" className="w-full text-xs rounded-xl cursor-pointer">
+              <Link href="/dashboard">Return to Dashboard</Link>
+            </Button>
+            <Button asChild className="w-full text-xs rounded-xl bg-primary text-primary-foreground cursor-pointer">
+              <Link href="/pet-registry">
+                <span>View My Pets</span>
+                <ArrowRight className="size-3.5 ml-1.5" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">

@@ -18,13 +18,14 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
-import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { normalizeSyncVetRole, type SyncVetRole } from "@/data/syncvet-users";
+import { useCVO } from "@/lib/cvo-context";
 import { PawIcon } from "@/components/icons/paw-icon";
 import {
   DropdownMenu,
@@ -35,22 +36,74 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 
+import {
+  Stethoscope,
+  FileCheck2,
+  ShieldAlert,
+  UserCheck,
+  MessageSquare,
+} from "lucide-react";
+
 type NavItem = {
   label: string;
-  icon: typeof LayoutDashboard | typeof PawIcon;
+  icon: any;
   href: string | null;
   section?: string;
 };
 
-const navItems: NavItem[] = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-  { label: "Manage Users", icon: Users, href: "/users" },
-  { label: "Pet Registry", icon: PawIcon, href: "/pet-registry", section: "Animal Health" },
-  { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
-  { label: "Field Operations", icon: MapPin, href: "/field-operations" },
-  { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory", section: "Resource Planning" },
-  { label: "Barangay Analytics", icon: BarChart3, href: "/barangay-analytics" },
-];
+function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; items: NavItem[] } {
+  switch (role) {
+    case "Administrator":
+      return {
+        serviceCategoryTitle: "CVO Administrative Ops",
+        items: [
+          { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+          { label: "Citizen Inquiries & Chat", icon: MessageSquare, href: "/messages" },
+          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records", section: "City Veterinary Services" },
+          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+          { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations" },
+          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
+          { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
+          { label: "Manage Users", icon: Users, href: "/users", section: "Administration" },
+        ],
+      };
+    case "Veterinarian":
+      return {
+        serviceCategoryTitle: "Clinical Veterinary Care",
+        items: [
+          { label: "Clinical Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+          { label: "Telemedicine & Chat", icon: MessageSquare, href: "/messages" },
+          { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "Clinical Procedures" },
+          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
+          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
+        ],
+      };
+    case "Vaccinator":
+      return {
+        serviceCategoryTitle: "Field Vaccination Services",
+        items: [
+          { label: "Operations Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records", section: "Field Operations & Stock" },
+          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
+          { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
+          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+        ],
+      };
+    case "Pet Owner":
+    default:
+      return {
+        serviceCategoryTitle: "Citizen Pet Services",
+        items: [
+          { label: "Pet Owner Portal", icon: LayoutDashboard, href: "/pet-owner" },
+          { label: "My Pets & Passports", icon: PawIcon, href: "/pet-registry", section: "Pet Health & Care" },
+          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
+          { label: "Clinic Consultations", icon: Stethoscope, href: "/consultations" },
+          { label: "Veterinary Chat Desk", icon: MessageSquare, href: "/messages" },
+        ],
+      };
+  }
+}
 
 export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?: boolean; onItemClick?: () => void }) {
   const pathname = usePathname();
@@ -85,12 +138,13 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getPublicSupabaseClient();
+    const channelId = `sidebar-user-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`sidebar-user-${user.id}`)
+      .channel(channelId)
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "users",
           filter: `id=eq.${user.id}`,
@@ -102,6 +156,7 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
               ...old,
               ...updated,
             }));
+            queryClient.invalidateQueries({ queryKey: ["current-user-role", user.id] });
           }
         }
       )
@@ -113,16 +168,41 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   }, [user?.id, queryClient]);
 
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
-  const displayName = isLoaded && user ? dbUser?.full_name || user.fullName || user.username || "IT Officer" : "Neil Dime";
-  const userEmail = isLoaded && user?.primaryEmailAddress?.emailAddress ? user.primaryEmailAddress.emailAddress : "dime.neil03@gmail.com";
+  const displayName = isLoaded && user ? dbUser?.full_name || user.fullName || user.username || "Citizen" : "Loading...";
+  const rawEmail = isLoaded && user?.primaryEmailAddress?.emailAddress ? user.primaryEmailAddress.emailAddress : "";
+  const userEmail = rawEmail || "citizen@syncvet.cdo";
   const userAvatarUrl = dbUser?.avatar_url || (isLoaded && user?.imageUrl ? user.imageUrl : undefined);
   const userInitials = isLoaded && user && displayName 
     ? displayName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
-    : "ND";
-  const userRole = normalizeSyncVetRole(
+    : "CT";
+  const { activeRoleView } = useCVO();
+
+  const userEmailLower = rawEmail.toLowerCase();
+  const isAdminEmail = userEmailLower === "dime.neil03@gmail.com";
+  const isStaffMetadata =
+    metadata?.roleTitle === "Administrator" ||
+    metadata?.roleTitle === "Veterinarian" ||
+    metadata?.roleTitle === "Vaccinator" ||
+    metadata?.roleTitle === "Staff" ||
+    metadata?.accountType === "administrator" ||
+    metadata?.accountType === "veterinarian";
+
+  const isPetOwnerPath = pathname?.startsWith("/pet-owner") ?? false;
+
+  const dbOrMetaRole = normalizeSyncVetRole(
     dbUser?.role ||
     metadata?.roleTitle ||
-    (metadata?.accountType === "pet_owner" ? "Pet Owner" : "Administrator")
+    (isAdminEmail ? "Administrator" : isStaffMetadata ? (metadata?.roleTitle || "Administrator") : "Pet Owner")
+  );
+
+  const userRole =
+    activeRoleView === "Pet Owner" || isPetOwnerPath || (!dbUser?.role && !isAdminEmail && !isStaffMetadata)
+      ? "Pet Owner"
+      : dbOrMetaRole;
+
+  const { serviceCategoryTitle, items: activeNavItems } = useMemo(
+    () => getNavItemsForRole(userRole),
+    [userRole]
   );
 
   const handleLogout = async () => {
@@ -185,11 +265,11 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
       >
         {!collapsed && (
           <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Service Management
+            {serviceCategoryTitle}
           </p>
         )}
         <nav className="flex flex-col gap-1">
-          {navItems.map((item) => {
+          {activeNavItems.map((item: NavItem) => {
             const active =
               item.href === "/dashboard"
                 ? pathname === "/dashboard"

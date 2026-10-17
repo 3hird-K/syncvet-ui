@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CookieConsent } from "@/components/cookie-consent";
+import { AccountTerminationWatcher } from "@/components/auth/account-termination-watcher";
 import "./globals.css";
 
 const inter = Inter({
@@ -78,6 +79,27 @@ export default function RootLayout({
             storageKey="syncvet-theme"
             disableTransitionOnChange
           >
+            {/* Required by Clerk for Smart CAPTCHA / Bot Sign-up Protection */}
+            <div id="clerk-captcha" className="empty:hidden" />
+            <AccountTerminationWatcher />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  (function() {
+                    if (typeof window !== 'undefined') {
+                      var _err = console.error;
+                      console.error = function() {
+                        if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].indexOf('clerk-captcha') !== -1) {
+                          console.warn('[Clerk Bot Protection]:', arguments[0]);
+                          return;
+                        }
+                        return _err.apply(console, arguments);
+                      };
+                    }
+                  })();
+                `,
+              }}
+            />
             {children}
             <CookieConsent />
             <Toaster position="bottom-right" expand={true} />

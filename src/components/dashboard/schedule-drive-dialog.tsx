@@ -23,22 +23,55 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
+import { useCVO } from "@/lib/cvo-context";
+import { cvoBarangays } from "@/data/cvo-store";
 
 export function ScheduleDriveDialog() {
+  const { addFieldOperation } = useCVO();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [date, setDate] = useState<Date | undefined>();
+  const [barangay, setBarangay] = useState<string>("Lapasan");
+  const [operationType, setOperationType] = useState<string>("Mass Anti-Rabies Drive");
+  const [lead, setLead] = useState<string>("Officer Mark Velez");
+  const [targetPets, setTargetPets] = useState<number>(100);
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [notes, setNotes] = useState<string>("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (!barangay) {
+      toast.error("Please select a target barangay");
+      return;
+    }
 
-    setTimeout(() => {
-      setLoading(false);
-      toast.error("Database Connection Error", {
-        description: "The scheduling service is currently undergoing maintenance. Please try again later.",
+    setLoading(true);
+    try {
+      const scheduledDateStr = date
+        ? date.toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+
+      await addFieldOperation({
+        barangay,
+        type: operationType,
+        lead,
+        date: scheduledDateStr,
+        petsTarget: Number(targetPets) || 100,
+        petsVaccinated: 0,
+        status: "scheduled",
+        notes: notes || undefined,
       });
-    }, 1500);
+
+      toast.success("Field Operation Scheduled", {
+        description: `${operationType} scheduled for Brgy. ${barangay} on ${scheduledDateStr}.`,
+      });
+
+      setOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to schedule field operation");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,49 +88,52 @@ export function ScheduleDriveDialog() {
             <DialogTitle className="text-xl font-bold">Schedule Field Operation</DialogTitle>
           </div>
           <DialogDescription className="text-xs text-muted-foreground">
-            Plan a new mobile vaccination drive or assessment in a specific barangay.
+            Plan a new mobile vaccination drive or veterinary outreach in a specific barangay.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="barangay" className="text-[10px] font-bold uppercase tracking-widest">
+
+        <form onSubmit={handleSubmit} className="grid gap-4 py-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="barangay" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Target Barangay
               </Label>
-              <Select defaultValue="lapasan">
+              <Select value={barangay} onValueChange={setBarangay}>
                 <SelectTrigger id="barangay" className="h-9 text-xs">
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lapasan">Lapasan</SelectItem>
-                  <SelectItem value="carmen">Carmen</SelectItem>
-                  <SelectItem value="bulua">Bulua</SelectItem>
-                  <SelectItem value="kauswagan">Kauswagan</SelectItem>
-                  <SelectItem value="macasandig">Macasandig</SelectItem>
-                  <SelectItem value="gusa">Gusa</SelectItem>
+                <SelectContent className="max-h-56">
+                  {cvoBarangays.map((b) => (
+                    <SelectItem key={b} value={b} className="text-xs">
+                      {b}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="type" className="text-[10px] font-bold uppercase tracking-widest">
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="type" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Operation Type
               </Label>
-              <Select defaultValue="anti-rabies">
+              <Select value={operationType} onValueChange={setOperationType}>
                 <SelectTrigger id="type" className="h-9 text-xs">
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="anti-rabies">Mass Anti-Rabies Drive</SelectItem>
-                  <SelectItem value="deworming">Deworming Campaign</SelectItem>
-                  <SelectItem value="assessment">Stray Dog Assessment</SelectItem>
-                  <SelectItem value="mixed">Anti-Rabies + Registration</SelectItem>
+                  <SelectItem value="Mass Anti-Rabies Drive" className="text-xs">Mass Anti-Rabies Drive</SelectItem>
+                  <SelectItem value="Deworming Campaign" className="text-xs">Deworming Campaign</SelectItem>
+                  <SelectItem value="Stray Dog Assessment" className="text-xs">Stray Dog Assessment</SelectItem>
+                  <SelectItem value="Anti-Rabies + Registration" className="text-xs">Anti-Rabies + Registration</SelectItem>
+                  <SelectItem value="Other" className="text-xs">General Outreach</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest">
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Scheduled Date
               </Label>
               <DatePicker 
@@ -106,71 +142,72 @@ export function ScheduleDriveDialog() {
                 className="h-9 text-xs font-normal" 
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="target" className="text-[10px] font-bold uppercase tracking-widest">
-                Target Pets (Est.)
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="target" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Target Animals (Est.)
               </Label>
               <Input
                 id="target"
                 type="number"
-                placeholder="0"
+                min={1}
+                value={targetPets}
+                onChange={(e) => setTargetPets(Number(e.target.value) || 0)}
+                placeholder="100"
                 className="h-9 text-xs"
                 required
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="team" className="text-[10px] font-bold uppercase tracking-widest">
-                Assigned Team
-              </Label>
-              <Select defaultValue="team-a">
-                <SelectTrigger id="team" className="h-9 text-xs">
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="team-a">Mobile Unit — Team A</SelectItem>
-                  <SelectItem value="team-b">Mobile Unit — Team B</SelectItem>
-                  <SelectItem value="team-c">Mobile Unit — Team C</SelectItem>
-                  <SelectItem value="assessment">Assessment Unit</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="lead" className="text-[10px] font-bold uppercase tracking-widest">
-                Team Lead
-              </Label>
-              <Select defaultValue="mark">
-                <SelectTrigger id="lead" className="h-9 text-xs">
-                  <SelectValue placeholder="Select lead" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mark">Officer Mark Velez</SelectItem>
-                  <SelectItem value="elena">Dr. Elena Santos</SelectItem>
-                  <SelectItem value="sarah">Dr. Sarah Chen</SelectItem>
-                  <SelectItem value="jay">Officer Jay Ramos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="lead" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Officer-in-Charge / Field Lead
+            </Label>
+            <Select value={lead} onValueChange={setLead}>
+              <SelectTrigger id="lead" className="h-9 text-xs">
+                <SelectValue placeholder="Select lead" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Officer Mark Velez" className="text-xs">Officer Mark Velez (Field Operations)</SelectItem>
+                <SelectItem value="Dr. Elena Santos, DVM" className="text-xs">Dr. Elena Santos, DVM</SelectItem>
+                <SelectItem value="Dr. Sarah Chen, DVM" className="text-xs">Dr. Sarah Chen, DVM</SelectItem>
+                <SelectItem value="Officer Jay Ramos" className="text-xs">Officer Jay Ramos (Vaccinator)</SelectItem>
+                <SelectItem value="Dr. Helen Ann P. Tacandong, DVM" className="text-xs">Dr. Helen Ann P. Tacandong, DVM</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="notes" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Deployment Notes (Optional)
+            </Label>
+            <Input
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Barangay hall covered court deployment; cold-chain box checked"
+              className="h-9 text-xs"
+            />
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full sm:w-auto text-xs"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 size-3.5 animate-spin" />
+                  Scheduling...
+                </>
+              ) : (
+                "Confirm Schedule"
+              )}
+            </Button>
+          </DialogFooter>
         </form>
-        <DialogFooter>
-          <Button
-            type="submit"
-            onClick={(e) => handleSubmit(e as any)}
-            disabled={loading}
-            className="w-full sm:w-auto"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Scheduling...
-              </>
-            ) : (
-              "Confirm Schedule"
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

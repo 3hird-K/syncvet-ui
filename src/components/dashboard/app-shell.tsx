@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { PanelLeft, Menu } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Menu, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DashboardSidebar, SidebarContent } from "@/components/dashboard/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { OperationalNotifications } from "@/components/dashboard/operational-notifications";
 import {
   Sheet,
   SheetContent,
@@ -14,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname() || "";
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -61,11 +64,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <PanelLeft className="size-4" />
             </Button>
 
-            <span className="text-[10px] md:text-xs font-semibold uppercase tracking-widest text-muted-foreground truncate max-w-[150px] md:max-w-none">
-              SyncVet Dashboard
+            <span className="text-[10px] md:text-xs font-semibold uppercase tracking-widest text-muted-foreground truncate max-w-[200px] md:max-w-none">
+              {pathname.startsWith("/pet-owner")
+                ? "SyncVet Pet Owner Portal • Cagayan de Oro CVO"
+                : pathname.startsWith("/messages")
+                ? "SyncVet Telemedicine & Inquiry Desk • Cagayan de Oro CVO"
+                : "SyncVet Dashboard • City Veterinary Office"}
             </span>
           </div>
-          <ThemeToggle />
+
+          {/* ── Top Bar Action Controls: Realtime Operational Notifications & Theme Toggle ── */}
+          <div className="flex items-center gap-0.5 p-0.5 rounded-lg border border-border/50 bg-muted/25 shadow-2xs">
+            {/* Real-time Operational Notifications & Dispatch */}
+            <OperationalNotifications />
+
+            <div className="h-4 w-px bg-border/60 mx-0.5" />
+
+            {/* Theme Toggle Switcher */}
+            <ThemeToggle className="hover:bg-background/80" />
+          </div>
         </header>
 
         {/* ── Scrollable page content ── */}

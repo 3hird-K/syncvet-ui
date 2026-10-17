@@ -1,125 +1,92 @@
-import { ArrowUpRight } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+"use client";
+
+import { useCVO } from "@/lib/cvo-context";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-
-const activities = [
-  {
-    name: "Dr. Elena Santos",
-    initials: "ES",
-    avatarClass: "bg-blue-600",
-    action: "Confirmed vaccine inventory for",
-    highlight: "Anti-Rabies Batch Q3",
-    location: "CDO Central Storage — Zone 1",
-    time: "2 hours ago",
-    badge: "Inventory Verified",
-  },
-  {
-    name: "Officer Mark Velez",
-    initials: "MV",
-    avatarClass: "bg-emerald-600",
-    action: "Completed field vaccination drive in",
-    highlight: "Barangay Lapasan",
-    location: "Mobile Unit — Team A",
-    time: "5 hours ago",
-    badge: null as string | null,
-  },
-  {
-    name: "Dr. Sarah Chen",
-    initials: "SC",
-    avatarClass: "bg-sky-600",
-    action: "Uploaded diagnostic results for",
-    highlight: "Canine Parvovirus Case #842",
-    location: "Clinical Laboratory — Annex",
-    time: "Yesterday",
-    badge: "Urgent Review",
-  },
-] as const;
+import { Clock, ShieldCheck, Stethoscope, FileCheck2, MapPin } from "lucide-react";
 
 export function ActivityFeed({ className }: { className?: string }) {
+  const { auditLogs } = useCVO();
+
+  const getEntityIcon = (entity: string) => {
+    switch (entity) {
+      case "Consultation":
+        return <Stethoscope className="size-3.5 text-blue-500" />;
+      case "Certificate":
+        return <FileCheck2 className="size-3.5 text-emerald-500" />;
+      case "Field Operations":
+        return <MapPin className="size-3.5 text-primary" />;
+      case "Animal Control":
+        return <Clock className="size-3.5 text-amber-500" />;
+      default:
+        return <ShieldCheck className="size-3.5 text-primary" />;
+    }
+  };
+
   return (
-    <Card className={cn("flex h-full flex-col", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
+    <Card className={cn("flex h-full flex-col border-border", className)}>
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
-          <CardTitle className="text-lg font-bold tracking-tight">
-            System Activity
+          <CardTitle className="text-base font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Clock className="size-4 text-primary" />
+            Office Activity Timeline
           </CardTitle>
-          <CardDescription className="text-xs font-medium text-muted-foreground/40">
-            Latest operational field updates.
+          <CardDescription className="text-[11px] text-muted-foreground/80">
+            Real-time audit trail of official actions, clinical encounters, and field deployments
           </CardDescription>
         </div>
-        <Button
-          variant="link"
-          className="h-auto p-0 text-[10px] font-black uppercase tracking-[0.2em] text-primary transition-opacity hover:opacity-80"
-        >
-          View All
-        </Button>
+        <Badge variant="outline" className="text-[9px] text-muted-foreground font-mono">
+          CVO Audit v2
+        </Badge>
       </CardHeader>
 
-      <CardContent className="flex-1 space-y-6 py-2">
-        {activities.map((a) => (
-          <div key={a.name + a.time} className="flex gap-3">
-            <Avatar className="size-10 shrink-0 border border-white/5 ring-1 ring-white/5">
-              <AvatarFallback
-                className={cn(
-                  "text-[12px] font-bold text-white",
-                  a.avatarClass,
-                )}
-              >
-                {a.initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0 space-y-0.5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-white truncate">
-                  {a.name}
-                </p>
-                <span className="text-[10px] font-medium text-muted-foreground/30 shrink-0 ml-4">
-                  {a.time}
-                </span>
-              </div>
-              <p className="text-[13px] font-medium text-muted-foreground/60 leading-snug">
-                {a.action}{" "}
-                <span className="font-bold text-primary">
-                  {a.highlight}
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2 pt-1.5">
-                <span className="inline-flex items-center rounded-full bg-white/5 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-muted-foreground/60">
-                  {a.location}
-                </span>
-                {a.badge && (
-                  <Badge
-                    variant="outline"
-                    className="border-primary/20 bg-primary/5 text-[9px] font-black uppercase tracking-wider text-primary px-1.5 py-0"
-                  >
-                    {a.badge}
-                  </Badge>
-                )}
-              </div>
-            </div>
+      <CardContent className="flex-1 space-y-3 pt-0">
+        {auditLogs.length === 0 ? (
+          <div className="py-8 text-center border border-dashed rounded-lg border-border/80 bg-muted/10 space-y-2">
+            <Clock className="size-6 text-muted-foreground/40 mx-auto" />
+            <p className="text-xs font-semibold text-foreground">No Office Activity Recorded Yet</p>
+            <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+              Clinical encounters, certificates, animal control, and vaccinations will automatically stream here in real-time.
+            </p>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-3">
+            {auditLogs.slice(0, 5).map((log) => (
+              <div
+                key={log.id}
+                className="flex items-start gap-2.5 p-2 rounded-lg border border-border/50 bg-muted/15 text-xs hover:bg-muted/30 transition-colors"
+              >
+                <div className="size-6 rounded-md bg-muted flex items-center justify-center shrink-0 mt-0.5 border border-border/60">
+                  {getEntityIcon(log.entity)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="font-bold text-[11px] text-foreground truncate">
+                      {log.user}
+                    </p>
+                    <span className="text-[9px] font-mono text-muted-foreground shrink-0">
+                      {log.timestamp}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-medium text-primary">
+                    {log.action}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/80 leading-snug mt-0.5 line-clamp-2">
+                    {log.details}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
-
-      <CardFooter className="border-t border-border/50 justify-center py-6">
-        <Button
-          variant="link"
-          className="group h-auto p-0 text-xs font-bold text-muted-foreground/40 hover:text-foreground transition-all"
-        >
-          <ArrowUpRight className="mr-2 size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          Open Audit Logs
-        </Button>
-      </CardFooter>
     </Card>
   );
 }

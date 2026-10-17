@@ -4,10 +4,12 @@ import { useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useClerkSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function UserSyncProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, isSignedIn } = useUser();
   const supabase = useClerkSupabaseClient();
+  const queryClient = useQueryClient();
   const lastSyncedSignature = useRef<string>("");
 
   useEffect(() => {
@@ -20,6 +22,9 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
 
     async function syncUserToSupabase() {
       try {
+        if (typeof window !== "undefined" && sessionStorage.getItem("syncvet_account_deleted") === "true") {
+          return;
+        }
         lastSyncedSignature.current = signature;
         const email = currentUser.primaryEmailAddress?.emailAddress ?? "";
         const fullName =
@@ -88,6 +93,22 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.warn("Supabase user sync notice:", error.message);
+        } else {
+          // Invalidate sidebar and role queries immediately so the UI reflects the synced role
+          queryClient.invalidateQueries({ queryKey: ["current-user-role", currentUser.id] });
+          queryClient.invalidateQueries({ queryKey: ["current-user-role-sidebar", currentUser.id] });
+          queryClient.invalidateQueries({ queryKey: ["current-user-role-messages", currentUser.id] });
+        }
+
+        // Auto-assign roleTitle and accountType in Clerk unsafeMetadata if not yet set
+        if (!unsafeMeta.roleTitle && typeof currentUser.update === "function") {
+          currentUser.update({
+            unsafeMetadata: {
+              ...unsafeMeta,
+              roleTitle: role,
+              accountType: role === "Pet Owner" ? "pet_owner" : "staff",
+            },
+          }).catch(() => {});
         }
 
         // If Clerk metadata includes an array of pets, auto-sync them to public.pets table as well
