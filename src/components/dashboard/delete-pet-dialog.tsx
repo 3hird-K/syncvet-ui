@@ -51,21 +51,86 @@ export function DeletePetDialog({
         return old.filter((p: any) => p.id !== pet.id);
       });
 
-      // 1. Gracefully nullify foreign keys in child tables so PostgreSQL constraint does not block deletion
+      // 1. Find all appointments associated with this pet (by pet.id or pet.name) to cascade delete transactions
+      const petNameLower = pet.name?.toLowerCase();
+      let aptIds: string[] = [];
+
       try {
-        await supabase.from("appointments").update({ pet_id: null }).eq("pet_id", pet.id);
-      } catch {}
-      try {
-        await supabase.from("chats").update({ pet_id: null }).eq("pet_id", pet.id);
-      } catch {}
-      try {
-        await supabase.from("consultations").update({ pet_id: null }).eq("pet_id", pet.id);
-      } catch {}
-      try {
-        await supabase.from("vaccination_records").update({ pet_id: null }).eq("pet_id", pet.id);
+        const { data: aptData } = await supabase
+          .from("appointments")
+          .select("id")
+          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
+        if (aptData) {
+          aptIds = aptData.map((a) => a.id);
+        }
       } catch {}
 
-      // 2. Delete pet from Supabase `pets` table
+      // 2. Cascade delete appointments from Supabase
+      try {
+        await supabase
+          .from("appointments")
+          .delete()
+          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
+      } catch {}
+
+      // 3. Cascade delete service transactions (by appointment reference_id or pet title)
+      try {
+        if (aptIds.length > 0) {
+          for (const id of aptIds) {
+            await supabase
+              .from("service_transactions")
+              .delete()
+              .or(`reference_id.eq.${id},id.eq.${id}`);
+          }
+        }
+        if (pet.name) {
+          await supabase
+            .from("service_transactions")
+            .delete()
+            .ilike("title", `%${pet.name}%`);
+        }
+      } catch {}
+
+      // 4. Cascade delete consultations & chats & medical records for this pet
+      try {
+        await supabase
+          .from("consultations")
+          .delete()
+          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
+      } catch {}
+      try {
+        await supabase
+          .from("vaccination_records")
+          .delete()
+          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
+      } catch {}
+      try {
+        await supabase
+          .from("chats")
+          .delete()
+          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
+      } catch {}
+
+      // 5. Clean up localStorage cache
+      try {
+        const localApts = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+        const filteredApts = localApts.filter(
+          (a: any) =>
+            a.pet_id !== pet.id &&
+            a.pet_name?.toLowerCase() !== petNameLower
+        );
+        localStorage.setItem("syncvet_local_appointments", JSON.stringify(filteredApts));
+
+        const localConsultations = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
+        const filteredConsultations = localConsultations.filter(
+          (c: any) =>
+            c.petId !== pet.id &&
+            c.petName?.toLowerCase() !== petNameLower
+        );
+        localStorage.setItem("cvo_consultations_v2", JSON.stringify(filteredConsultations));
+      } catch {}
+
+      // 6. Delete pet from Supabase `pets` table
       const { data, error } = await supabase
         .from("pets")
         .delete()
@@ -76,15 +141,20 @@ export function DeletePetDialog({
         throw error;
       }
 
-      // 3. Invalidate and refetch all pet-related queries across components
+      // 7. Invalidate and refetch all pet-related queries across components
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["owner-pets"] }),
         queryClient.invalidateQueries({ queryKey: ["pets_registry"] }),
         queryClient.invalidateQueries({ queryKey: ["live_pets_count"] }),
         queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] }),
         queryClient.invalidateQueries({ queryKey: ["chat-user-pets"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-appointments"] }),
+        queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["consultations"] }),
         queryClient.refetchQueries({ queryKey: ["owner-pets"] }),
         queryClient.refetchQueries({ queryKey: ["pets_registry"] }),
+        queryClient.refetchQueries({ queryKey: ["user-appointments"] }),
       ]);
 
       // 4. Log to official municipal audit ledger

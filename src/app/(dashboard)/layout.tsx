@@ -9,6 +9,8 @@ import { CVOProvider } from "@/lib/cvo-context";
 import { ChatProvider } from "@/lib/chat-context";
 import { CitizenChatWidget } from "@/components/chat/citizen-chat-widget";
 
+import { DashboardRouteGuard } from "@/components/auth/dashboard-route-guard";
+
 export default function DashboardGroupLayout({
   children,
 }: {
@@ -27,8 +29,10 @@ export default function DashboardGroupLayout({
       <UserSyncProvider>
         <CVOProvider>
           <ChatProvider>
-            <AppShell>{children}</AppShell>
-            {!isMessagesPage && <CitizenChatWidget />}
+            <DashboardRouteGuard>
+              <AppShell>{children}</AppShell>
+              {!isMessagesPage && <CitizenChatWidget />}
+            </DashboardRouteGuard>
           </ChatProvider>
         </CVOProvider>
       </UserSyncProvider>

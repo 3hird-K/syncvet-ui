@@ -232,7 +232,7 @@ export function OfficialConsultationSheetDialog({
                 alt="City Veterinary Department Seal"
                 width={64}
                 height={64}
-                className="size-14 sm:size-16 object-contain"
+                className="size-14 sm:size-16 object-contain grayscale contrast-125 print:grayscale print:contrast-150"
                 priority
               />
             </div>

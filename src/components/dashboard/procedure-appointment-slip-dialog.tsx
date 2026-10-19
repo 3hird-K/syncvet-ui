@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { format } from "date-fns";
+import Image from "next/image";
+import Logo from "@/assets/logo-dark.png";
 import {
   Calendar,
   MapPin,
@@ -88,7 +90,107 @@ export function ProcedureAppointmentSlipDialog({
   if (!appointment) return null;
 
   const handlePrint = () => {
-    window.print();
+    const element = document.getElementById("cvo-appointment-slip");
+    if (!element) {
+      window.print();
+      return;
+    }
+
+    // Use isolated hidden print iframe so modal backdrop or dark theme does not print
+    let iframe = document.getElementById("cvo-slip-print-iframe") as HTMLIFrameElement | null;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "cvo-slip-print-iframe";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const styles = Array.from(document.querySelectorAll("link[rel='stylesheet'], style"))
+      .map((s) => s.outerHTML)
+      .join("\n");
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>CVO Appointment Pass - ${appointment.id}</title>
+          ${styles}
+          <style>
+            @page {
+              size: portrait;
+              margin: 10mm 12mm;
+            }
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+              width: 100% !important;
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            #cvo-appointment-slip {
+              border: 2px solid #000000 !important;
+              border-radius: 12px !important;
+              box-shadow: none !important;
+              width: 100% !important;
+              max-width: 580px !important;
+              margin: 0 auto !important;
+              padding: 18px 22px !important;
+              box-sizing: border-box !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+            }
+            #cvo-appointment-slip * {
+              color: #000000 !important;
+              border-color: #333333 !important;
+              background-color: transparent !important;
+            }
+            #cvo-appointment-slip .bg-muted\\/20,
+            #cvo-appointment-slip .bg-card {
+              background-color: #f8fafc !important;
+              border: 1px solid #cbd5e1 !important;
+            }
+            #cvo-appointment-slip .print-logo {
+              filter: grayscale(100%) contrast(160%) brightness(0.9) !important;
+              -webkit-filter: grayscale(100%) contrast(160%) brightness(0.9) !important;
+            }
+            #cvo-appointment-slip .qr-container {
+              background-color: #ffffff !important;
+              border: 1px solid #000000 !important;
+              padding: 4px !important;
+            }
+            .print\\:hidden {
+              display: none !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div style="padding: 10px;">
+            ${element.outerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe?.contentWindow?.focus();
+      iframe?.contentWindow?.print();
+    }, 300);
   };
 
   return (
@@ -103,17 +205,24 @@ export function ProcedureAppointmentSlipDialog({
           {/* Header Banner */}
           <div className="flex items-start justify-between border-b border-border/80 pb-4">
             <div className="flex items-center gap-3">
-              <div className="size-12 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-base shrink-0">
-                CVO
+              <div className="size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                <Image
+                  src={Logo}
+                  alt="City Veterinary Office Seal"
+                  width={52}
+                  height={52}
+                  className="size-full object-contain grayscale contrast-125 print-logo"
+                  priority
+                />
               </div>
               <div className="space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary print:text-black">
                   Republic of the Philippines • City of Cagayan de Oro
                 </p>
-                <h3 className="text-base font-bold tracking-tight text-foreground">
+                <h3 className="text-base font-bold tracking-tight text-foreground print:text-black">
                   City Veterinary Office Appointment Pass
                 </h3>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground print:text-neutral-700">
                   Official intake voucher for scheduled clinical municipal procedures
                 </p>
               </div>
@@ -121,7 +230,7 @@ export function ProcedureAppointmentSlipDialog({
 
             <Badge
               variant="outline"
-              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 print:border-black print:text-black"
             >
               {appointment.status}
             </Badge>
@@ -142,7 +251,7 @@ export function ProcedureAppointmentSlipDialog({
             </div>
 
             {qrCodeDataUrl && (
-              <div className="p-1.5 rounded-xl bg-white border border-border/60 shadow-2xs shrink-0">
+              <div className="p-1.5 rounded-xl bg-white border border-border/60 shadow-2xs shrink-0 qr-container">
                 <img
                   src={qrCodeDataUrl}
                   alt="Appointment QR"

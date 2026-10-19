@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOConsultation, isConsultationLockedByVet } from "@/data/cvo-store";
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
@@ -48,13 +50,13 @@ import {
   Trash2,
   MoreVertical,
   Scissors,
-  Settings2,
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MessengerIcon } from "@/components/icons/messenger-icon";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -93,8 +95,9 @@ import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 import { DeleteConsultationDialog } from "@/components/dashboard/delete-consultation-dialog";
 import { ScheduleProcedureDialog } from "@/components/dashboard/schedule-procedure-dialog";
 import { ProcedureAppointmentSlipDialog } from "@/components/dashboard/procedure-appointment-slip-dialog";
-import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
 import { getSlotConfiguration, PROCEDURE_SERVICES } from "@/lib/cvo-slots";
+import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
+import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -107,16 +110,11 @@ interface ChatMessage {
 }
 
 export default function PetOwnerPortalPage() {
+  const router = useRouter();
   const { user, isLoaded } = useUser();
   const { consultations, activeRoleView, setActiveRoleView } = useCVO();
   const { openChatWithPet, unreadCount } = useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
-
-  useEffect(() => {
-    if (activeRoleView !== "Pet Owner") {
-      setActiveRoleView("Pet Owner");
-    }
-  }, [activeRoleView, setActiveRoleView]);
 
   const [activeTab, setActiveTab] = useState("consultations");
   const [selectedConsultation, setSelectedConsultation] = useState<CVOConsultation | null>(null);
@@ -177,7 +175,7 @@ export default function PetOwnerPortalPage() {
   }, []);
 
   // Fetch current user database profile
-  const { data: dbUser } = useQuery({
+  const { data: dbUser, isLoading: isDbLoading } = useQuery({
     queryKey: ["current-user-role", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
@@ -190,6 +188,33 @@ export default function PetOwnerPortalPage() {
     },
     enabled: isLoaded && !!user?.id,
   });
+
+  const userEmail = (user?.primaryEmailAddress?.emailAddress || dbUser?.email || "").toLowerCase();
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
+  const userRole = normalizeSyncVetRole(
+    dbUser?.role ||
+    (user?.publicMetadata?.role as string) ||
+    (user?.unsafeMetadata?.roleTitle as string) ||
+    (isAdminEmail ? "Administrator" : undefined)
+  );
+  const isStaff =
+    isAdminEmail ||
+    userRole === "Administrator" ||
+    userRole === "Veterinarian" ||
+    userRole === "Vaccinator";
+
+  // If this is an Administrator or staff account, redirect them to the Administrator Dashboard
+  useEffect(() => {
+    if (isLoaded && !isDbLoading && isStaff) {
+      router.replace("/dashboard");
+    }
+  }, [isLoaded, isDbLoading, isStaff, router]);
+
+  useEffect(() => {
+    if (!isStaff && activeRoleView !== "Pet Owner") {
+      setActiveRoleView("Pet Owner");
+    }
+  }, [isStaff, activeRoleView, setActiveRoleView]);
 
   // Fetch pets owned by this user from Supabase (matching by owner_id or linked user profile)
   const { data: dbPets = [] } = useQuery({
@@ -228,9 +253,9 @@ export default function PetOwnerPortalPage() {
   });
   const queryClient = useQueryClient();
 
-  // Fetch procedure appointments scheduled by this owner
+  // Fetch procedure appointments scheduled by this owner (cascade filtered to currently registered pets)
   const { data: ownerAppointments = [], isLoading: loadingAppointments } = useQuery({
-    queryKey: ["user-appointments", user?.id, dbUser?.id],
+    queryKey: ["user-appointments", user?.id, dbUser?.id, dbPets],
     queryFn: async () => {
       const ownerId = dbUser?.id || user?.id;
       if (!ownerId) return [];
@@ -306,7 +331,48 @@ export default function PetOwnerPortalPage() {
         // ignore
       }
 
-      return list;
+      // 4. Cascade check: Only keep appointments for pets that currently exist in the user's registered pets.
+      // If the pet was deleted (or user has no registered pets), cascade remove orphaned appointments.
+      const validRegisteredPetNames = new Set(dbPets.map((p: any) => p.name?.trim().toLowerCase()));
+      const validRegisteredPetIds = new Set(dbPets.map((p: any) => p.id));
+
+      const validList: any[] = [];
+      const orphanedList: any[] = [];
+
+      list.forEach((item: any) => {
+        const matchesId = item.pet_id && validRegisteredPetIds.has(item.pet_id);
+        const matchesName = item.pet_name && validRegisteredPetNames.has(item.pet_name.trim().toLowerCase());
+
+        if (dbPets.length > 0 && (matchesId || matchesName)) {
+          validList.push(item);
+        } else {
+          orphanedList.push(item);
+        }
+      });
+
+      // Asynchronously purge orphaned appointments and transactions from DB and localStorage
+      if (orphanedList.length > 0) {
+        (async () => {
+          for (const o of orphanedList) {
+            try {
+              await supabase.from("appointments").delete().eq("id", o.id);
+            } catch {}
+            try {
+              await supabase
+                .from("service_transactions")
+                .delete()
+                .or(`reference_id.eq.${o.id},id.eq.${o.id}`);
+            } catch {}
+          }
+          try {
+            const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+            const remaining = local.filter((l: any) => !orphanedList.some((o: any) => o.id === l.id));
+            localStorage.setItem("syncvet_local_appointments", JSON.stringify(remaining));
+          } catch {}
+        })();
+      }
+
+      return validList;
     },
     enabled: isLoaded && (!!user?.id || !!dbUser?.id),
   });
@@ -411,19 +477,17 @@ export default function PetOwnerPortalPage() {
     }));
   }, [dbPets]);
 
-  // Consultations for this owner: match by owner name, contact, or registered pet IDs/names
+  // Consultations for this owner: must belong to a currently registered pet of this owner
   const ownerConsultations = useMemo(() => {
-    return consultations.filter(
-      (c) =>
-        c.ownerName.toLowerCase().includes(ownerName.toLowerCase()) ||
-        (ownerContact && c.ownerContact === ownerContact) ||
-        pets.some(
-          (p) =>
-            p.id.toLowerCase() === c.petId.toLowerCase() ||
-            p.name.toLowerCase() === c.petName.toLowerCase()
-        )
+    if (pets.length === 0) return [];
+    return consultations.filter((c) =>
+      pets.some(
+        (p) =>
+          (c.petId && p.id.toLowerCase() === c.petId.toLowerCase()) ||
+          (c.petName && p.name.toLowerCase() === c.petName.toLowerCase())
+      )
     );
-  }, [consultations, ownerName, ownerContact, pets]);
+  }, [consultations, pets]);
 
   // Primary pet for dynamic greetings and initial selections
   const primaryPetName = pets.length > 0 ? pets[0].name : "your pet";
@@ -481,211 +545,80 @@ export default function PetOwnerPortalPage() {
 
   const totalActiveVisits = activeAppointmentsCount + activeConsultationsCount;
 
+  if (!isLoaded || isDbLoading) {
+    return <DashboardSkeleton variant="pet-owner" />;
+  }
+
+  if (isStaff) {
+    return <DashboardSkeleton variant="admin" />;
+  }
+
   return (
-    <div className="flex-1 space-y-6 p-4 sm:p-6 md:p-8 bg-background min-h-screen text-foreground">
-      {/* ── 1. Warm Citizen Greeting & Municipal Command Desk ── */}
-      <div className="rounded-3xl border border-border/70 bg-gradient-to-br from-primary/10 via-primary/5 to-card p-5 sm:p-6 shadow-xs relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+    <div className="flex-1 p-4 sm:p-6 md:p-8 bg-background min-h-screen text-foreground">
+      {/* ── Main Dashboard Layout: Left Main Column + Right Sidebar (Announcements & Clinic Info) ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 sm:gap-6 items-start">
+        {/* ── LEFT COLUMN (Main Content: Profile Banner, Registered Pets, Services & History Tabs) ── */}
+        <div className="xl:col-span-8 space-y-6 min-w-0">
+          {/* ── 1. Warm Citizen Greeting & Municipal Command Desk ── */}
+          <div className="rounded-3xl border border-border/70 bg-gradient-to-br from-primary/10 via-primary/5 to-card p-5 sm:p-6 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
-          {/* Left: Avatar + Warm Greeting */}
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="relative shrink-0">
-              <Avatar className="size-14 sm:size-16 rounded-2xl border-2 border-primary/30 shadow-xs">
-                <AvatarImage src={ownerAvatar || undefined} alt={ownerName} className="object-cover" />
-                <AvatarFallback className="rounded-2xl bg-gradient-to-br from-primary to-emerald-700 text-white font-extrabold text-base sm:text-lg">
-                  {ownerName
-                    .split(" ")
-                    .map((n: string) => n[0])
-                    .slice(0, 2)
-                    .join("")
-                    .toUpperCase() || "PO"}
-                </AvatarFallback>
-              </Avatar>
-              <div
-                className="absolute -bottom-1 -right-1 size-5 rounded-full bg-emerald-500 border-2 border-background flex items-center justify-center text-white shadow-xs"
-                title="Verified CDO Citizen"
-              >
-                <CheckCircle2 className="size-3" />
+            <div className="relative z-10">
+              {/* Avatar + Warm Greeting */}
+              <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0">
+                <div className="relative shrink-0">
+                  <Avatar className="size-14 sm:size-16 rounded-2xl border-2 border-primary/30 shadow-xs">
+                    <AvatarImage src={ownerAvatar || undefined} alt={ownerName} className="object-cover" />
+                    <AvatarFallback className="rounded-2xl bg-gradient-to-br from-primary to-emerald-700 text-white font-extrabold text-base sm:text-lg">
+                      {ownerName
+                        .split(" ")
+                        .map((n: string) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase() || "PO"}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
+                      <Clock className="size-3" />
+                      PST: {time || "08:00 AM"}
+                    </span>
+                  </div>
+
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                    {greetingTimeOfDay}, <span className="text-primary">{ownerName}</span>!
+                  </h1>
+                  <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
+                    Welcome to your official Cagayan de Oro City Veterinary Office (CVO) pet health portal.
+                    {pets.length > 0 ? (
+                      <> You have <strong>{pets.length} companion animal{pets.length > 1 ? "s" : ""}</strong> registered with live municipal passports and digital health cards.</>
+                    ) : (
+                      <> Register your companion animals to access free municipal care, vaccination, and surgical quotas.</>
+                    )}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-bold gap-1">
-                  <ShieldCheck className="size-3" />
-                  Verified Resident • {ownerBarangay}, CDO
-                </Badge>
-                <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
-                  <Clock className="size-3" />
-                  PST: {time || "08:00 AM"}
-                </span>
+            {/* Minimalist CVO Helpline & Clinic Info Strip */}
+            <div className="mt-4 pt-3.5 border-t border-border/40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Building2 className="size-3.5 text-primary shrink-0" />
+                <span>CVO Clinic: J. Pacana St., Macabalan, CDO</span>
               </div>
-
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
-                {greetingTimeOfDay}, <span className="text-primary">{ownerName}</span>!
-              </h1>
-              <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
-                Welcome to your official Cagayan de Oro City Veterinary Office (CVO) pet health portal.
-                {pets.length > 0 ? (
-                  <> You have <strong>{pets.length} companion animal{pets.length > 1 ? "s" : ""}</strong> registered with live municipal passports and digital health cards.</>
-                ) : (
-                  <> Register your companion animals to access free municipal care, vaccination, and surgical quotas.</>
-                )}
-              </p>
+              <div className="flex items-center gap-2">
+                <Clock className="size-3.5 text-emerald-600 shrink-0" />
+                <span>Walk-in: Mon – Fri, 8:00 AM – 5:00 PM</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="size-3.5 text-primary shrink-0" />
+                <span className="font-mono font-medium">(088) 857-3180 • 100% Free for CDO</span>
+              </div>
             </div>
           </div>
-
-          {/* Right: Primary Chat & Quick Consultation Action */}
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <Button
-              onClick={() => openChatWithPet(pets[0])}
-              className="h-10 px-4 gap-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer rounded-xl relative transition-all"
-            >
-              <MessageSquareText className="size-4" />
-              <span>Ask a City Vet</span>
-              {unreadCount > 0 ? (
-                <span className="min-w-4 h-4 px-1 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center leading-none">
-                  {unreadCount}
-                </span>
-              ) : (
-                <span className="size-2 rounded-full bg-emerald-300 animate-pulse ml-0.5" />
-              )}
-            </Button>
-            <PetOwnerConsultationDialog
-              pets={pets}
-              initialPet={pets[0]}
-              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-              trigger={
-                <Button className="h-10 px-4 gap-2 text-xs font-bold bg-primary text-primary-foreground shadow-xs cursor-pointer rounded-xl hover:bg-primary/90 transition-all">
-                  <Stethoscope className="size-4" />
-                  <span>Request Consultation</span>
-                </Button>
-              }
-            />
-          </div>
-        </div>
-
-        {/* Minimalist CVO Helpline & Clinic Info Strip */}
-        <div className="mt-4 pt-3.5 border-t border-border/40 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <Building2 className="size-3.5 text-primary shrink-0" />
-            <span className="truncate">CVO Clinic: J. Pacana St., Macabalan, CDO</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="size-3.5 text-emerald-600 shrink-0" />
-            <span>Walk-in: Mon – Fri, 8:00 AM – 5:00 PM</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Phone className="size-3.5 text-primary shrink-0" />
-            <span className="font-mono font-medium">(088) 857-3180 • 100% Free for CDO</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 2. Health & Municipal Summary Metric Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Metric 1: Registered Companions */}
-        <div className="p-4 rounded-2xl border border-border/70 bg-card hover:border-primary/40 transition-all duration-200 shadow-2xs group flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Registered Companions
-            </span>
-            <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <PawPrint className="size-4" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-foreground tracking-tight">
-                {pets.length}
-              </span>
-              <span className="text-xs font-semibold text-muted-foreground">
-                Pet{pets.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {dogsCount} Dog{dogsCount !== 1 ? "s" : ""} • {catsCount} Cat{catsCount !== 1 ? "s" : ""} registered
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 2: Anti-Rabies Protection Rate */}
-        <div className="p-4 rounded-2xl border border-border/70 bg-card hover:border-emerald-500/40 transition-all duration-200 shadow-2xs group flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Rabies Protection
-            </span>
-            <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <ShieldCheck className="size-4" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight">
-                {pets.length > 0 ? `${Math.round((immunePetsCount / pets.length) * 100)}%` : "100%"}
-              </span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold">
-                {immunePetsCount}/{pets.length} Immune
-              </Badge>
-            </div>
-            <p className="text-[11px] text-muted-foreground truncate">
-              Compliant with RA 9482 Anti-Rabies Act
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 3: Active Visits & Passes */}
-        <div className="p-4 rounded-2xl border border-border/70 bg-card hover:border-indigo-500/40 transition-all duration-200 shadow-2xs group flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Active Clinic Visits
-            </span>
-            <div className="size-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <Calendar className="size-4" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold text-foreground tracking-tight">
-                {totalActiveVisits}
-              </span>
-              <span className="text-xs font-semibold text-muted-foreground">
-                In Queue / Booked
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {activeAppointmentsCount} Procedure{activeAppointmentsCount !== 1 ? "s" : ""} • {activeConsultationsCount} Clinical Case{activeConsultationsCount !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
-
-        {/* Metric 4: Daily Municipal Quotas */}
-        <div className="p-4 rounded-2xl border border-border/70 bg-card hover:border-amber-500/40 transition-all duration-200 shadow-2xs group flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Daily CVO Quotas
-            </span>
-            <div className="size-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <Activity className="size-4" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-base font-extrabold text-foreground">
-                {slotConfig.defaultVaccinationSlots} Vax
-              </span>
-              <span className="text-xs text-muted-foreground">•</span>
-              <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400">
-                {slotConfig.defaultSpayNeuterSlots} Surgery
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground truncate">
-              Free municipal slots open Mon–Fri
-            </p>
-          </div>
-        </div>
-      </div>
 
 
       {/* ── Annual Rabies Vaccination Reminder Alert ── */}
@@ -756,7 +689,7 @@ export default function PetOwnerPortalPage() {
 
           <div className="flex items-center gap-2">
             {/* Scroll buttons for desktop */}
-            {pets.length > 4 && (
+            {pets.length > 3 && (
               <div className="h-8 flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-xl border border-border/70 box-border">
                 <Button
                   variant="ghost"
@@ -789,7 +722,7 @@ export default function PetOwnerPortalPage() {
           </div>
         </div>
 
-        {/* Single-Row 4-Column Scrollable Carousel */}
+        {/* Single-Row Scrollable Carousel / Responsive Grid */}
         {pets.length === 0 ? (
           <Card className="p-8 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
             <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
@@ -814,9 +747,9 @@ export default function PetOwnerPortalPage() {
             ref={petsScrollRef}
             className={cn(
               "pb-1 pt-1 no-scrollbar",
-              pets.length <= 4
-                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-                : "flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory"
+              pets.length <= 3
+                ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5"
+                : "flex gap-3.5 overflow-x-auto scroll-smooth snap-x snap-mandatory"
             )}
           >
             {pets.map((pet) => {
@@ -831,7 +764,7 @@ export default function PetOwnerPortalPage() {
                   key={pet.id}
                   className={cn(
                     "transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col justify-between rounded-2xl bg-card border border-border/80 hover:border-primary/40 overflow-hidden group",
-                    pets.length > 4 && "w-[calc((100%-3rem)/4)] min-w-[280px] shrink-0 snap-start"
+                    pets.length > 3 && "w-[calc((100%-1rem)/2)] xl:w-[calc((100%-2rem)/3)] min-w-[250px] shrink-0 snap-start"
                   )}
                 >
                   <div className="p-4 space-y-3">
@@ -907,7 +840,7 @@ export default function PetOwnerPortalPage() {
                             onClick={() => openChatWithPet(pet)}
                             className="cursor-pointer gap-2 text-xs"
                           >
-                            <MessageSquareText className="size-3.5 text-emerald-600" />
+                            <MessengerIcon className="size-3.5 text-emerald-600" />
                             <span>Ask City Vet</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -1014,7 +947,7 @@ export default function PetOwnerPortalPage() {
       {/* ── 4. Main Services & Veterinary Communication Tabs ── */}
       <div className="space-y-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 h-auto p-1 bg-muted/50 border border-border/70 rounded-xl gap-1">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 h-auto p-1 bg-muted/50 border border-border/70 rounded-xl gap-1">
             <TabsTrigger value="consultations" className="text-xs font-bold gap-1.5 cursor-pointer py-2">
               <Stethoscope className="size-3.5" />
               <span>Consultations</span>
@@ -1062,7 +995,10 @@ export default function PetOwnerPortalPage() {
                 initialPet={pets[0]}
                 ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
                 trigger={
-                  <Button className="h-8 gap-1.5 text-xs font-bold bg-primary text-primary-foreground shadow-xs cursor-pointer">
+                  <Button
+                    size="sm"
+                    className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
+                  >
                     <Plus className="size-3.5" />
                     <span>New Consultation Request</span>
                   </Button>
@@ -1077,21 +1013,11 @@ export default function PetOwnerPortalPage() {
                   <Stethoscope className="size-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-bold text-sm text-foreground">No Consultations or Appointments Found</h3>
-                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    You have not submitted any consultation requests yet. Request clinical care or an appointment for your pet with the City Veterinary Office.
+                  <h3 className="font-bold text-sm text-foreground">No Consultations or Encounters Found</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    You have not submitted any consultation requests yet. Request clinical care or an encounter for your pet with the City Veterinary Office.
                   </p>
                 </div>
-                <PetOwnerConsultationDialog
-                  pets={pets}
-                  initialPet={pets[0]}
-                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                  trigger={
-                    <Button size="sm" className="gap-1.5 text-xs font-semibold cursor-pointer rounded-xl">
-                      <Plus className="size-3.5" /> Book Consultation Now
-                    </Button>
-                  }
-                />
               </Card>
             ) : (
               <div className="space-y-3">
@@ -1105,8 +1031,8 @@ export default function PetOwnerPortalPage() {
                       className="border-border hover:border-primary/40 transition-all shadow-xs"
                     >
                       <CardContent className="p-4 sm:p-5">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-2 flex-1">
+                        <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
+                          <div className="space-y-2 flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono text-xs font-extrabold text-foreground bg-muted px-2 py-0.5 rounded border border-border/80">
                                 Encounter #{c.encounterNo}
@@ -1128,8 +1054,8 @@ export default function PetOwnerPortalPage() {
                               </span>
                             </div>
 
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                 <h4 className="font-bold text-sm text-foreground">
                                   {c.petName} ({c.species} - {c.breed || "Aspin"})
                                 </h4>
@@ -1145,7 +1071,7 @@ export default function PetOwnerPortalPage() {
 
                               {c.diagnosis && (
                                 <div className="text-xs text-foreground bg-slate-50 dark:bg-muted/30 p-2.5 rounded-lg border border-border/60 space-y-1">
-                                  <div className="flex items-center justify-between">
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5">
                                     <span className="font-bold text-emerald-700 dark:text-emerald-400">
                                       Official Diagnosis: {c.diagnosis}
                                     </span>
@@ -1163,7 +1089,7 @@ export default function PetOwnerPortalPage() {
                           </div>
 
                           {/* Actions: View CVO Paper, Edit, Delete, Print */}
-                          <div className="flex flex-row md:flex-col items-center md:items-end gap-2 shrink-0">
+                          <div className="flex flex-wrap sm:flex-nowrap xl:flex-col items-stretch sm:items-center xl:items-end gap-2 shrink-0 pt-2 xl:pt-0 border-t xl:border-t-0 border-border/40">
                             <Button
                               variant="outline"
                               size="sm"
@@ -1177,7 +1103,7 @@ export default function PetOwnerPortalPage() {
                               <span>View Official CVO Paper</span>
                             </Button>
 
-                            <div className="flex items-center gap-1.5 w-full justify-between md:justify-end">
+                            <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between xl:justify-end">
                               {!isConsultationLockedByVet(c) ? (
                                 <Button
                                   variant="outline"
@@ -1228,33 +1154,18 @@ export default function PetOwnerPortalPage() {
           </TabsContent>
 
           {/* ════ TAB 2: Spay & Neuter & Vaccination Appointments ════ */}
-          <TabsContent value="procedures" className="space-y-4 pt-2">
+          <TabsContent value="procedures" className="space-y-3 pt-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-foreground">
-                  Municipal Spay & Neuter & Vaccination Appointments
+                  Appointments & Procedures
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Scheduled clinic appointments with live daily quotas ({slotConfig.defaultVaccinationSlots} vaccination slots, {slotConfig.defaultSpayNeuterSlots} spay/neuter surgery slots • Monday to Friday)
+                  Scheduled clinic appointments (Monday to Friday)
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <SlotCapacityManagerDialog
-                  onConfigChange={() => setSlotConfig(getSlotConfiguration())}
-                  trigger={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-border/80"
-                      title="Configure daily appointment quotas"
-                    >
-                      <Settings2 className="size-3.5 text-muted-foreground" />
-                      <span className="hidden sm:inline">Daily Quotas</span>
-                    </Button>
-                  }
-                />
-
+              <div className="flex items-center gap-2 shrink-0">
                 <ScheduleProcedureDialog
                   initialService="vaccination"
                   pets={pets}
@@ -1262,73 +1173,13 @@ export default function PetOwnerPortalPage() {
                   trigger={
                     <Button
                       size="sm"
-                      className="h-8 gap-1.5 text-xs font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs cursor-pointer"
+                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
                     >
-                      <Syringe className="size-3.5" />
-                      <span>Book Vaccination</span>
+                      <Plus className="size-3.5" />
+                      <span>Book Appointment</span>
                     </Button>
                   }
                 />
-
-                <ScheduleProcedureDialog
-                  initialService="spay-neuter"
-                  pets={pets}
-                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                  trigger={
-                    <Button
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs font-bold rounded-xl bg-primary text-primary-foreground shadow-xs cursor-pointer"
-                    >
-                      <Scissors className="size-3.5" />
-                      <span>Book Spay & Neuter</span>
-                    </Button>
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Quota & Operating Hours Overview Bar */}
-            <div className="p-3.5 rounded-2xl border border-border/70 bg-card/60 shadow-2xs grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                  <Syringe className="size-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground block">
-                    {slotConfig.defaultVaccinationSlots} Daily Vaccination Slots
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Mon – Fri • Core Rabies & Preventive
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 sm:border-l sm:border-border/60 sm:pl-3">
-                <div className="size-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
-                  <Scissors className="size-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground block">
-                    {slotConfig.defaultSpayNeuterSlots} Daily Surgery Slots
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Mon – Fri • Low-cost / Free Kapon
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 sm:border-l sm:border-border/60 sm:pl-3">
-                <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <MapPin className="size-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground block">
-                    CVO Central Clinic (Carmen)
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Monday to Friday (Weekends Closed)
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -1349,33 +1200,9 @@ export default function PetOwnerPortalPage() {
                     You have not booked any Spay & Neuter or Vaccination slots yet. Reserve your pet&apos;s appointment early to guarantee your daily quota slot.
                   </p>
                 </div>
-                <div className="flex items-center justify-center gap-2.5 pt-2 flex-wrap">
-                  <ScheduleProcedureDialog
-                    initialService="vaccination"
-                    pets={pets}
-                    ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                    trigger={
-                      <Button size="sm" className="gap-1.5 text-xs font-semibold cursor-pointer rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white">
-                        <Syringe className="size-3.5" />
-                        <span>Book Vaccination (10 Slots/Day)</span>
-                      </Button>
-                    }
-                  />
-                  <ScheduleProcedureDialog
-                    initialService="spay-neuter"
-                    pets={pets}
-                    ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                    trigger={
-                      <Button size="sm" className="gap-1.5 text-xs font-semibold cursor-pointer rounded-xl bg-primary text-primary-foreground">
-                        <Scissors className="size-3.5" />
-                        <span>Book Spay & Neuter (5 Slots/Day)</span>
-                      </Button>
-                    }
-                  />
-                </div>
               </Card>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {ownerAppointments.map((apt: any) => {
                   const isSpayNeuter = apt.service_id === "spay-neuter";
                   const aptPet = pets.find((p) => p.id === apt.pet_id || p.name === apt.pet_name);
@@ -1383,49 +1210,59 @@ export default function PetOwnerPortalPage() {
                   return (
                     <Card
                       key={apt.id}
-                      className={`border transition-all duration-200 rounded-2xl shadow-2xs hover:shadow-xs overflow-hidden ${
+                      className={cn(
+                        "border transition-all duration-200 rounded-xl shadow-2xs hover:shadow-xs overflow-hidden",
                         apt.status === "cancelled"
                           ? "opacity-60 bg-muted/20 border-border/50"
                           : isSpayNeuter
                           ? "border-indigo-500/20 bg-card hover:border-indigo-500/40"
                           : "border-emerald-500/20 bg-card hover:border-emerald-500/40"
-                      }`}
+                      )}
                     >
-                      <CardContent className="p-4 sm:p-5">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          {/* Left: Icon, Service, Pet, Date */}
-                          <div className="flex items-start gap-3.5">
+                      <CardContent className="p-3.5 sm:p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                          {/* Left: Icon & Details */}
+                          <div className="flex items-start sm:items-center gap-3 min-w-0">
                             <div
-                              className={`size-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                              className={cn(
+                                "size-10 rounded-xl flex items-center justify-center shrink-0 border",
                                 isSpayNeuter
                                   ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
                                   : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                              }`}
+                              )}
                             >
                               {isSpayNeuter ? (
-                                <Scissors className="size-5" />
+                                <Scissors className="size-4.5" />
                               ) : (
-                                <Syringe className="size-5" />
+                                <Syringe className="size-4.5" />
                               )}
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-mono font-bold text-muted-foreground">
-                                  #{apt.id.slice(0, 8).toUpperCase()}
+                                <span className="font-bold text-sm text-foreground">
+                                  {apt.pet_name}
                                 </span>
+                                {aptPet && (
+                                  <span className="text-xs text-muted-foreground hidden md:inline">
+                                    ({aptPet.species} • {aptPet.breed})
+                                  </span>
+                                )}
                                 <Badge
-                                  className={
+                                  variant="secondary"
+                                  className={cn(
+                                    "text-[10px] font-semibold px-2 py-0 h-4.5",
                                     isSpayNeuter
-                                      ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-bold text-[10px]"
-                                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]"
-                                  }
+                                      ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20"
+                                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
+                                  )}
                                 >
-                                  {isSpayNeuter ? "SPAY & NEUTER SURGERY" : "RABIES VACCINATION"}
+                                  {isSpayNeuter ? "Spay & Neuter" : "Rabies Vaccination"}
                                 </Badge>
                                 <Badge
                                   variant="outline"
-                                  className={`text-[10px] font-bold capitalize ${
+                                  className={cn(
+                                    "text-[10px] font-semibold capitalize px-1.5 py-0 h-4.5",
                                     apt.status === "confirmed"
                                       ? "border-emerald-500/40 text-emerald-600 bg-emerald-500/5"
                                       : apt.status === "completed"
@@ -1433,37 +1270,32 @@ export default function PetOwnerPortalPage() {
                                       : apt.status === "cancelled"
                                       ? "border-destructive/40 text-destructive bg-destructive/5"
                                       : "border-amber-500/40 text-amber-600 bg-amber-500/5"
-                                  }`}
+                                  )}
                                 >
                                   {apt.status}
                                 </Badge>
                               </div>
 
-                              <h4 className="text-base font-bold text-foreground flex items-center gap-1.5">
-                                <PawPrint className="size-4 text-primary" />
-                                <span>{apt.pet_name}</span>
-                                {aptPet && (
-                                  <span className="text-xs font-normal text-muted-foreground">
-                                    ({aptPet.species} • {aptPet.breed})
-                                  </span>
-                                )}
-                              </h4>
-
-                              <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs text-muted-foreground pt-0.5">
-                                <span className="flex items-center gap-1 text-foreground font-semibold">
-                                  <Calendar className="size-3.5 text-primary" />
+                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1 font-medium text-foreground">
+                                  <Calendar className="size-3 text-primary" />
                                   {format(new Date(apt.date), "EEEE, MMMM d, yyyy")}
                                 </span>
+                                <span className="text-border">•</span>
                                 <span className="flex items-center gap-1">
-                                  <MapPin className="size-3.5" />
-                                  {apt.location || "CVO Central Clinic, Carmen"}
+                                  <MapPin className="size-3 text-muted-foreground" />
+                                  {apt.location ? apt.location.replace("City Veterinary Office - ", "CVO ") : "CVO Carmen Central Clinic"}
+                                </span>
+                                <span className="text-border">•</span>
+                                <span className="font-mono text-[11px] text-muted-foreground">
+                                  #{apt.id.slice(0, 8).toUpperCase()}
                                 </span>
                               </div>
                             </div>
                           </div>
 
                           {/* Right: Actions */}
-                          <div className="flex flex-row md:flex-col items-center md:items-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-border/40">
+                          <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40 justify-end">
                             <Button
                               variant="outline"
                               size="sm"
@@ -1471,10 +1303,10 @@ export default function PetOwnerPortalPage() {
                                 setSelectedAppointmentForSlip(apt);
                                 setAppointmentSlipOpen(true);
                               }}
-                              className="h-9 gap-1.5 text-xs font-bold border-black/30 bg-card hover:bg-muted cursor-pointer shadow-xs w-full sm:w-auto"
+                              className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border hover:bg-muted cursor-pointer shadow-2xs"
                             >
                               <QrCode className="size-3.5 text-primary" />
-                              <span>View Appointment Pass</span>
+                              <span>Appointment Pass</span>
                             </Button>
 
                             {apt.status !== "cancelled" && apt.status !== "completed" && (
@@ -1482,10 +1314,10 @@ export default function PetOwnerPortalPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleCancelAppointment(apt.id)}
-                                className="h-8 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
                                 title="Cancel appointment and release slot"
                               >
-                                <span>Cancel Slot</span>
+                                Cancel
                               </Button>
                             )}
                           </div>
@@ -1500,31 +1332,55 @@ export default function PetOwnerPortalPage() {
 
           {/* ════ TAB 3: Vaccination & Rabies Ledger ════ */}
           <TabsContent value="vaccinations" className="space-y-4 pt-2">
-            <div>
-              <h3 className="text-base font-bold text-foreground">
-                Official Rabies & Preventive Immunization Ledger
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Certified records of anti-rabies vaccination administered by the Cagayan de Oro City Veterinary Office
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Official Rabies & Preventive Immunization Ledger
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Certified records of anti-rabies vaccination administered by the Cagayan de Oro City Veterinary Office
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <RegisterPetDialog
+                  trigger={
+                    <Button
+                      size="sm"
+                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
+                    >
+                      <Plus className="size-3.5" />
+                      <span>Register Pet</span>
+                    </Button>
+                  }
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {pets.length === 0 ? (
-                <Card className="col-span-full p-8 text-center text-muted-foreground border border-dashed">
-                  <p>No pet vaccination ledgers found. Register a pet to view certified immunization records.</p>
+                <Card className="col-span-full p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
+                  <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
+                    <Syringe className="size-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-bold text-sm text-foreground">No Pet Vaccination Ledgers Found</h3>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                      Register a pet to view certified immunization records and track rabies booster schedules.
+                    </p>
+                  </div>
                 </Card>
               ) : (
                 pets.map((pet) => (
-                  <Card key={pet.id} className="border-emerald-500/30 bg-emerald-500/5">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
+                  <Card key={pet.id} className="border-emerald-500/30 bg-emerald-500/5 shadow-xs">
+                    <CardHeader className="pb-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] shrink-0">
                           {pet.rabiesVaccinated ? "ANTI-RABIES PROTECTION" : "BOOSTER SCHEDULE DUE"}
                         </Badge>
-                        <span className="text-xs font-mono font-bold text-emerald-600">{pet.microchip}</span>
+                        <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{pet.microchip}</span>
                       </div>
-                      <CardTitle className="text-base font-bold mt-1">
+                      <CardTitle className="text-base font-bold mt-1.5 break-words">
                         {pet.name} ({pet.species} • {pet.breed})
                       </CardTitle>
                       <CardDescription className="text-xs">
@@ -1625,7 +1481,7 @@ export default function PetOwnerPortalPage() {
             <Card className="border-emerald-500/40 bg-emerald-500/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="space-y-1">
                 <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
-                  <MessageSquareText className="size-4 text-emerald-600" /> Need immediate advice from our veterinary team?
+                  <MessengerIcon className="size-4 text-emerald-600" /> Need immediate advice from our veterinary team?
                 </h4>
                 <p className="text-xs text-muted-foreground">
                   Our clinicians are online to review rabies immunity history, recommend nearest facilities, and answer care questions.
@@ -1636,8 +1492,8 @@ export default function PetOwnerPortalPage() {
                 onClick={() => openChatWithPet(pets[0])}
                 className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shrink-0"
               >
-                <MessageSquareText className="size-3.5" />
-                <span>Open Veterinary Chat Desk</span>
+                <MessengerIcon className="size-3.5" />
+                <span>Ask a Veterinarian</span>
               </Button>
             </Card>
           </TabsContent>
@@ -1734,8 +1590,27 @@ export default function PetOwnerPortalPage() {
           </TabsContent>
         </Tabs>
       </div>
+    </div>
 
-      {/* ── Official Consultation Sheet Dialog (Replica of paper from photo) ── */}
+    {/* ── RIGHT COLUMN (2 Stacked Cards on Desktop, 2 Columns on Tablet, 1 Column on Mobile) ── */}
+    <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 xl:sticky xl:top-4">
+      {/* Top Card: Official CVO Announcements & Public Bulletins */}
+      <CVOAnnouncementsCard
+        currentUserId={user?.id}
+        currentUserName={user?.fullName || dbUser?.full_name || "City Veterinary Staff"}
+        currentUserRole={userRole}
+        isStaff={isStaff}
+      />
+
+      {/* Bottom Card: CVO Municipal Clinic Services, Daily Quotas & Emergency Hotline */}
+      <CVOClinicInfoCard
+        vaxSlots={slotConfig.defaultVaccinationSlots}
+        surgerySlots={slotConfig.defaultSpayNeuterSlots}
+      />
+    </div>
+  </div>
+
+  {/* ── Official Consultation Sheet Dialog (Replica of paper from photo) ── */}
       <OfficialConsultationSheetDialog
         consultation={selectedConsultation}
         open={sheetOpen}

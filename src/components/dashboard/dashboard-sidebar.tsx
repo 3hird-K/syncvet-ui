@@ -41,8 +41,8 @@ import {
   FileCheck2,
   ShieldAlert,
   UserCheck,
-  MessageSquare,
 } from "lucide-react";
+import { MessengerIcon } from "@/components/icons/messenger-icon";
 
 type NavItem = {
   label: string;
@@ -58,7 +58,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         serviceCategoryTitle: "CVO Administrative Ops",
         items: [
           { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-          { label: "Citizen Inquiries & Chat", icon: MessageSquare, href: "/messages" },
+          { label: "Citizen Inquiries & Chat", icon: MessengerIcon, href: "/messages" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records", section: "City Veterinary Services" },
           { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations" },
@@ -72,7 +72,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         serviceCategoryTitle: "Clinical Veterinary Care",
         items: [
           { label: "Clinical Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-          { label: "Telemedicine & Chat", icon: MessageSquare, href: "/messages" },
+          { label: "Telemedicine & Chat", icon: MessengerIcon, href: "/messages" },
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "Clinical Procedures" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
           { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
@@ -96,10 +96,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         serviceCategoryTitle: "Citizen Pet Services",
         items: [
           { label: "Pet Owner Portal", icon: LayoutDashboard, href: "/pet-owner" },
-          { label: "My Pets & Passports", icon: PawIcon, href: "/pet-registry", section: "Pet Health & Care" },
-          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
-          { label: "Clinic Consultations", icon: Stethoscope, href: "/consultations" },
-          { label: "Veterinary Chat Desk", icon: MessageSquare, href: "/messages" },
+          { label: "Ask a Veterinarian", icon: MessengerIcon, href: "/messages" },
         ],
       };
   }
@@ -195,10 +192,14 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
     (isAdminEmail ? "Administrator" : isStaffMetadata ? (metadata?.roleTitle || "Administrator") : "Pet Owner")
   );
 
-  const userRole =
-    activeRoleView === "Pet Owner" || isPetOwnerPath || (!dbUser?.role && !isAdminEmail && !isStaffMetadata)
-      ? "Pet Owner"
-      : dbOrMetaRole;
+  const userRole: SyncVetRole =
+    isAdminEmail || dbOrMetaRole === "Administrator"
+      ? "Administrator"
+      : dbOrMetaRole === "Veterinarian"
+      ? "Veterinarian"
+      : dbOrMetaRole === "Vaccinator"
+      ? "Vaccinator"
+      : "Pet Owner";
 
   const { serviceCategoryTitle, items: activeNavItems } = useMemo(
     () => getNavItemsForRole(userRole),

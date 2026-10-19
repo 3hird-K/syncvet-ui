@@ -23,8 +23,10 @@ export function GoogleSignInButton({
   const { isSignedIn, isLoaded: isUserLoaded, user } = useUser();
   const [loading, setLoading] = useState(false);
 
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
-  const isOwner = metadata?.accountType === "pet_owner" || metadata?.roleTitle === "Pet Owner";
+  const isOwner = !isAdminEmail && (metadata?.accountType === "pet_owner" || metadata?.roleTitle === "Pet Owner");
   const destination = isOwner ? "/pet-owner" : "/dashboard";
 
   useEffect(() => {

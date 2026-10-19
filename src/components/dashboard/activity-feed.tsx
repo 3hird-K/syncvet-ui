@@ -32,22 +32,28 @@ export function ActivityFeed({ className }: { className?: string }) {
 
   return (
     <Card className={cn("flex h-full flex-col border-border", className)}>
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <div>
-          <CardTitle className="text-base font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Clock className="size-4 text-primary" />
-            Office Activity Timeline
-          </CardTitle>
-          <CardDescription className="text-[11px] text-muted-foreground/80">
-            Real-time audit trail of official actions, clinical encounters, and field deployments
-          </CardDescription>
+      <CardHeader className="p-4 sm:p-5 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 border border-primary/20">
+              <Clock className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base font-bold tracking-tight text-foreground leading-snug">
+                Office Activity Timeline
+              </CardTitle>
+              <CardDescription className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2 sm:line-clamp-none">
+                Real-time audit trail of official actions, clinical encounters, and field deployments
+              </CardDescription>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-[9px] text-muted-foreground font-mono shrink-0">
+            CVO Audit v2
+          </Badge>
         </div>
-        <Badge variant="outline" className="text-[9px] text-muted-foreground font-mono">
-          CVO Audit v2
-        </Badge>
       </CardHeader>
 
-      <CardContent className="flex-1 space-y-3 pt-0">
+      <CardContent className="flex-1 space-y-3 pt-0 max-h-[420px] overflow-y-auto">
         {auditLogs.length === 0 ? (
           <div className="py-8 text-center border border-dashed rounded-lg border-border/80 bg-muted/10 space-y-2">
             <Clock className="size-6 text-muted-foreground/40 mx-auto" />
@@ -58,7 +64,7 @@ export function ActivityFeed({ className }: { className?: string }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {auditLogs.slice(0, 5).map((log) => (
+            {auditLogs.slice(0, 3).map((log) => (
               <div
                 key={log.id}
                 className="flex items-start gap-2.5 p-2 rounded-lg border border-border/50 bg-muted/15 text-xs hover:bg-muted/30 transition-colors"

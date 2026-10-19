@@ -91,51 +91,51 @@ export function PublicHealthOverview() {
 
   return (
     <Card className="border-border">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3">
+        <div>
           <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-            <ShieldCheck className="size-4 text-emerald-500" />
-            Public Health & Rabies Surveillance
+            <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
+            <span>Public Health & Rabies Surveillance</span>
           </CardTitle>
-          <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-500/10 border-emerald-500/20">
-            Target Herd Immunity: 70%
-          </Badge>
+          <CardDescription className="text-[11px] text-muted-foreground/80">
+            City-wide Rabies control program metrics, live bite case surveillance, and barangay priority zones
+          </CardDescription>
         </div>
-        <CardDescription className="text-[11px] text-muted-foreground/80">
-          City-wide Rabies control program metrics, live bite case surveillance, and barangay priority zones
-        </CardDescription>
+        <Badge variant="outline" className="text-[10px] text-emerald-600 bg-emerald-500/10 border-emerald-500/20 shrink-0 self-start sm:self-auto">
+          Target Herd Immunity: 70%
+        </Badge>
       </CardHeader>
 
       <CardContent className="space-y-4 pt-0">
         {/* Core Stats Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Rabies Doses Logged</p>
-            <p className="text-lg font-bold text-foreground mt-0.5">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5">
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border/60 bg-muted/20 min-w-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Rabies Doses</p>
+            <p className="text-base sm:text-lg font-bold text-foreground mt-0.5 truncate">
               {vaxCount} <span className="text-[11px] font-normal text-muted-foreground">doses</span>
             </p>
-            <p className="text-[9px] text-emerald-600 font-medium mt-1">Live database total</p>
+            <p className="text-[9px] text-emerald-600 font-medium mt-1 truncate">Live database total</p>
           </div>
-          <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Registered Pets</p>
-            <p className="text-lg font-bold text-foreground mt-0.5">
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border/60 bg-muted/20 min-w-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Registered Pets</p>
+            <p className="text-base sm:text-lg font-bold text-foreground mt-0.5 truncate">
               {petCount} <span className="text-[11px] font-normal text-muted-foreground">pets</span>
             </p>
-            <p className="text-[9px] text-blue-500 font-medium mt-1">Total in CDO registry</p>
+            <p className="text-[9px] text-blue-500 font-medium mt-1 truncate">Total in CDO registry</p>
           </div>
-          <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Barangays Active</p>
-            <p className="text-lg font-bold text-foreground mt-0.5">
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border/60 bg-muted/20 min-w-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Barangays Active</p>
+            <p className="text-base sm:text-lg font-bold text-foreground mt-0.5 truncate">
               {barangaysCoveredCount} <span className="text-[11px] font-normal text-muted-foreground">/ 80</span>
             </p>
-            <p className="text-[9px] text-muted-foreground font-medium mt-1">From real clinical records</p>
+            <p className="text-[9px] text-muted-foreground font-medium mt-1 truncate">Real clinical records</p>
           </div>
-          <div className="p-2.5 rounded-lg border border-border/60 bg-muted/20">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Bite Incident Watch</p>
-            <p className={`text-lg font-bold mt-0.5 ${biteCases.length > 0 ? "text-amber-500" : "text-emerald-500"}`}>
+          <div className="p-2 sm:p-2.5 rounded-lg border border-border/60 bg-muted/20 min-w-0">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">Bite Incidents</p>
+            <p className={`text-base sm:text-lg font-bold mt-0.5 truncate ${biteCases.length > 0 ? "text-amber-500" : "text-emerald-500"}`}>
               {biteCases.length} cases
             </p>
-            <p className="text-[9px] text-muted-foreground font-medium mt-1">Under 14-day quarantine</p>
+            <p className="text-[9px] text-muted-foreground font-medium mt-1 truncate">14-day quarantine</p>
           </div>
         </div>
 

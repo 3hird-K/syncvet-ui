@@ -207,44 +207,40 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
   const [offlineRecords, setOfflineRecords] = useState<CVOOfflineVaccinationRecord[]>([]);
   const [activeRoleView, setActiveRoleView] = useState<"Administrator" | "Veterinarian" | "Vaccinator" | "Staff" | "Pet Owner">("Administrator");
 
-  // Sync role view with logged in user role (e.g. Pet Owner)
+  // Sync role view with logged in user role (e.g. Administrator, Pet Owner)
   useEffect(() => {
     if (!isUserLoaded || !user) return;
     const meta = user.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
     const userEmail = user.primaryEmailAddress?.emailAddress?.toLowerCase();
     const isAdminEmail = userEmail === "dime.neil03@gmail.com";
-    const isStaff =
-      isAdminEmail ||
-      meta?.roleTitle === "Administrator" ||
-      meta?.roleTitle === "Veterinarian" ||
-      meta?.roleTitle === "Vaccinator" ||
-      meta?.roleTitle === "Staff" ||
-      meta?.accountType === "administrator" ||
-      meta?.accountType === "veterinarian";
 
-    const isPetOwnerPath = typeof window !== "undefined" && window.location.pathname.startsWith("/pet-owner");
+    const checkUserRole = async () => {
+      try {
+        const { data } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
 
-    if (!isStaff || isPetOwnerPath || meta?.roleTitle === "Pet Owner" || meta?.accountType === "pet_owner" || userEmail === "itcgeek03@gmail.com") {
-      setActiveRoleView("Pet Owner");
-    } else {
-      const checkDb = async () => {
-        try {
-          const { data } = await supabase
-            .from("users")
-            .select("role")
-            .eq("id", user.id)
-            .maybeSingle();
+        const dbRole = data?.role ? normalizeSyncVetRole(data.role) : null;
+        const effectiveRole =
+          dbRole ||
+          (isAdminEmail ? "Administrator" : meta?.roleTitle ? normalizeSyncVetRole(meta.roleTitle) : "Pet Owner");
 
-          if (data?.role) {
-            const role = normalizeSyncVetRole(data.role);
-            if (role === "Pet Owner") {
-              setActiveRoleView("Pet Owner");
-            }
-          }
-        } catch {}
-      };
-      checkDb();
-    }
+        if (effectiveRole === "Administrator" || effectiveRole === "Veterinarian" || effectiveRole === "Vaccinator") {
+          setActiveRoleView(effectiveRole);
+        } else {
+          setActiveRoleView("Pet Owner");
+        }
+      } catch {
+        if (isAdminEmail) {
+          setActiveRoleView("Administrator");
+        } else {
+          setActiveRoleView("Pet Owner");
+        }
+      }
+    };
+    checkUserRole();
   }, [isUserLoaded, user, supabase]);
 
   // ── TanStack Query 1: Consultations ──

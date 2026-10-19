@@ -259,20 +259,20 @@ export function MetricCards() {
   const metrics = getMetrics();
 
   return (
-    <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4 pt-1">
+    <div className="grid gap-3 sm:gap-4 grid-cols-2 xl:grid-cols-4 pt-1">
       {metrics.map((m) => (
-        <Card key={m.title} className="bg-card border-border shadow-xs rounded-xl overflow-hidden relative group py-0 transition-all hover:border-primary/40">
+        <Card key={m.title} className="bg-card border-border shadow-xs rounded-xl overflow-hidden relative group py-0 transition-all hover:border-primary/40 min-w-0">
           <div className={cn("absolute inset-0 bg-gradient-to-br via-transparent to-transparent pointer-events-none", m.gradient)} />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-1 relative z-10">
-            <div className="flex items-center gap-2">
-              <m.icon className={cn("h-4 w-4", m.iconClass)} />
-              <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{m.title}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 sm:p-4 pb-1 relative z-10 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <m.icon className={cn("h-4 w-4 shrink-0", m.iconClass)} />
+              <CardTitle className="text-[10px] sm:text-[11px] font-bold text-muted-foreground uppercase tracking-widest truncate">{m.title}</CardTitle>
             </div>
           </CardHeader>
-          <CardContent className="p-4 pt-1 relative z-10">
-            <div className="text-2xl font-extrabold tracking-tight text-foreground">{m.value}</div>
-            <div className="flex items-center gap-1.5 mt-2">
-              <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-md", m.badgeClass)}>{m.badge}</span>
+          <CardContent className="p-3 sm:p-4 pt-1 relative z-10 min-w-0">
+            <div className="text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">{m.value}</div>
+            <div className="flex items-center gap-1.5 mt-2 min-w-0 flex-wrap">
+              <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0", m.badgeClass)}>{m.badge}</span>
               <p className="text-[10px] text-muted-foreground/70 truncate">{m.sub}</p>
             </div>
           </CardContent>

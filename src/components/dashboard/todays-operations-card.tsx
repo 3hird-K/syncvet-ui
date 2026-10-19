@@ -38,19 +38,23 @@ export function TodaysOperationsCard() {
 
   return (
     <Card className="border-border">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <div>
-          <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-            <Clock className="size-4 text-primary" />
-            Today&apos;s Clinic Operations & Queue
-          </CardTitle>
-          <CardDescription className="text-[11px] text-muted-foreground/80">
-            Real-time walk-in clinical consultations, examinations, and treatment encounters
-          </CardDescription>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/consultations">
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 cursor-pointer">
+      <CardHeader className="p-4 sm:p-5 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 border border-primary/20">
+              <Clock className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base font-bold text-foreground leading-snug">
+                Today&apos;s Clinic Operations & Queue
+              </CardTitle>
+              <CardDescription className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2 sm:line-clamp-none">
+                Real-time walk-in clinical consultations, examinations, and treatment encounters
+              </CardDescription>
+            </div>
+          </div>
+          <Link href="/consultations" className="shrink-0">
+            <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs gap-1 cursor-pointer">
               <Plus className="size-3" /> New Encounter
             </Button>
           </Link>

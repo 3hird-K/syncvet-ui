@@ -46,6 +46,7 @@ import {
   X,
   Reply,
   ChevronDown,
+  ChevronLeft,
   Loader2,
   PanelLeft,
   Undo2,
@@ -368,6 +369,33 @@ function MessagesContent() {
   const [replyingTo, setReplyingTo] = useState<ChatReplyInfo | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [mobileView, setMobileView] = useState<"list" | "chat">("chat");
+
+  // Auto-shrink Chats sidebar on smaller screen sizes (< 1024px)
+  useEffect(() => {
+    let previousWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+
+    // Auto-shrink on initial mount if screen is small
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setIsSidebarCollapsed(true);
+    }
+
+    const handleResize = () => {
+      const currentWidth = window.innerWidth;
+      // When resizing down across 1024px, auto-collapse
+      if (currentWidth < 1024 && previousWidth >= 1024) {
+        setIsSidebarCollapsed(true);
+      }
+      // When resizing up across 1024px, auto-expand
+      else if (currentWidth >= 1024 && previousWidth < 1024) {
+        setIsSidebarCollapsed(false);
+      }
+      previousWidth = currentWidth;
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Backreading and scroll management states
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -1202,46 +1230,39 @@ function MessagesContent() {
     <div className="flex flex-col h-[calc(100vh-68px)] bg-background text-foreground overflow-hidden">
       {/* ── Main Messenger Container (Exact Messenger Split-View Layout) ── */}
       <div className="flex-1 flex overflow-hidden border-t border-border/50">
-        {/* ── 1. Left Sidebar: Chats List ── */}
+        {/* ── 1. Left Sidebar: Chats List (Auto-shrinks on smaller screens & full-width on mobile list view) ── */}
         <aside
           className={cn(
-            "flex flex-col border-r border-border/60 bg-card/60 backdrop-blur-xs shrink-0 select-none transition-all duration-300 ease-in-out",
-            isSidebarCollapsed ? "w-[72px]" : "w-80 sm:w-88 md:w-96"
+            "flex-col border-r border-border/60 bg-card/60 backdrop-blur-xs shrink-0 select-none transition-all duration-300 ease-in-out",
+            mobileView === "list" ? "w-full flex" : "hidden md:flex",
+            isSidebarCollapsed ? "md:w-[72px]" : "md:w-80 lg:w-88 xl:w-96"
           )}
         >
           {/* Sidebar Top: "Chats" Header with Minimize / Expand Button */}
-          {isSidebarCollapsed ? (
-            <div className="p-3 pb-2 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(false)}
-                className="size-7 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-                title="Expand sidebar"
-                aria-label="Expand sidebar"
-              >
-                <PanelLeft className="size-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="p-3.5 pb-2 flex items-center justify-between">
+          <div className="p-3.5 pb-2 flex items-center justify-between border-b border-border/40 shrink-0">
+            <div className={cn(isSidebarCollapsed && "md:hidden")}>
               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-foreground">
                 Chats
               </h1>
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(true)}
-                className="size-7 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-                title="Minimize sidebar"
-                aria-label="Minimize sidebar"
-              >
-                <PanelLeft className="size-4" />
-              </button>
+              <p className="text-[11px] text-muted-foreground md:hidden font-medium">
+                Official Cagayan de Oro City Veterinary Telemedicine
+              </p>
             </div>
-          )}
+            {/* Desktop-only collapse/expand button */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              className="hidden md:flex size-7 rounded-lg items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              title={isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+            >
+              <PanelLeft className="size-4" />
+            </button>
+          </div>
 
-          {isSidebarCollapsed ? (
-            /* ── Collapsed Compact View: Stacked Avatars Only ── */
-            <div className="flex-1 flex flex-col items-center py-2 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+          {/* ── Collapsed Compact View: ONLY rendered on desktop/tablet when collapsed ── */}
+          {isSidebarCollapsed && (
+            <div className="hidden md:flex flex-1 flex-col items-center py-2 overflow-y-auto [&::-webkit-scrollbar]:hidden">
               {isVeterinarian ? (
                 <>
                   {/* Compact Desk Switcher */}
@@ -1321,7 +1342,10 @@ function MessagesContent() {
                         <button
                           key={thread.id}
                           type="button"
-                          onClick={() => setActiveChatId(thread.id)}
+                          onClick={() => {
+                            setActiveChatId(thread.id);
+                            setMobileView("chat");
+                          }}
                           title={`${citizenFullName}${isThreadTyping ? " • Typing..." : ""}${thread.pet_name ? ` • Pet: ${thread.pet_name}` : ""}`}
                           className={cn(
                             "relative size-11 rounded-full flex items-center justify-center transition-all cursor-pointer group",
@@ -1360,6 +1384,7 @@ function MessagesContent() {
                     onClick={() => {
                       setActiveDesk("vet");
                       setActiveChatId(vetChat?.id || null);
+                      setMobileView("chat");
                     }}
                     title={`Dr. Helen Ann P. Tacandong (Telemedicine)${isVetChannelTyping ? " • Typing..." : ""}`}
                     className={cn(
@@ -1386,6 +1411,7 @@ function MessagesContent() {
                     onClick={() => {
                       setActiveDesk("admin");
                       setActiveChatId(adminChat?.id || null);
+                      setMobileView("chat");
                     }}
                     title={`CVO Inquiry & Admin Desk${isAdminChannelTyping ? " • Typing..." : ""}`}
                     className={cn(
@@ -1409,8 +1435,12 @@ function MessagesContent() {
                 </div>
               )}
             </div>
-          ) : (
-            <>
+          )}
+
+          {/* ── Full Rich View with Names, Badges, Info & Subtitles ── */}
+          {/* Always shown on mobile list view, and on desktop when not collapsed */}
+          {(!isSidebarCollapsed || mobileView === "list") && (
+            <div className={cn("flex-1 flex flex-col overflow-y-auto", isSidebarCollapsed && "md:hidden")}>
               {/* Active Desk / Account Perspective Switcher (For Staff/Admins) */}
               {isVeterinarian && (
             <div className="px-3 pb-2">
@@ -1504,59 +1534,64 @@ function MessagesContent() {
             </div>
           )}
 
-          {/* Rounded Pill Search Bar */}
-          <div className="px-3 py-1.5">
-            <div className="flex items-center rounded-full bg-muted/60 dark:bg-muted/40 px-3.5 py-1.5 border border-border/40 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
-              <Search className="size-4 text-muted-foreground mr-2 shrink-0" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search messages..."
-                className="w-full bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground/70"
-              />
-            </div>
-          </div>
+          {/* Rounded Pill Search Bar & Filter Pills (Staff only: Veterinarian & Admin have pet owners to search & filter) */}
+          {isVeterinarian && (
+            <>
+              {/* Rounded Pill Search Bar */}
+              <div className="px-3 py-1.5">
+                <div className="flex items-center rounded-full bg-muted/60 dark:bg-muted/40 px-3.5 py-1.5 border border-border/40 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+                  <Search className="size-4 text-muted-foreground mr-2 shrink-0" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search messages..."
+                    className="w-full bg-transparent border-0 outline-none text-xs text-foreground placeholder:text-muted-foreground/70"
+                  />
+                </div>
+              </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto text-xs shrink-0 [&::-webkit-scrollbar]:hidden">
-            <button
-              type="button"
-              onClick={() => setFilterTab("all")}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
-                filterTab === "all"
-                  ? "bg-primary/15 text-primary dark:bg-primary/25 font-bold"
-                  : "text-muted-foreground hover:bg-muted/70"
-              )}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab("unread")}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
-                filterTab === "unread"
-                  ? "bg-primary/15 text-primary dark:bg-primary/25 font-bold"
-                  : "text-muted-foreground hover:bg-muted/70"
-              )}
-            >
-              Unread
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilterTab("urgent")}
-              className={cn(
-                "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
-                filterTab === "urgent"
-                  ? "bg-red-500/15 text-red-600 dark:bg-red-500/25 font-bold"
-                  : "text-muted-foreground hover:bg-muted/70"
-              )}
-            >
-              Urgent & Bites
-            </button>
-          </div>
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto text-xs shrink-0 [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setFilterTab("all")}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    filterTab === "all"
+                      ? "bg-primary/15 text-primary dark:bg-primary/25 font-bold"
+                      : "text-muted-foreground hover:bg-muted/70"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab("unread")}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    filterTab === "unread"
+                      ? "bg-primary/15 text-primary dark:bg-primary/25 font-bold"
+                      : "text-muted-foreground hover:bg-muted/70"
+                  )}
+                >
+                  Unread
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab("urgent")}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0",
+                    filterTab === "urgent"
+                      ? "bg-red-500/15 text-red-600 dark:bg-red-500/25 font-bold"
+                      : "text-muted-foreground hover:bg-muted/70"
+                  )}
+                >
+                  Urgent & Bites
+                </button>
+              </div>
+            </>
+          )}
 
           {/* Chat List */}
           <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1">
@@ -1599,7 +1634,10 @@ function MessagesContent() {
                     <button
                       key={thread.id}
                       type="button"
-                      onClick={() => setActiveChatId(thread.id)}
+                      onClick={() => {
+                        setActiveChatId(thread.id);
+                        setMobileView("chat");
+                      }}
                       className={cn(
                         "w-full text-left p-2.5 rounded-xl flex items-center gap-3 transition-colors cursor-pointer group",
                         isSelected
@@ -1704,6 +1742,7 @@ function MessagesContent() {
                       onClick={() => {
                         setActiveDesk("vet");
                         setActiveChatId(vetChat?.id || null);
+                        setMobileView("chat");
                       }}
                       className={cn(
                         "w-full text-left p-2.5 rounded-xl flex items-center gap-3 transition-colors cursor-pointer group",
@@ -1758,6 +1797,7 @@ function MessagesContent() {
                       onClick={() => {
                         setActiveDesk("admin");
                         setActiveChatId(adminChat?.id || null);
+                        setMobileView("chat");
                       }}
                       className={cn(
                         "w-full text-left p-2.5 rounded-xl flex items-center gap-3 transition-colors cursor-pointer group",
@@ -1810,15 +1850,30 @@ function MessagesContent() {
               </div>
             )}
           </div>
-            </>
+            </div>
           )}
         </aside>
 
-        {/* ── 2. Center/Right: Active Chat Window ── */}
-        <main className="flex-1 flex flex-col bg-background relative overflow-hidden">
+        {/* ── 2. Center/Right: Active Chat Window (Takes full 100% width on mobile) ── */}
+        <main
+          className={cn(
+            "flex-1 flex flex-col bg-background relative overflow-hidden",
+            mobileView === "list" ? "hidden md:flex" : "flex w-full"
+          )}
+        >
           {/* Header */}
-          <header className="h-15 px-4 md:px-5 border-b border-border/60 bg-card/70 backdrop-blur-xs flex items-center justify-between shrink-0 shadow-2xs z-10">
-            <div className="flex items-center gap-3 min-w-0">
+          <header className="h-15 px-3 sm:px-4 md:px-5 border-b border-border/60 bg-card/70 backdrop-blur-xs flex items-center justify-between shrink-0 shadow-2xs z-10">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {/* Mobile Back Button to Chats List */}
+              <button
+                type="button"
+                onClick={() => setMobileView("list")}
+                className="md:hidden size-8 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors shrink-0 -ml-1"
+                title="Back to conversation list"
+                aria-label="Back to conversation list"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
               <div className="relative shrink-0">
                 <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card">
                   {contactAvatarUrl && (

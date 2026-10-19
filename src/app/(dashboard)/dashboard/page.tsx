@@ -29,6 +29,8 @@ import Link from "next/link";
 import { NewConsultationDialog } from "@/components/dashboard/new-consultation-dialog";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { LogVaccinationDialog } from "@/components/dashboard/log-vaccination-dialog";
+import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
+import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
 import { useCVO } from "@/lib/cvo-context";
 
 import { useEffect } from "react";
@@ -37,6 +39,7 @@ import { useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
 export default function DashboardHomePage() {
   const router = useRouter();
@@ -44,52 +47,55 @@ export default function DashboardHomePage() {
   const { consultations, inventory, activeRoleView } = useCVO();
 
   // Check user role from Supabase and Clerk metadata
-  const { data: dbUser } = useQuery({
+  const { data: dbUser, isLoading: isDbLoading } = useQuery({
     queryKey: ["current-user-role", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
       const supabase = getPublicSupabaseClient();
       const { data } = await supabase
         .from("users")
-        .select("role")
+        .select("role, full_name")
         .eq("id", user.id)
         .maybeSingle();
-      return data;
+      return data as { role?: string | null; full_name?: string | null } | null;
     },
     enabled: isLoaded && !!user?.id,
   });
 
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
+
   const userRole = normalizeSyncVetRole(
     dbUser?.role ||
     metadata?.roleTitle ||
-    (metadata?.accountType === "pet_owner" ? "Pet Owner" : undefined)
+    (isAdminEmail ? "Administrator" : metadata?.accountType === "pet_owner" ? "Pet Owner" : undefined)
   );
 
-  // If user role is Pet Owner or simulated role view is Pet Owner, immediately route to /pet-owner
-  const isPetOwner = activeRoleView === "Pet Owner" || (isLoaded && userRole === "Pet Owner");
+  const isStaff =
+    isAdminEmail ||
+    userRole === "Administrator" ||
+    userRole === "Veterinarian" ||
+    userRole === "Vaccinator";
+
+  const isPetOwner = !isStaff && !isDbLoading && isLoaded && userRole === "Pet Owner";
 
   useEffect(() => {
-    if (isPetOwner) {
+    if (isLoaded && !isDbLoading && isPetOwner) {
       router.replace("/pet-owner");
     }
-  }, [isPetOwner, router]);
+  }, [isLoaded, isDbLoading, isPetOwner, router]);
+
+  if (!isLoaded || isDbLoading) {
+    return <DashboardSkeleton variant="admin" />;
+  }
 
   if (isPetOwner) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] text-center p-6">
-        <div className="space-y-2">
-          <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto" />
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-            Opening Your Pet Owner Portal...
-          </p>
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton variant="pet-owner" />;
   }
 
   return (
-    <div className="flex-1 space-y-5 p-5 md:p-6 bg-background min-h-screen text-foreground">
+    <div className="flex-1 w-full min-w-0 max-w-7xl mx-auto space-y-5 p-4 sm:p-5 md:p-6 bg-background min-h-screen text-foreground">
       {/* ── 1. CVO Command Center Header ── */}
       <DashboardHeader />
 
@@ -98,7 +104,7 @@ export default function DashboardHomePage() {
 
       {/* ── 3. Quick Municipal Services Hub (What CVO & Pet Owners Need) ── */}
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold tracking-tight text-foreground">
               Official City Veterinary Services
@@ -107,14 +113,17 @@ export default function DashboardHomePage() {
               Direct access to essential municipal walk-in services and citizen requests
             </p>
           </div>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            Cagayan de Oro LGU
-          </span>
+          <div className="flex items-center gap-2">
+            <SlotCapacityManagerDialog
+              isStaff={isStaff}
+              userRole={userRole}
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4">
           {/* Service 1: Anti-Rabies Vaccination */}
-          <div className="p-4 rounded-xl border border-emerald-500/20 bg-card hover:border-emerald-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3">
+          <div className="p-4 rounded-xl border border-emerald-500/20 bg-card hover:border-emerald-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="size-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
@@ -129,10 +138,12 @@ export default function DashboardHomePage() {
                 Annual rabies vaccination, booster schedules, and cold-chain lot tracking for dogs and cats.
               </p>
             </div>
-            <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
-              <LogVaccinationDialog />
-              <Link href="/vaccination-records">
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground px-2">
+            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+              <div className="min-w-0 shrink">
+                <LogVaccinationDialog />
+              </div>
+              <Link href="/vaccination-records" className="shrink-0">
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
                   Ledger <ArrowRight className="size-3 ml-1" />
                 </Button>
               </Link>
@@ -140,7 +151,7 @@ export default function DashboardHomePage() {
           </div>
 
           {/* Service 2: Free Consultation & Clinical EMR */}
-          <div className="p-4 rounded-xl border border-blue-500/20 bg-card hover:border-blue-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3">
+          <div className="p-4 rounded-xl border border-blue-500/20 bg-card hover:border-blue-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="size-9 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
@@ -155,10 +166,12 @@ export default function DashboardHomePage() {
                 Free clinical examination, diagnosis, wound care, basic treatment, and prescriptions.
               </p>
             </div>
-            <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
-              <NewConsultationDialog />
-              <Link href="/consultations">
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground px-2">
+            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+              <div className="min-w-0 shrink">
+                <NewConsultationDialog />
+              </div>
+              <Link href="/consultations" className="shrink-0">
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
                   Queue ({consultations.length}) <ArrowRight className="size-3 ml-1" />
                 </Button>
               </Link>
@@ -166,7 +179,7 @@ export default function DashboardHomePage() {
           </div>
 
           {/* Service 3: Pet Registration & Digital Passports */}
-          <div className="p-4 rounded-xl border border-primary/20 bg-card hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between space-y-3">
+          <div className="p-4 rounded-xl border border-primary/20 bg-card hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="size-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
@@ -181,10 +194,12 @@ export default function DashboardHomePage() {
                 City-wide animal registry, ownership records, and digital QR collar passports for lost pet recovery.
               </p>
             </div>
-            <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
-              <RegisterPetDialog />
-              <Link href="/pet-registry">
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground px-2">
+            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+              <div className="min-w-0 shrink">
+                <RegisterPetDialog />
+              </div>
+              <Link href="/pet-registry" className="shrink-0">
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
                   Registry <ArrowRight className="size-3 ml-1" />
                 </Button>
               </Link>
@@ -193,47 +208,72 @@ export default function DashboardHomePage() {
         </div>
       </div>
 
-      {/* ── 4. Main Operations Row: Today's Clinic Queue & Public Health Status ── */}
-      <div className="grid gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+      {/* ── 4. Row 1: Clinical Queue & Live Bulletins ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+        <div className="lg:col-span-7 min-w-0 flex flex-col">
           <TodaysOperationsCard />
         </div>
-        <div className="lg:col-span-2">
-          <ActivityFeed />
+        <div className="lg:col-span-5 min-w-0 flex flex-col">
+          <CVOAnnouncementsCard
+            currentUserId={user?.id}
+            currentUserName={user?.fullName || dbUser?.full_name || "City Veterinary Staff"}
+            currentUserRole={userRole}
+            isStaff={true}
+          />
         </div>
       </div>
 
-      {/* ── 5. Field Operations & Cold-Chain Logistics Row ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PublicHealthOverview />
-        <InventoryFEFOCard />
+      {/* ── 5. Row 2: Public Health Rabies Surveillance & FEFO Cold-Chain Logistics ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+        <div className="lg:col-span-7 min-w-0 flex flex-col">
+          <PublicHealthOverview />
+        </div>
+        <div className="lg:col-span-5 min-w-0 flex flex-col">
+          <InventoryFEFOCard />
+        </div>
       </div>
 
-      {/* ── 6. Bottom Municipal Services Quick Navigation Banner ── */}
-      <Card className="border-border bg-muted/15">
-        <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <MapPin className="size-5" />
-            </div>
-            <div>
-              <p className="font-bold text-xs text-foreground">
-                Barangay Vaccination Drives & Mobile Operations
+      {/* ── 6. Row 3: Office Activity Timeline & Barangay Field Operations ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+        <div className="lg:col-span-7 min-w-0 flex flex-col">
+          <ActivityFeed />
+        </div>
+        <div className="lg:col-span-5 min-w-0 flex flex-col">
+          <Card className="border-border bg-card flex flex-col justify-between h-full rounded-2xl shadow-2xs">
+            <CardHeader className="p-4 sm:p-5 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                  <MapPin className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm sm:text-base font-bold tracking-tight text-foreground">
+                    Barangay Vaccination Drives
+                  </CardTitle>
+                  <CardDescription className="text-[11px] text-muted-foreground/80">
+                    Active field teams & mobile deployments across 80 CDO barangays
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-5 pt-0 space-y-3 flex-1 flex flex-col justify-between text-xs">
+              <p className="text-muted-foreground leading-relaxed">
+                Deploy veterinary teams to Carmen, Lapasan, Bulua, Nazareth, and peripheral barangays for anti-rabies vaccination caravans, microchipping, and bite surveillance.
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                View field deployment schedules across Lapasan, Carmen, Bulua, Kauswagan and 80 CDO barangays.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link href="/field-operations">
-              <Button size="sm" className="h-8 text-xs gap-1.5 cursor-pointer">
-                View Mobile Drives <ArrowRight className="size-3.5" />
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="pt-3 border-t border-border/50 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  Active Field Units
+                </span>
+                <Link href="/field-operations">
+                  <Button size="sm" className="h-8 text-xs gap-1.5 cursor-pointer font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl shadow-xs">
+                    <span>Field Schedule</span>
+                    <ArrowRight className="size-3.5" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

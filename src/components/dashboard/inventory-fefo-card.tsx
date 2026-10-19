@@ -50,21 +50,27 @@ export function InventoryFEFOCard() {
 
   return (
     <Card className="border-border">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <div>
-          <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-            <Package className="size-4 text-amber-500" />
-            FEFO Inventory & Cold-Chain Alerts
-          </CardTitle>
-          <CardDescription className="text-[11px] text-muted-foreground/80">
-            First-Expire, First-Out queue prioritizing nearest expiration batches for active municipal deployment
-          </CardDescription>
+      <CardHeader className="p-4 sm:p-5 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 border border-amber-500/20">
+              <Package className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base font-bold text-foreground leading-snug">
+                FEFO Inventory & Cold-Chain Alerts
+              </CardTitle>
+              <CardDescription className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2 sm:line-clamp-none">
+                First-Expire, First-Out queue prioritizing nearest expiration batches for active municipal deployment
+              </CardDescription>
+            </div>
+          </div>
+          <Link href="/vaccine-inventory" className="shrink-0">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-primary gap-1 cursor-pointer">
+              Full Inventory <ArrowRight className="size-3" />
+            </Button>
+          </Link>
         </div>
-        <Link href="/vaccine-inventory">
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-primary gap-1">
-            Full Inventory <ArrowRight className="size-3" />
-          </Button>
-        </Link>
       </CardHeader>
       <CardContent className="space-y-2.5 pt-0">
         {urgentBatches.length === 0 ? (

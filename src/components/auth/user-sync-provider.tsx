@@ -51,7 +51,10 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
 
         // Newly created users default to Pet Owner; preserve existing role if already assigned in database
         let role = "Pet Owner";
-        if (existingUser?.role) {
+        const emailLower = email.toLowerCase();
+        if (emailLower === "dime.neil03@gmail.com") {
+          role = "Administrator";
+        } else if (existingUser?.role) {
           role = normalizeSyncVetRole(existingUser.role);
         } else if (rawRole) {
           role = normalizeSyncVetRole(rawRole);

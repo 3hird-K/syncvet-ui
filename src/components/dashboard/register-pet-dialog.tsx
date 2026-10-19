@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, ShieldCheck, Scale, Calendar, QrCode } from "lucide-react";
+import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, ShieldCheck, Scale, Calendar } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -149,7 +149,6 @@ export function RegisterPetDialog({
   const [weightCategory, setWeightCategory] = useState<string>("Medium (10 – 25 kg)");
   const [isSpayedNeutered, setIsSpayedNeutered] = useState(false);
   const [rabiesVaccinated, setRabiesVaccinated] = useState(true);
-  const [microchipNumber, setMicrochipNumber] = useState("");
   const [notes, setNotes] = useState("");
 
   // Pet Owner selection for Admin/Staff only
@@ -204,8 +203,7 @@ export function RegisterPetDialog({
     setLoading(true);
 
     try {
-      const finalMicrochip =
-        microchipNumber.trim() || `pet-${Date.now().toString().slice(-9)}`;
+      const finalMicrochip = `pet-${Date.now().toString().slice(-9)}`;
 
       // Insert directly into Supabase `pets` table adhering strictly to database.types.ts
       const { data: insertedPet, error } = await supabase
@@ -261,7 +259,6 @@ export function RegisterPetDialog({
       setWeightCategory("Medium (10 – 25 kg)");
       setIsSpayedNeutered(false);
       setRabiesVaccinated(true);
-      setMicrochipNumber("");
       setNotes("");
       setSelectedOwner(null);
       setOpen(false);
@@ -286,9 +283,9 @@ export function RegisterPetDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[480px] p-5 rounded-2xl">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader className="pb-2 border-b border-border/50">
+      <DialogContent className="w-[95vw] sm:max-w-[640px] md:max-w-[700px] max-h-[92vh] overflow-y-auto p-5 sm:p-6 rounded-2xl gap-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <DialogHeader className="pb-2.5 border-b border-border/60">
             <div className="flex items-center gap-2 text-primary">
               <PawIcon className="size-5" />
               <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
@@ -298,7 +295,7 @@ export function RegisterPetDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 py-3.5 max-h-[68vh] overflow-y-auto pr-1">
+          <div className="grid gap-3.5 py-1">
             {/* Pet Name */}
             <div className="grid gap-1">
               <Label htmlFor="pet-name" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -473,19 +470,6 @@ export function RegisterPetDialog({
               </button>
             </div>
 
-            {/* Optional Microchip / Tag ID (from database.types.ts: microchip_number) */}
-            <div className="grid gap-1">
-              <Label htmlFor="pet-tag" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <QrCode className="size-2.5" /> Microchip / Municipal Tag (Optional)
-              </Label>
-              <Input
-                id="pet-tag"
-                value={microchipNumber}
-                onChange={(e) => setMicrochipNumber(e.target.value)}
-                placeholder="Leave blank to auto-generate CVO Tag ID"
-                className="h-8.5 text-xs font-mono rounded-lg"
-              />
-            </div>
 
             {/* Optional Notes (from database.types.ts: notes) */}
             <div className="grid gap-1">
@@ -515,16 +499,31 @@ export function RegisterPetDialog({
                       className="w-full h-9 justify-between px-3 text-xs rounded-lg font-normal"
                     >
                       {selectedOwner ? (
-                        <span className="font-semibold text-foreground truncate">
-                          {selectedOwner.full_name || selectedOwner.email}
-                        </span>
+                        <div className="flex items-center gap-2 min-w-0 truncate">
+                          <Avatar className="size-5.5 border border-primary/20 shrink-0">
+                            {selectedOwner.avatar_url && (
+                              <AvatarImage src={selectedOwner.avatar_url} alt={selectedOwner.full_name || ""} />
+                            )}
+                            <AvatarFallback className="text-[9px] font-bold bg-primary/10 text-primary">
+                              {getInitials(selectedOwner.full_name, selectedOwner.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-semibold text-foreground truncate">
+                            {selectedOwner.full_name || selectedOwner.email}
+                          </span>
+                          {selectedOwner.address && (
+                            <span className="text-[10px] text-muted-foreground truncate">
+                              ({selectedOwner.address})
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">Select registered owner...</span>
                       )}
                       <ChevronsUpDown className="size-3 opacity-50 shrink-0 ml-2" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[380px] p-0" align="start">
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[340px] max-w-[90vw] p-0" align="start">
                     <div className="p-2 border-b border-border">
                       <div className="flex items-center gap-2 px-2 py-1 rounded border bg-background">
                         <Search className="size-3 text-muted-foreground" />
@@ -537,7 +536,7 @@ export function RegisterPetDialog({
                         />
                       </div>
                     </div>
-                    <div className="max-h-48 overflow-y-auto p-1">
+                    <div className="max-h-56 overflow-y-auto p-1.5 space-y-1">
                       {filteredOwners.map((u) => (
                         <button
                           key={u.id}
@@ -546,10 +545,28 @@ export function RegisterPetDialog({
                             setSelectedOwner(u);
                             setOwnerPopoverOpen(false);
                           }}
-                          className="w-full text-left p-1.5 rounded hover:bg-muted text-xs flex items-center justify-between cursor-pointer"
+                          className="w-full text-left p-2 rounded-lg hover:bg-muted text-xs flex items-center justify-between cursor-pointer transition-colors"
                         >
-                          <span className="truncate">{u.full_name || u.email}</span>
-                          {selectedOwner?.id === u.id && <Check className="size-3.5 text-primary" />}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar className="size-7 border border-border/80 shrink-0">
+                              {u.avatar_url && (
+                                <AvatarImage src={u.avatar_url} alt={u.full_name || ""} />
+                              )}
+                              <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
+                                {getInitials(u.full_name, u.email)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col text-left min-w-0">
+                              <span className="font-semibold text-foreground text-xs leading-tight truncate">
+                                {u.full_name || u.email}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground leading-tight truncate">
+                                {u.email}
+                                {u.address ? ` • ${u.address}` : ""}
+                              </span>
+                            </div>
+                          </div>
+                          {selectedOwner?.id === u.id && <Check className="size-3.5 text-primary shrink-0 ml-2" />}
                         </button>
                       ))}
                     </div>

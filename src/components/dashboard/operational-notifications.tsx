@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
   CheckCheck,
@@ -55,9 +55,25 @@ function formatRelativeTime(ms: number): string {
 
 export function OperationalNotifications() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useUser();
   const { activeRoleView, consultations, animalControlCases, inventory } = useCVO();
-  const isStaff = activeRoleView !== "Pet Owner";
+
+  const roleFromMeta = (user?.publicMetadata?.role as string) || (user?.unsafeMetadata?.role as string);
+  const isPetOwner =
+    pathname?.startsWith("/pet-owner") ||
+    activeRoleView === "Pet Owner" ||
+    roleFromMeta?.toLowerCase()?.includes("owner") ||
+    roleFromMeta?.toLowerCase()?.includes("citizen");
+
+  const isStaff = !isPetOwner;
+
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  const isStaffRef = useRef(isStaff);
+  isStaffRef.current = isStaff;
+
   const { messages } = useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
@@ -70,10 +86,16 @@ export function OperationalNotifications() {
   const derivedAlerts = useMemo<OperationalAlert[]>(() => {
     const list: OperationalAlert[] = [];
 
-    // 1. Citizen Inquiries & unread messages from pet owners (Only visible to Staff)
+    // 1. Citizen Inquiries & unread messages from pet owners (Only visible to Staff, never own messages)
     if (isStaff) {
+      const currentUserName = user?.fullName?.toLowerCase().trim();
       const recentPetOwnerMessages = messages
-        .filter((m) => m.senderRole === "Pet Owner")
+        .filter((m) => {
+          if (m.senderRole !== "Pet Owner") return false;
+          if (user?.id && (m as any).senderId === user.id) return false;
+          if (currentUserName && m.senderName?.toLowerCase().trim() === currentUserName) return false;
+          return true;
+        })
         .slice(-3);
 
       for (const msg of recentPetOwnerMessages) {
@@ -195,12 +217,24 @@ export function OperationalNotifications() {
           const row = payload.new;
           if (!row) return;
 
-          // Never notify the author of their own message!
-          if (user?.id && row.sender_id === user.id) return;
+          const currentUser = userRef.current;
+          const currentUserId = currentUser?.id;
+          const currentUserName = currentUser?.fullName?.toLowerCase().trim();
+          const isStaffNow = isStaffRef.current;
+
+          // Never notify the author of their own outgoing message!
+          if (currentUserId && row.sender_id === currentUserId) return;
+          if (
+            currentUserName &&
+            row.sender_name &&
+            row.sender_name.toLowerCase().trim() === currentUserName
+          ) {
+            return;
+          }
 
           if (row.sender_role === "Pet Owner") {
-            // Citizen message -> Only notify staff in notification bell
-            if (!isStaff) return;
+            // Citizen message -> Only notify veterinary and administrative staff
+            if (!isStaffNow) return;
 
             const newAlert: OperationalAlert = {
               id: `rt-msg-${row.id}`,
@@ -215,8 +249,8 @@ export function OperationalNotifications() {
             };
             setRealtimeAlerts((prev) => [newAlert, ...prev]);
           } else {
-            // Staff message (Vet or Admin) -> Only notify the intended pet owner in notification bell
-            if (isStaff) return;
+            // Staff message (Vet or Admin Desk) -> Only notify the intended pet owner in notification bell
+            if (isStaffNow) return;
 
             supabase
               .from("chats")
@@ -224,10 +258,10 @@ export function OperationalNotifications() {
               .eq("id", row.chat_id)
               .maybeSingle()
               .then(({ data }) => {
-                if (data && user?.id && data.owner_id === user.id) {
+                if (data && currentUserId && data.owner_id === currentUserId) {
                   const senderTitle =
                     row.sender_name ||
-                    (row.sender_role === "Admin" ? "CVO Admin Desk" : "Dr. Helen");
+                    (row.sender_role === "Admin" || row.sender_role === "Staff" ? "CVO Admin Desk" : "Dr. Helen");
                   const newAlert: OperationalAlert = {
                     id: `rt-msg-${row.id}`,
                     type: "inquiry",
@@ -311,7 +345,7 @@ export function OperationalNotifications() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/80 transition-all cursor-pointer shadow-none"
+          className="relative size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all cursor-pointer shadow-none"
           aria-label="System and Operational Notifications"
           title={
             unreadCount > 0

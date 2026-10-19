@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DashboardSidebar, SidebarContent } from "@/components/dashboard/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { OperationalNotifications } from "@/components/dashboard/operational-notifications";
+import { useUser } from "@clerk/nextjs";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +20,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+  const { user } = useUser();
+
+  const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
+  const isStaff =
+    isAdminEmail ||
+    metadata?.roleTitle === "Administrator" ||
+    metadata?.roleTitle === "Veterinarian" ||
+    metadata?.roleTitle === "Vaccinator";
+  const isPetOwner = !isStaff && (metadata?.accountType === "pet_owner" || metadata?.roleTitle === "Pet Owner");
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
@@ -68,20 +80,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {pathname.startsWith("/pet-owner")
                 ? "SyncVet Pet Owner Portal • Cagayan de Oro CVO"
                 : pathname.startsWith("/messages")
-                ? "SyncVet Telemedicine & Inquiry Desk • Cagayan de Oro CVO"
+                ? (isPetOwner
+                    ? "SyncVet Telemedicine & Vet Consultation • Cagayan de Oro CVO"
+                    : "SyncVet Telemedicine & Inquiry Desk • Cagayan de Oro CVO")
                 : "SyncVet Dashboard • City Veterinary Office"}
             </span>
           </div>
 
           {/* ── Top Bar Action Controls: Realtime Operational Notifications & Theme Toggle ── */}
-          <div className="flex items-center gap-0.5 p-0.5 rounded-lg border border-border/50 bg-muted/25 shadow-2xs">
-            {/* Real-time Operational Notifications & Dispatch */}
+          <div className="flex items-center gap-1">
             <OperationalNotifications />
-
-            <div className="h-4 w-px bg-border/60 mx-0.5" />
-
-            {/* Theme Toggle Switcher */}
-            <ThemeToggle className="hover:bg-background/80" />
+            <ThemeToggle />
           </div>
         </header>
 

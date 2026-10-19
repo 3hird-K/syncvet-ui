@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { cvoBarangays } from "@/data/cvo-store";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format } from "date-fns";
+import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 
 export const CVO_CLINICAL_SYSTEMS = [
   {
@@ -243,19 +244,19 @@ export function PetOwnerConsultationDialog({
   const { addConsultation, consultations } = useCVO();
 
   const firstPet = initialPet || (pets.length > 0 ? pets[0] : undefined);
-  const [selectedPetId, setSelectedPetId] = useState<string>(firstPet?.id || (pets.length > 0 ? pets[0].id : "custom"));
+  const [selectedPetId, setSelectedPetId] = useState<string>(firstPet?.id || (pets.length > 0 ? pets[0].id : ""));
 
   // Keep selectedPetId in sync if initialPet changes
   useEffect(() => {
     if (initialPet?.id) {
       setSelectedPetId(initialPet.id);
-    } else if (pets.length > 0 && selectedPetId === "custom") {
+    } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => p.id === selectedPetId))) {
       setSelectedPetId(pets[0].id);
     }
-  }, [initialPet?.id, pets]);
+  }, [initialPet?.id, pets, selectedPetId]);
 
   // Selected registered pet object (if any)
-  const selectedPet = pets.find((p) => p.id === selectedPetId);
+  const selectedPet = pets.find((p) => p.id === selectedPetId) || (pets.length > 0 ? pets[0] : undefined);
 
   // Owner details (defaults from user profile)
   const defaultOwnerName = ownerProfile?.name || "Kyle Urgentrouse";
@@ -285,10 +286,10 @@ export function PetOwnerConsultationDialog({
   const [weightAssessment, setWeightAssessment] = useState<"Ideal Weight" | "Overweight" | "Underweight">("Ideal Weight");
   const [bodyConditionScore, setBodyConditionScore] = useState<number>(5);
 
-  // Prevent duplicate consultation requests: check if selected pet or custom pet already has an active consultation in queue
+  // Prevent duplicate consultation requests: check if selected pet already has an active consultation in queue
   const existingActiveConsultation = useMemo(() => {
     const targetPetId = (selectedPet?.id || "").toLowerCase().trim();
-    const targetPetName = (selectedPet?.name || customPetName || "").toLowerCase().trim();
+    const targetPetName = (selectedPet?.name || "").toLowerCase().trim();
 
     if (!targetPetName && !targetPetId) return null;
 
@@ -306,7 +307,7 @@ export function PetOwnerConsultationDialog({
 
       return isSamePet;
     });
-  }, [consultations, selectedPet, customPetName]);
+  }, [consultations, selectedPet]);
 
   const isConsultationAlreadyScheduled = Boolean(existingActiveConsultation);
 
@@ -338,34 +339,27 @@ export function PetOwnerConsultationDialog({
   const [consultationDate, setConsultationDate] = useState<Date | undefined>(getDefaultConsultationDate());
 
   // Step 4: Symptoms / Patient History narrative observed by pet owner
-  const [chiefComplaint, setChiefComplaint] = useState(
-    "Routine physical checkup, request for oral deworming and preventive multivitamin boost."
-  );
+  const [chiefComplaint, setChiefComplaint] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Determine effective values
-    const effectivePetName = selectedPet ? selectedPet.name : customPetName.trim();
-    const effectiveSpecies = selectedPet
-      ? (selectedPet.species?.toLowerCase() === "cat" ? "Cat" : "Dog")
-      : customSpecies;
-    const effectiveBreed = selectedPet
-      ? (selectedPet.breed || (selectedPet.species?.toLowerCase() === "cat" ? "Puspin" : "Aspin"))
-      : (customBreed.trim() || (customSpecies === "Cat" ? "Puspin" : "Aspin"));
-    const effectiveGender = selectedPet
-      ? (selectedPet.gender === "Female" || selectedPet.gender === "F" ? "F" : "M")
-      : customGender;
-    const effectiveAge = selectedPet ? (selectedPet.age || "1 yr") : (customAge.trim() || "1 yr");
-    const effectiveWeightKg = selectedPet
-      ? (selectedPet.weightKg ? selectedPet.weightKg.toString() : "12.4")
-      : (customWeightKg.trim() || "10");
-    const effectiveColor = selectedPet ? (selectedPet.color || "Standard") : (customColor.trim() || "Standard");
-
-    if (!effectivePetName) {
-      toast.error("Please provide a pet name.");
+    if (!selectedPet) {
+      toast.error("Please register and select a pet before requesting a consultation.");
       return;
     }
+
+    const effectivePetName = selectedPet.name;
+    const effectiveSpecies = selectedPet.species?.toLowerCase() === "cat" ? "Cat" : "Dog";
+    const effectiveBreed = selectedPet.breed || (effectiveSpecies === "Cat" ? "Puspin" : "Aspin");
+    const effectiveGender = selectedPet.gender === "Female" || selectedPet.gender === "F" ? "F" : "M";
+    const effectiveAge = selectedPet.age || "1 yr";
+    const effectiveWeightKg = selectedPet.weightKg
+      ? selectedPet.weightKg.toString()
+      : (selectedPet as any).weight_kg
+      ? (selectedPet as any).weight_kg.toString()
+      : "10";
+    const effectiveColor = selectedPet.color || "Standard";
 
     if (isConsultationAlreadyScheduled && existingActiveConsultation) {
       toast.error("Duplicate Consultation Blocked", {
@@ -486,180 +480,116 @@ export function PetOwnerConsultationDialog({
               </span>
             </div>
 
-            {/* Registered Pet Picker */}
-            {pets.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold text-primary">Select from Your Registered Pets</Label>
-                  {selectedPet && (
-                    <span className="text-[11px] text-muted-foreground font-medium">
-                      Defaults loaded from pet passport
-                    </span>
-                  )}
+            {/* Registered Pet Picker or No Pets Prompt */}
+            {pets.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-amber-500/50 bg-amber-500/10 dark:bg-amber-950/20 p-5 text-center space-y-3">
+                <div className="size-11 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto">
+                  <PawPrint className="size-5.5" />
                 </div>
-                <Select value={selectedPetId} onValueChange={handleSelectPet}>
-                  <SelectTrigger className="h-9.5 text-xs sm:text-sm font-semibold text-foreground rounded-xl bg-background border-border/80">
-                    <SelectValue placeholder="Select pet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pets.map((p) => (
-                      <SelectItem key={p.id} value={p.id} className="text-xs sm:text-sm font-medium">
-                        🐾 {p.name} ({p.species} • {p.breed || "Standard"})
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="custom" className="text-xs sm:text-sm text-primary font-semibold">
-                      + Other / Unregistered Pet
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* A) REGISTERED PET SELECTED: Clean, Uneditable Default Details Card */}
-            {selectedPetId !== "custom" && selectedPet ? (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
-                      <PawPrint className="size-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h5 className="font-bold text-sm text-foreground">{selectedPet.name}</h5>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
-                          {selectedPet.species}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedPet.breed || (selectedPet.species === "Cat" ? "Puspin" : "Aspin")}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-background/80 border border-border/60 px-2 py-1 rounded-lg">
-                    <Lock className="size-3 text-muted-foreground/70" />
-                    <span>Default pet profile</span>
-                  </div>
+                <div className="space-y-1">
+                  <h5 className="font-bold text-sm text-foreground">No Registered Pets Found</h5>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    You do not have any registered pets in your account yet. Please register your pet first to request an official CVO clinical consultation.
+                  </p>
                 </div>
-
-                {/* Pet Attributes Display Pills (Uneditable) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-emerald-500/20 text-xs">
-                  <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">Gender</span>
-                    <span className="font-semibold text-foreground text-xs">{selectedPet.gender || "Male"}</span>
-                  </div>
-                  <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">Age</span>
-                    <span className="font-semibold text-foreground text-xs">{selectedPet.age || "1 yr"}</span>
-                  </div>
-                  <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">Weight</span>
-                    <span className="font-semibold text-foreground text-xs">
-                      {selectedPet.weightKg ? `${selectedPet.weightKg} kg` : "12.4 kg"}
-                    </span>
-                  </div>
-                  <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                    <span className="text-[10px] text-muted-foreground uppercase font-bold block">Color / Markings</span>
-                    <span className="font-semibold text-foreground text-xs truncate block">{selectedPet.color || "Standard"}</span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-0.5">
-                  <span>ℹ️ Pet details are linked from your registered profile. To update these, edit in the</span>
-                  <strong className="text-foreground font-semibold">My Pets & Passports</strong>
-                  <span>page.</span>
-                </p>
+                <RegisterPetDialog
+                  trigger={
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer"
+                    >
+                      <Plus className="size-3.5" />
+                      <span>Register a Pet Now</span>
+                    </Button>
+                  }
+                />
               </div>
             ) : (
-              /* B) UNREGISTERED / OTHER PET: Editable Inputs for Walk-in or Unregistered animal */
-              <div className="space-y-3 p-3.5 rounded-xl border border-dashed border-border/80 bg-muted/20">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <PawPrint className="size-3.5 text-primary" />
-                  <span>Enter Pet Information (Unregistered / Walk-in):</span>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-primary">Select from Your Registered Pets *</Label>
+                    <span className="text-[11px] text-muted-foreground font-medium">
+                      {pets.length} registered pet{pets.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <Select value={selectedPetId} onValueChange={handleSelectPet}>
+                    <SelectTrigger className="h-10 text-xs sm:text-sm font-semibold text-foreground rounded-xl bg-background border-border/80">
+                      <SelectValue placeholder="Choose a registered pet" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[90] rounded-xl">
+                      {pets.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs sm:text-sm font-medium cursor-pointer py-2">
+                          <div className="flex items-center gap-2">
+                            <PawPrint className="size-3.5 text-primary" />
+                            <span className="font-semibold">{p.name}</span>
+                            <span className="text-muted-foreground">
+                              ({p.species} • {p.breed || "Standard"} • {p.weightKg || (p as any).weight_kg || "?"} kg)
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Pet Name *</Label>
-                    <Input
-                      value={customPetName}
-                      onChange={(e) => setCustomPetName(e.target.value)}
-                      placeholder="e.g. Buddy"
-                      required
-                      className="h-9 text-xs sm:text-sm font-semibold rounded-xl bg-background"
-                    />
-                  </div>
+                {selectedPet && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                          <PawPrint className="size-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h5 className="font-bold text-sm text-foreground">{selectedPet.name}</h5>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
+                              {selectedPet.species}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedPet.breed || (selectedPet.species === "Cat" ? "Puspin" : "Aspin")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-background/80 border border-border/60 px-2 py-1 rounded-lg">
+                        <Lock className="size-3 text-muted-foreground/70" />
+                        <span>Loaded from pet passport</span>
+                      </div>
+                    </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Species</Label>
-                    <Select value={customSpecies} onValueChange={(val: any) => setCustomSpecies(val)}>
-                      <SelectTrigger className="h-9 text-xs sm:text-sm rounded-xl bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Dog">Dog (Canine)</SelectItem>
-                        <SelectItem value="Cat">Cat (Feline)</SelectItem>
-                        <SelectItem value="Livestock">Livestock (Swine/Cattle/Goat)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    {/* Pet Attributes Display Pills (Uneditable) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-emerald-500/20 text-xs">
+                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Gender</span>
+                        <span className="font-semibold text-foreground text-xs">{selectedPet.gender || "Male"}</span>
+                      </div>
+                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Age</span>
+                        <span className="font-semibold text-foreground text-xs">{selectedPet.age || "1 yr"}</span>
+                      </div>
+                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Weight</span>
+                        <span className="font-semibold text-foreground text-xs">
+                          {selectedPet.weightKg || (selectedPet as any).weight_kg
+                            ? `${selectedPet.weightKg || (selectedPet as any).weight_kg} kg`
+                            : "12.4 kg"}
+                        </span>
+                      </div>
+                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Color / Markings</span>
+                        <span className="font-semibold text-foreground text-xs truncate block">{selectedPet.color || "Standard"}</span>
+                      </div>
+                    </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Breed</Label>
-                    <Input
-                      value={customBreed}
-                      onChange={(e) => setCustomBreed(e.target.value)}
-                      placeholder="e.g. Aspin / Mixed"
-                      className="h-9 text-xs sm:text-sm rounded-xl bg-background"
-                    />
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-0.5">
+                      <span>ℹ️ Pet details are linked from your registered profile. To update these, edit in the</span>
+                      <strong className="text-foreground font-semibold">My Pets & Passports</strong>
+                      <span>page.</span>
+                    </p>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Gender</Label>
-                    <Select value={customGender} onValueChange={(val: any) => setCustomGender(val)}>
-                      <SelectTrigger className="h-9 text-xs sm:text-sm rounded-xl bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="M">Male</SelectItem>
-                        <SelectItem value="F">Female</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Age</Label>
-                    <Input
-                      value={customAge}
-                      onChange={(e) => setCustomAge(e.target.value)}
-                      placeholder="e.g. 2 yrs"
-                      className="h-9 text-xs sm:text-sm rounded-xl bg-background"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Weight (kg)</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={customWeightKg}
-                      onChange={(e) => setCustomWeightKg(e.target.value)}
-                      placeholder="12.4"
-                      className="h-9 text-xs sm:text-sm rounded-xl bg-background"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Color / Markings</Label>
-                    <Input
-                      value={customColor}
-                      onChange={(e) => setCustomColor(e.target.value)}
-                      placeholder="e.g. Brown & White"
-                      className="h-9 text-xs sm:text-sm rounded-xl bg-background"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -827,9 +757,9 @@ export function PetOwnerConsultationDialog({
               <Textarea
                 value={chiefComplaint}
                 onChange={(e) => setChiefComplaint(e.target.value)}
-                placeholder="Describe your pet's condition, observed symptoms (e.g. vomiting, coughing, loss of appetite), duration, or reason for requesting care..."
-                rows={4}
-                className="text-xs sm:text-sm leading-relaxed rounded-xl p-3 resize-y min-h-[90px] bg-background"
+                placeholder="Describe your pet's condition, observed symptoms (e.g. vomiting, lethargy, coughing, loss of appetite), or reason for requesting care..."
+                rows={2}
+                className="text-xs leading-relaxed rounded-xl p-2.5 resize-y min-h-[64px] bg-background"
                 required
               />
             </div>
@@ -863,13 +793,18 @@ export function PetOwnerConsultationDialog({
             <Button
               type="submit"
               size="sm"
-              disabled={loading || isConsultationAlreadyScheduled}
+              disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
               className="h-9 px-5 text-xs font-bold bg-primary text-primary-foreground gap-2 rounded-xl cursor-pointer shadow-xs hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />
                   <span>Submitting to CVO Queue...</span>
+                </>
+              ) : pets.length === 0 ? (
+                <>
+                  <PawPrint className="size-3.5 text-amber-300" />
+                  <span>Register a Pet First</span>
                 </>
               ) : isConsultationAlreadyScheduled ? (
                 <>

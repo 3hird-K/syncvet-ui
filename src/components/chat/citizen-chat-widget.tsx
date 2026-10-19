@@ -24,7 +24,6 @@ import { useUser } from "@clerk/nextjs";
 import {
   X,
   Minus,
-  Maximize2,
   Send,
   Stethoscope,
   Building2,
@@ -47,6 +46,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MessengerIcon } from "@/components/icons/messenger-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -615,16 +615,16 @@ export function CitizenChatWidget() {
 
       {/* ── 2. Facebook Style Stacked Circular Chat Heads (On the Right Edge) ── */}
       <div className="flex flex-col items-center gap-2 mb-1 pointer-events-auto shrink-0 select-none relative z-[1001]">
-        {/* Launcher Circle with '...' (Matches Image 1 top circle) */}
+        {/* Launcher Circle with Messenger Icon */}
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="relative flex items-center justify-center size-11.5 sm:size-12 rounded-full shadow-lg hover:shadow-xl transition-colors duration-200 cursor-pointer border border-border/80 hover:border-primary/60 bg-zinc-900/90 dark:bg-zinc-800 text-zinc-300 hover:text-white group z-20"
+              className="relative flex items-center justify-center size-11.5 sm:size-12 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer border border-border/80 hover:border-primary/60 bg-zinc-900/90 dark:bg-zinc-800 text-zinc-100 hover:text-white group z-20"
               title="Start a message or view contacts"
               aria-label="New message / contacts"
             >
-              <MoreHorizontal className="size-5" />
+              <MessengerIcon className="size-5.5 text-white group-hover:scale-110 transition-transform duration-200" />
               {/* Facebook-style Hover Tooltip */}
               <div className="absolute right-14 hidden group-hover:flex items-center px-2.5 py-1 rounded-lg bg-popover/95 backdrop-blur-md border border-border shadow-lg text-xs font-semibold text-foreground whitespace-nowrap pointer-events-none animate-in fade-in-50 zoom-in-95 duration-150 z-50">
                 <span>Start a message</span>
@@ -1588,18 +1588,6 @@ function FacebookMessengerWindow({
             aria-label="Minimize"
           >
             <Minus className="size-4" />
-          </Button>
-
-          {/* Maximize to full /messages page */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onMaximize(activeChatDbId)}
-            className="size-7 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-            title="Open in full chat page"
-            aria-label="Maximize"
-          >
-            <Maximize2 className="size-3.5" />
           </Button>
 
           {/* Close button */}
