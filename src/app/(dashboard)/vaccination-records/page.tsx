@@ -421,7 +421,7 @@ export default function VaccinationRecordsPage() {
                     )}
                     {visibleColumns.includes("vet") && (
                       <TableHead className="text-[10px] font-bold uppercase tracking-widest">
-                        Vaccinator
+                        Veterinarian
                       </TableHead>
                     )}
                     {visibleColumns.includes("nextDue") && (

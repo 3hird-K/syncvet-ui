@@ -66,7 +66,7 @@ export function GoogleSignInButton({
       const redirectParams = {
         strategy: "oauth_google",
         redirectUrl: "/sso-callback",
-        redirectUrlComplete: "/dashboard",
+        redirectUrlComplete: "/onboarding",
       };
 
       const signIn = signInHook?.signIn;
@@ -91,7 +91,7 @@ export function GoogleSignInButton({
       // Fallback: open Clerk sign-in modal/redirect
       if (clerk?.redirectToSignIn) {
         await clerk.redirectToSignIn({
-          signInFallbackRedirectUrl: "/dashboard",
+          signInFallbackRedirectUrl: "/onboarding",
         });
       }
     } catch (err: unknown) {
@@ -103,7 +103,7 @@ export function GoogleSignInButton({
           await signUp.authenticateWithRedirect({
             strategy: "oauth_google",
             redirectUrl: "/sso-callback",
-            redirectUrlComplete: "/dashboard",
+            redirectUrlComplete: "/onboarding",
           });
           return;
         }

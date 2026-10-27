@@ -206,7 +206,7 @@ export function OfflineFieldEntryDialog() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Vaccinator Name</Label>
+            <Label className="text-xs">Administering Veterinarian</Label>
             <Input
               value={vaccinatorName}
               onChange={(e) => setVaccinatorName(e.target.value)}

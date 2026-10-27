@@ -50,7 +50,10 @@ import {
   Loader2,
   PanelLeft,
   Undo2,
+  Info,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ConversationProfileDrawer } from "@/components/chat/conversation-profile-drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -354,6 +357,7 @@ function MessagesContent() {
     typingSenderName,
     typingInfo,
     sendTypingStatus,
+    broadcastMessageRead,
     hasMoreOlder,
     isFetchingOlder,
     isLoadingMessages,
@@ -365,6 +369,7 @@ function MessagesContent() {
   const [filterTab, setFilterTab] = useState<"all" | "unread" | "urgent">("all");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showInfoSidebar, setShowInfoSidebar] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatReplyInfo | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -746,7 +751,8 @@ function MessagesContent() {
       try {
         const { data, error } = await supabase
           .from("pets")
-          .select("id, name, species, breed, owner_id");
+          .select("*")
+          .order("created_at", { ascending: false });
         if (error || !data) return [];
         return data;
       } catch {
@@ -875,9 +881,10 @@ function MessagesContent() {
       .neq("sender_id", user?.id)
       .eq("is_read", false)
       .then(() => {
+        broadcastMessageRead(activeChatId);
         refetchThreads();
       });
-  }, [activeChatId, user?.id, supabase, refetchThreads]);
+  }, [activeChatId, user?.id, supabase, refetchThreads, messages.length, broadcastMessageRead]);
 
   // Query logged-in user's chats for citizen view
   const { data: myCitizenChats = [], refetch: refetchCitizenChats } = useQuery<any[]>({
@@ -975,6 +982,35 @@ function MessagesContent() {
         (activeThread?.owner_id && m.senderId === activeThread.owner_id)
     );
   }, [messages, activeChatId, activeThread]);
+
+  // Messenger-style seen receipt: Find the latest outgoing message read by the other party
+  const lastReadOutgoingId = useMemo(() => {
+    for (let i = activeChatMessages.length - 1; i >= 0; i--) {
+      const m = activeChatMessages[i];
+      const isStaffMsg =
+        m.senderRole === "Veterinarian" ||
+        m.senderRole === "Staff" ||
+        m.senderRole === "Admin" ||
+        m.senderRole === "Administrator";
+      const isOut = isVeterinarian ? isStaffMsg : !isStaffMsg;
+      if (isOut && !m.isUnsent) {
+        // If an incoming message was sent after this outgoing message, the recipient has seen it
+        const hasIncomingAfter = activeChatMessages.slice(i + 1).some((afterMsg) => {
+          const afterIsStaff =
+            afterMsg.senderRole === "Veterinarian" ||
+            afterMsg.senderRole === "Staff" ||
+            afterMsg.senderRole === "Admin" ||
+            afterMsg.senderRole === "Administrator";
+          return isVeterinarian ? !afterIsStaff : afterIsStaff;
+        });
+
+        if ((m.isRead ?? false) || hasIncomingAfter) {
+          return m.id;
+        }
+      }
+    }
+    return null;
+  }, [activeChatMessages, isVeterinarian]);
 
   const contactAvatarUrl = isVeterinarian
     ? activeThread?.avatar_url || activeThread?.users?.avatar_url || activeThread?.users?.image_url
@@ -1212,18 +1248,18 @@ function MessagesContent() {
   };
 
   const clinicalTemplates = [
-    "Please bring your pet to our Macabalan central clinic for a physical assessment.",
+    "Please bring your pet to our Carmen CVO Complex central clinic for a physical assessment.",
     "Animal Bite Protocol: Wash wound with soap & water for 15 mins. Head immediately to ABTC.",
     "Fasting Advisory: Ensure your pet fasts from food for 8 hours prior to the kapon procedure.",
     "Your pet's municipal anti-rabies immunity record is up to date on file with the City Veterinary Office.",
-    "Walk-in clinic is open Monday to Friday, 8:00 AM to 5:00 PM at J. Pacana St., Macabalan.",
+    "Walk-in clinic is open Monday to Friday, 8:00 AM to 5:00 PM at CVO Complex, J.V. Seriña St., Carmen.",
   ];
 
   const quickQuestions = [
     "What should I do if my dog is bitten?",
     "Free Kapon schedule",
     "Anti-rabies vaccine hours",
-    "Clinic walk-in hours in Macabalan",
+    "Clinic walk-in hours in Carmen",
   ];
 
   return (
@@ -1286,7 +1322,12 @@ function MessagesContent() {
                         <AvatarFallback className="bg-emerald-600 text-white text-[9px] font-bold">HT</AvatarFallback>
                       </Avatar>
                       {vetUnreadCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+                        <span
+                          className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center ring-2 ring-background shadow-xs"
+                          title={`${vetUnreadCount} unread`}
+                        >
+                          {vetUnreadCount > 9 ? "9+" : vetUnreadCount}
+                        </span>
                       )}
                     </button>
 
@@ -1310,7 +1351,12 @@ function MessagesContent() {
                           <AvatarFallback className="bg-teal-700 text-white text-[9px] font-bold">AD</AvatarFallback>
                         </Avatar>
                         {adminUnreadCount > 0 && (
-                          <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-teal-500 ring-2 ring-background animate-pulse" />
+                          <span
+                            className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center ring-2 ring-background shadow-xs"
+                            title={`${adminUnreadCount} unread`}
+                          >
+                            {adminUnreadCount > 9 ? "9+" : adminUnreadCount}
+                          </span>
                         )}
                       </button>
                     )}
@@ -1343,10 +1389,14 @@ function MessagesContent() {
                           key={thread.id}
                           type="button"
                           onClick={() => {
-                            setActiveChatId(thread.id);
-                            setMobileView("chat");
+                            if (isSelected) {
+                              setIsProfileOpen(true);
+                            } else {
+                              setActiveChatId(thread.id);
+                              setMobileView("chat");
+                            }
                           }}
-                          title={`${citizenFullName}${isThreadTyping ? " • Typing..." : ""}${thread.pet_name ? ` • Pet: ${thread.pet_name}` : ""}`}
+                          title={`${citizenFullName}${isThreadTyping ? " • Typing..." : ""}${thread.pet_name ? ` • Pet: ${thread.pet_name}` : ""}${isSelected ? " • Click to view profile info & history" : ""}`}
                           className={cn(
                             "relative size-11 rounded-full flex items-center justify-center transition-all cursor-pointer group",
                             isSelected
@@ -1360,16 +1410,29 @@ function MessagesContent() {
                               {initials}
                             </AvatarFallback>
                           </Avatar>
-                          <span
-                            className={cn(
-                              "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card",
-                              isOwnerActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
-                            )}
-                          />
+                          {/* Active presence dot: ONLY shown on bottom-right when online */}
+                          {isOwnerActive && (
+                            <span
+                              className="absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card bg-emerald-500 shadow-2xs"
+                              title="Active now"
+                            />
+                          )}
+                          {/* Typing indicator: Clean 3-dots animation pill */}
                           {isThreadTyping ? (
-                            <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 animate-ping ring-2 ring-background shadow-xs" />
+                            <div
+                              className="absolute -bottom-1 -right-1.5 z-20 flex items-center gap-0.5 bg-zinc-900 border border-white/20 shadow-md px-1.5 py-0.5 rounded-full animate-in zoom-in-75"
+                              title={`${citizenFullName} is typing...`}
+                            >
+                              <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+                              <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+                              <span className="size-1 rounded-full bg-white animate-bounce" />
+                            </div>
                           ) : !isSelected && thread.unread ? (
-                            <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 ring-2 ring-background shadow-xs" />
+                            /* Unread message: Clean Messenger-style blue dot (distinct from green presence) */
+                            <span
+                              className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-primary ring-2 ring-background shadow-xs"
+                              title="Unread messages"
+                            />
                           ) : null}
                         </button>
                       );
@@ -1400,9 +1463,16 @@ function MessagesContent() {
                         <Stethoscope className="size-4" />
                       </AvatarFallback>
                     </Avatar>
-                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-card" />
+                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-card" title="Active now" />
                     {isVetChannelTyping && (
-                      <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 animate-ping ring-2 ring-background shadow-xs" />
+                      <div
+                        className="absolute -bottom-1 -right-1.5 z-20 flex items-center gap-0.5 bg-zinc-900 border border-white/20 shadow-md px-1.5 py-0.5 rounded-full animate-in zoom-in-75"
+                        title="Typing..."
+                      >
+                        <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+                        <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+                        <span className="size-1 rounded-full bg-white animate-bounce" />
+                      </div>
                     )}
                   </button>
 
@@ -1427,9 +1497,16 @@ function MessagesContent() {
                         <Building2 className="size-4" />
                       </AvatarFallback>
                     </Avatar>
-                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-card" />
+                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-card" title="Active now" />
                     {isAdminChannelTyping && (
-                      <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-teal-500 animate-ping ring-2 ring-background shadow-xs" />
+                      <div
+                        className="absolute -bottom-1 -right-1.5 z-20 flex items-center gap-0.5 bg-zinc-900 border border-white/20 shadow-md px-1.5 py-0.5 rounded-full animate-in zoom-in-75"
+                        title="Typing..."
+                      >
+                        <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+                        <span className="size-1 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+                        <span className="size-1 rounded-full bg-white animate-bounce" />
+                      </div>
                     )}
                   </button>
                 </div>
@@ -1722,7 +1799,7 @@ function MessagesContent() {
 
                       {/* Unread Indicator: ONLY rendered if unread */}
                       {isThreadUnread && (
-                        <span className="size-2 rounded-full bg-emerald-500 shrink-0 shadow-xs ml-1" />
+                        <span className="size-2 rounded-full bg-primary shrink-0 shadow-xs ml-1" title="Unread" />
                       )}
                     </button>
                   );
@@ -1874,61 +1951,88 @@ function MessagesContent() {
               >
                 <ChevronLeft className="size-5" />
               </button>
-              <div className="relative shrink-0">
-                <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card">
-                  {contactAvatarUrl && (
-                    <AvatarImage
-                      src={contactAvatarUrl}
-                      alt={contactName}
-                      className={
-                        !isVeterinarian && activeDesk === "admin"
-                          ? "object-contain p-1 bg-white"
-                          : "object-cover"
-                      }
-                    />
-                  )}
-                  <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-xs">
-                    {!isVeterinarian ? (
-                      activeDesk === "admin" ? <Building2 className="size-4.5" /> : <Stethoscope className="size-4.5" />
-                    ) : (
-                      getTwoLetterInitials(contactName)
+
+              {/* Clickable Profile Header Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen(true)}
+                className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left hover:bg-muted/60 transition-colors p-1 sm:p-1.5 -m-1 rounded-xl cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+                title="Click to view profile info, registered pets & clinical history"
+                aria-label="View conversation profile info"
+              >
+                <div className="relative shrink-0">
+                  <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card group-hover:ring-2 group-hover:ring-primary/50 transition-all">
+                    {contactAvatarUrl && (
+                      <AvatarImage
+                        src={contactAvatarUrl}
+                        alt={contactName}
+                        className={
+                          !isVeterinarian && activeDesk === "admin"
+                            ? "object-contain p-1 bg-white"
+                            : "object-cover"
+                        }
+                      />
                     )}
-                  </AvatarFallback>
-                </Avatar>
-                <span
-                  className={cn(
-                    "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card transition-colors",
-                    isCurrentActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
-                  )}
-                  title={activeStatusLabel}
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-bold text-sm text-foreground truncate">
-                    {contactName}
-                  </h2>
+                    <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-xs">
+                      {!isVeterinarian ? (
+                        activeDesk === "admin" ? <Building2 className="size-4.5" /> : <Stethoscope className="size-4.5" />
+                      ) : (
+                        getTwoLetterInitials(contactName)
+                      )}
+                    </AvatarFallback>
+                  </Avatar>
                   <span
                     className={cn(
-                      "text-[10px] font-semibold flex items-center gap-1.5 transition-colors",
-                      isCurrentActive
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground/80"
+                      "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card transition-colors",
+                      isCurrentActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
                     )}
-                  >
+                    title={activeStatusLabel}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                      <span>{contactName}</span>
+                      <Info className="size-3 text-muted-foreground/60 group-hover:text-primary transition-colors shrink-0" />
+                    </h2>
                     <span
                       className={cn(
-                        "size-1.5 rounded-full shrink-0",
-                        isCurrentActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                        "text-[10px] font-semibold flex items-center gap-1.5 transition-colors shrink-0",
+                        isCurrentActive
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-muted-foreground/80"
                       )}
-                    />
-                    {activeStatusLabel}
-                  </span>
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full shrink-0",
+                          isCurrentActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                        )}
+                      />
+                      {activeStatusLabel}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate group-hover:text-muted-foreground/90 transition-colors">
+                    {contactSubtitle}
+                  </p>
                 </div>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {contactSubtitle}
-                </p>
-              </div>
+              </button>
+            </div>
+
+            {/* Header Right Actions */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsProfileOpen(true)}
+                className="h-8 px-2.5 sm:px-3 text-xs font-semibold gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg border border-border/60 shadow-2xs cursor-pointer group transition-all"
+                title="View Profile Information, Pets & History"
+                aria-label="View Profile Information, Pets & History"
+              >
+                <User className="size-3.5 text-primary group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Profile</span>
+              </Button>
             </div>
           </header>
 
@@ -1990,28 +2094,43 @@ function MessagesContent() {
             )}
             {/* Friendly Conversation Header */}
             <div className="text-center py-6 space-y-2 border-b border-border/30 mb-4">
-              <Avatar className="size-20 rounded-full mx-auto border-2 border-primary/20 shadow-md overflow-hidden bg-card">
-                {contactAvatarUrl && (
-                  <AvatarImage
-                    src={contactAvatarUrl}
-                    alt={contactName}
-                    className={
-                      !isVeterinarian && activeDesk === "admin"
-                        ? "object-contain p-2.5 bg-white"
-                        : "object-cover"
-                    }
-                  />
-                )}
-                <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-lg">
-                  {!isVeterinarian ? (
-                    activeDesk === "admin" ? <Building2 className="size-8" /> : <Stethoscope className="size-8" />
-                  ) : (
-                    getTwoLetterInitials(contactName)
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen(true)}
+                className="group cursor-pointer inline-block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 rounded-full"
+                title="Click to view profile info, registered pets & history"
+              >
+                <Avatar className="size-20 rounded-full mx-auto border-2 border-primary/20 shadow-md overflow-hidden bg-card group-hover:border-primary/60 group-hover:scale-105 transition-all">
+                  {contactAvatarUrl && (
+                    <AvatarImage
+                      src={contactAvatarUrl}
+                      alt={contactName}
+                      className={
+                        !isVeterinarian && activeDesk === "admin"
+                          ? "object-contain p-2.5 bg-white"
+                          : "object-cover"
+                      }
+                    />
                   )}
-                </AvatarFallback>
-              </Avatar>
+                  <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-lg">
+                    {!isVeterinarian ? (
+                      activeDesk === "admin" ? <Building2 className="size-8" /> : <Stethoscope className="size-8" />
+                    ) : (
+                      getTwoLetterInitials(contactName)
+                    )}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
               <div>
-                <h3 className="font-extrabold text-base text-foreground">{contactName}</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen(true)}
+                  className="font-extrabold text-base text-foreground hover:text-primary transition-colors cursor-pointer group inline-flex items-center gap-1.5"
+                  title="Click to view profile info, registered pets & history"
+                >
+                  <span>{contactName}</span>
+                  <Info className="size-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                </button>
                 <p className="text-xs text-muted-foreground">{contactSubtitle}</p>
                 <p className="text-[11px] text-muted-foreground/70 mt-0.5">
                   {!isVeterinarian
@@ -2020,6 +2139,18 @@ function MessagesContent() {
                       : "You're connected on City Veterinary Office Official Telemedicine Channel."
                     : `Official conversation record for registered pet owner ${contactName} • ${activeStatusLabel}.`}
                 </p>
+                <div className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsProfileOpen(true)}
+                    className="h-7 px-3 text-xs gap-1.5 rounded-full border-border/60 hover:bg-muted/70 hover:text-primary cursor-pointer text-muted-foreground shadow-2xs"
+                  >
+                    <User className="size-3 text-primary" />
+                    <span>View Profile & History</span>
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -2050,6 +2181,7 @@ function MessagesContent() {
               const isGroupEnd = !isNextSame;
               const isMiddle = isPrevSame && isNextSame;
               const isSingle = !isPrevSame && !isNextSame;
+              const isLastReadOutgoing = msg.id === lastReadOutgoingId;
 
               const showDateDivider = idx === 0 || diffDayFromPrev;
               const hasPaw = (reactions[msg.id] || msg.reaction) === "🐾";
@@ -2334,10 +2466,55 @@ function MessagesContent() {
                             </span>
                           )}
 
-                          {/* Seen / Delivered Checkmark on Outgoing */}
-                          {isOutgoing && (
-                            <CheckCheck className="size-3 text-primary inline" />
+                          {/* Seen Profile Avatar / Delivered Checkmark on Outgoing */}
+                          {isOutgoing && !msg.isUnsent && (
+                            isLastReadOutgoing ? (
+                              <div
+                                className="inline-flex items-center gap-1 animate-in fade-in zoom-in-75 duration-200 select-none group/seen"
+                                title={`Seen by ${contactName}`}
+                              >
+                                <Avatar className="size-3.5 sm:size-4 rounded-full border border-background shadow-xs ring-1 ring-border/40 overflow-hidden bg-muted transition-transform hover:scale-125">
+                                  {contactAvatarUrl ? (
+                                    <AvatarImage
+                                      src={contactAvatarUrl}
+                                      alt={contactName}
+                                      className={contactAvatarUrl.includes("cdo-seal") ? "object-contain p-0.5 bg-white" : "object-cover"}
+                                    />
+                                  ) : null}
+                                  <AvatarFallback className="text-[7px] font-bold bg-primary/20 text-primary uppercase">
+                                    {getTwoLetterInitials(contactName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                            ) : (
+                              <span title="Delivered" className="inline-flex items-center">
+                                <CheckCheck className="size-3 text-muted-foreground/50" />
+                              </span>
+                            )
                           )}
+                        </div>
+                      )}
+
+                      {/* If read avatar lands on an intermediate outgoing message */}
+                      {!isGroupEnd && isOutgoing && !msg.isUnsent && isLastReadOutgoing && (
+                        <div className="flex justify-end px-1 mt-0.5 select-none animate-in fade-in zoom-in-75 duration-200">
+                          <div
+                            className="inline-flex items-center"
+                            title={`Seen by ${contactName}`}
+                          >
+                            <Avatar className="size-3.5 sm:size-4 rounded-full border border-background shadow-xs ring-1 ring-border/40 overflow-hidden bg-muted transition-transform hover:scale-125">
+                              {contactAvatarUrl ? (
+                                <AvatarImage
+                                  src={contactAvatarUrl}
+                                  alt={contactName}
+                                  className={contactAvatarUrl.includes("cdo-seal") ? "object-contain p-0.5 bg-white" : "object-cover"}
+                                />
+                              ) : null}
+                              <AvatarFallback className="text-[7px] font-bold bg-primary/20 text-primary uppercase">
+                                {getTwoLetterInitials(contactName)}
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2699,7 +2876,7 @@ function MessagesContent() {
                 <p className="font-bold text-foreground flex items-center gap-1.5">
                   <Building2 className="size-3.5 text-primary" /> Central Clinic
                 </p>
-                <p className="text-[11px] text-muted-foreground">J. Pacana St., Macabalan, Cagayan de Oro City</p>
+                <p className="text-[11px] text-muted-foreground">CVO Complex, J.V. Seriña St., Carmen, CDO</p>
               </div>
 
               <div className="p-3 rounded-xl bg-muted/40 space-y-1.5 border border-border/50">
@@ -2727,6 +2904,19 @@ function MessagesContent() {
             </div>
           </aside>
         )}
+        {/* Profile & History Drawer */}
+        <ConversationProfileDrawer
+          isOpen={isProfileOpen}
+          onOpenChange={setIsProfileOpen}
+          activeThread={activeThread}
+          isVeterinarian={isVeterinarian}
+          activeDesk={activeDesk}
+          contactName={contactName}
+          contactAvatarUrl={contactAvatarUrl}
+          contactSubtitle={contactSubtitle}
+          activeStatusLabel={activeStatusLabel}
+          isCurrentActive={isCurrentActive}
+        />
       </div>
     </div>
   );

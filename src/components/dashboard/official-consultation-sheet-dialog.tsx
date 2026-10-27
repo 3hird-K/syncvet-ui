@@ -99,6 +99,9 @@ export function OfficialConsultationSheetDialog({
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
+            input[type="checkbox"] {
+              accent-color: black !important;
+            }
           </style>
         </head>
         <body>
@@ -178,7 +181,7 @@ export function OfficialConsultationSheetDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[96vw] max-w-5xl sm:max-w-5xl lg:max-w-6xl max-h-[94vh] overflow-y-auto p-3 sm:p-6 bg-background pointer-events-auto">
-        <DialogHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b">
+        <DialogHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b pr-10 sm:pr-12">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
               <FileText className="size-4.5" />
@@ -222,7 +225,7 @@ export function OfficialConsultationSheetDialog({
         {/* ── Official Government Form Container (Fidelity reproduction of physical paper) ── */}
         <div
           id="cvo-consultation-sheet"
-          className="bg-white text-black p-5 sm:p-8 md:p-10 rounded-xl border-2 border-slate-400 font-sans shadow-md text-[11px] leading-tight select-text w-full max-w-5xl mx-auto"
+          className="bg-white text-black p-5 sm:p-8 md:p-10 rounded-xl border-2 border-slate-400 font-sans shadow-md text-[11px] leading-tight select-text w-full max-w-5xl mx-auto [accent-color:#000000] accent-black"
         >
           {/* Top Form Header with City Veterinary Department Logo & Official Title */}
           <div className="flex items-center gap-3 sm:gap-4 border-b-2 border-black pb-2.5 mb-2.5">
@@ -403,19 +406,19 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       BAR / QAR
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mentation", "aggressive")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mentation", "aggressive")} className="size-2.5 accent-black rounded-none" />
                       Aggressive
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mentation", "depressed")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mentation", "depressed")} className="size-2.5 accent-black rounded-none" />
                       Depressed
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mentation", "anxious")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mentation", "anxious")} className="size-2.5 accent-black rounded-none" />
                       Anxious/Fearful
                     </label>
                   </div>
@@ -428,27 +431,27 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={!isChecked("eyes", "discharge") && !isChecked("eyes", "cataract")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={!isChecked("eyes", "discharge") && !isChecked("eyes", "cataract")} className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("eyes", "cataract")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("eyes", "cataract")} className="size-2.5 accent-black rounded-none" />
                       Cataract L / R
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("eyes", "discharge")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("eyes", "discharge")} className="size-2.5 accent-black rounded-none" />
                       Discharge L / R
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("eyes", "corneal")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("eyes", "corneal")} className="size-2.5 accent-black rounded-none" />
                       Corneal Ulcer
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("eyes", "inflamed")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("eyes", "inflamed")} className="size-2.5 accent-black rounded-none" />
                       Inflamed L / R
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("eyes", "eyelid")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("eyes", "eyelid")} className="size-2.5 accent-black rounded-none" />
                       Eyelid Lesion
                     </label>
                   </div>
@@ -461,23 +464,23 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("ears", "mites")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("ears", "mites")} className="size-2.5 accent-black rounded-none" />
                       Mites
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("ears", "inflamed")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("ears", "inflamed")} className="size-2.5 accent-black rounded-none" />
                       Inflamed L / R
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("ears", "lesions")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("ears", "lesions")} className="size-2.5 accent-black rounded-none" />
                       Lesions/Growth
                     </label>
                     <label className="flex items-center gap-1 col-span-2">
-                      <input type="checkbox" readOnly checked={isChecked("ears", "debris")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("ears", "debris")} className="size-2.5 accent-black rounded-none" />
                       Excessive Debris L / R
                     </label>
                   </div>
@@ -490,23 +493,23 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={!isChecked("mouthTeethGums", "calculus")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={!isChecked("mouthTeethGums", "calculus")} className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "ulcers")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "ulcers")} className="size-2.5 accent-black rounded-none" />
                       Ulcers/Growths
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "broken")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "broken")} className="size-2.5 accent-black rounded-none" />
                       Broken Tooth
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "calculus")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "calculus")} className="size-2.5 accent-black rounded-none" />
                       Calculus (mild)
                     </label>
                     <label className="flex items-center gap-1 col-span-2">
-                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "gingivitis")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("mouthTeethGums", "gingivitis")} className="size-2.5 accent-black rounded-none" />
                       Gingivitis: mild / mod / sev
                     </label>
                   </div>
@@ -519,27 +522,27 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "rash")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "rash")} className="size-2.5 accent-black rounded-none" />
                       Rash / Derm
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "parasites")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "parasites")} className="size-2.5 accent-black rounded-none" />
                       Parasites
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "dander")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "dander")} className="size-2.5 accent-black rounded-none" />
                       Dry Coat/Dander
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "alopecia")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "alopecia")} className="size-2.5 accent-black rounded-none" />
                       Alopecia
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "lumps")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("skinCoat", "lumps")} className="size-2.5 accent-black rounded-none" />
                       Lumps/Tumors
                     </label>
                   </div>
@@ -552,19 +555,19 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("neurologic", "paresis")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("neurologic", "paresis")} className="size-2.5 accent-black rounded-none" />
                       Paresis/Paralysis
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("neurologic", "seizure")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("neurologic", "seizure")} className="size-2.5 accent-black rounded-none" />
                       Seizure/Tremor
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("neurologic", "ataxia")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("neurologic", "ataxia")} className="size-2.5 accent-black rounded-none" />
                       Ataxia/Gait
                     </label>
                   </div>
@@ -577,27 +580,27 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "rapid")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "rapid")} className="size-2.5 accent-black rounded-none" />
                       Rapid Breathing
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "nasal")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "nasal")} className="size-2.5 accent-black rounded-none" />
                       Nasal Discharge
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "difficulty")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "difficulty")} className="size-2.5 accent-black rounded-none" />
                       Difficulty Breathing
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "congestion")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "congestion")} className="size-2.5 accent-black rounded-none" />
                       Congestion
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "coughing")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("respiratoryLungs", "coughing")} className="size-2.5 accent-black rounded-none" />
                       Coughing
                     </label>
                   </div>
@@ -610,15 +613,15 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("cardiacHeart", "rhythm")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("cardiacHeart", "rhythm")} className="size-2.5 accent-black rounded-none" />
                       Abnormal Rhythm
                     </label>
                     <label className="flex items-center gap-1 col-span-2">
-                      <input type="checkbox" readOnly checked={isChecked("cardiacHeart", "murmur")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("cardiacHeart", "murmur")} className="size-2.5 accent-black rounded-none" />
                       Heart Murmur
                     </label>
                   </div>
@@ -631,27 +634,27 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "feces")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "feces")} className="size-2.5 accent-black rounded-none" />
                       Abnormal feces
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "parasites")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "parasites")} className="size-2.5 accent-black rounded-none" />
                       Parasites
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "diarrhea")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "diarrhea")} className="size-2.5 accent-black rounded-none" />
                       Diarrhea
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "vomiting")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "vomiting")} className="size-2.5 accent-black rounded-none" />
                       Vomiting
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "inappetence")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("gastrointestinal", "inappetence")} className="size-2.5 accent-black rounded-none" />
                       Inappetence
                     </label>
                   </div>
@@ -664,23 +667,23 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("abdomen", "palpation")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("abdomen", "palpation")} className="size-2.5 accent-black rounded-none" />
                       Painful Palpation
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("abdomen", "enlarged")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("abdomen", "enlarged")} className="size-2.5 accent-black rounded-none" />
                       Enlarged Organ
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("abdomen", "mass")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("abdomen", "mass")} className="size-2.5 accent-black rounded-none" />
                       Mass / Growth
                     </label>
                     <label className="flex items-center gap-1 col-span-2">
-                      <input type="checkbox" readOnly checked={isChecked("abdomen", "fluid")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("abdomen", "fluid")} className="size-2.5 accent-black rounded-none" />
                       Fluid (Ascites)
                     </label>
                   </div>
@@ -693,19 +696,19 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("urogenital", "discharge")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("urogenital", "discharge")} className="size-2.5 accent-black rounded-none" />
                       Genital Discharge
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("urogenital", "testicle")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("urogenital", "testicle")} className="size-2.5 accent-black rounded-none" />
                       Abnormal Testicle
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("urogenital", "estrus")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("urogenital", "estrus")} className="size-2.5 accent-black rounded-none" />
                       Estrus/Pregnancy
                     </label>
                   </div>
@@ -718,19 +721,19 @@ export function OfficialConsultationSheetDialog({
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-[9px]">
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked className="size-2.5" />
+                      <input type="checkbox" readOnly checked className="size-2.5 accent-black rounded-none" />
                       Appear Normal
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "lameness")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "lameness")} className="size-2.5 accent-black rounded-none" />
                       Lameness
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "pain")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "pain")} className="size-2.5 accent-black rounded-none" />
                       Pain
                     </label>
                     <label className="flex items-center gap-1">
-                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "swelling")} className="size-2.5" />
+                      <input type="checkbox" readOnly checked={isChecked("musculoskeletal", "swelling")} className="size-2.5 accent-black rounded-none" />
                       Swelling
                     </label>
                   </div>
@@ -864,7 +867,7 @@ export function OfficialConsultationSheetDialog({
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
             <div className="md:col-span-8 flex items-baseline gap-2">
               <label className="flex items-center gap-1 font-extrabold uppercase text-[10px] shrink-0">
-                <input type="checkbox" readOnly checked className="size-3 accent-black" />
+                <input type="checkbox" readOnly checked className="size-3 accent-black rounded-none" />
                 RECOMMENDATIONS:
               </label>
               <span className="border-b border-black flex-1 text-[10px] font-medium text-slate-800 pl-1 pb-0.5">
@@ -878,7 +881,7 @@ export function OfficialConsultationSheetDialog({
                   type="checkbox"
                   readOnly
                   checked={Boolean(consultation.followUp || consultation.followUpDate)}
-                  className="size-3 accent-black"
+                  className="size-3 accent-black rounded-none"
                 />
                 FOLLOW UP:
               </label>

@@ -172,7 +172,7 @@ export function ScheduleDriveDialog() {
                 <SelectItem value="Officer Mark Velez" className="text-xs">Officer Mark Velez (Field Operations)</SelectItem>
                 <SelectItem value="Dr. Elena Santos, DVM" className="text-xs">Dr. Elena Santos, DVM</SelectItem>
                 <SelectItem value="Dr. Sarah Chen, DVM" className="text-xs">Dr. Sarah Chen, DVM</SelectItem>
-                <SelectItem value="Officer Jay Ramos" className="text-xs">Officer Jay Ramos (Vaccinator)</SelectItem>
+                <SelectItem value="Officer Jay Ramos" className="text-xs">Officer Jay Ramos (Field Operations)</SelectItem>
                 <SelectItem value="Dr. Helen Ann P. Tacandong, DVM" className="text-xs">Dr. Helen Ann P. Tacandong, DVM</SelectItem>
               </SelectContent>
             </Select>

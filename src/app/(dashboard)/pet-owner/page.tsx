@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
+import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
@@ -18,6 +18,7 @@ import {
   Stethoscope,
   Syringe,
   Calendar,
+  CalendarClock,
   Clock,
   MapPin,
   Phone,
@@ -50,6 +51,8 @@ import {
   Trash2,
   MoreVertical,
   Scissors,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
@@ -123,6 +126,7 @@ export default function PetOwnerPortalPage() {
   const [passportOpen, setPassportOpen] = useState(false);
   const [selectedPetForPassport, setSelectedPetForPassport] = useState<any>(null);
   const [qrPassportUrl, setQrPassportUrl] = useState<string>("");
+  const [downloadingPassport, setDownloadingPassport] = useState(false);
 
   // CRUD states for Edit & Delete
   const [petToEdit, setPetToEdit] = useState<any>(null);
@@ -137,6 +141,7 @@ export default function PetOwnerPortalPage() {
   // Procedure appointments & slot states
   const [selectedAppointmentForSlip, setSelectedAppointmentForSlip] = useState<any>(null);
   const [appointmentSlipOpen, setAppointmentSlipOpen] = useState(false);
+  const [appointmentFilter, setAppointmentFilter] = useState<"all" | "upcoming" | "missed" | "completed">("all");
   const [slotConfig, setSlotConfig] = useState(() => getSlotConfiguration());
 
   useEffect(() => {
@@ -200,8 +205,7 @@ export default function PetOwnerPortalPage() {
   const isStaff =
     isAdminEmail ||
     userRole === "Administrator" ||
-    userRole === "Veterinarian" ||
-    userRole === "Vaccinator";
+    userRole === "Veterinarian";
 
   // If this is an Administrator or staff account, redirect them to the Administrator Dashboard
   useEffect(() => {
@@ -339,16 +343,55 @@ export default function PetOwnerPortalPage() {
       const validList: any[] = [];
       const orphanedList: any[] = [];
 
+      const todayStart = startOfDay(new Date());
+
       list.forEach((item: any) => {
         const matchesId = item.pet_id && validRegisteredPetIds.has(item.pet_id);
         const matchesName = item.pet_name && validRegisteredPetNames.has(item.pet_name.trim().toLowerCase());
 
         if (dbPets.length > 0 && (matchesId || matchesName)) {
-          validList.push(item);
+          let effectiveStatus = item.status || "confirmed";
+          try {
+            const parsed = parseISO(item.date);
+            if (
+              isValid(parsed) &&
+              isBefore(startOfDay(parsed), todayStart) &&
+              effectiveStatus !== "completed" &&
+              effectiveStatus !== "cancelled"
+            ) {
+              effectiveStatus = "missed";
+            }
+          } catch {}
+
+          validList.push({
+            ...item,
+            status: effectiveStatus,
+            rawStatus: item.status,
+          });
         } else {
           orphanedList.push(item);
         }
       });
+
+      // Asynchronously persist any unattended past appointments as 'missed'
+      const unpersistedMissed = validList.filter(
+        (v) => v.status === "missed" && v.rawStatus !== "missed"
+      );
+      if (unpersistedMissed.length > 0) {
+        (async () => {
+          for (const m of unpersistedMissed) {
+            try {
+              await supabase.from("appointments").update({ status: "missed" }).eq("id", m.id);
+            } catch {}
+            try {
+              await supabase
+                .from("service_transactions")
+                .update({ status: "missed" })
+                .or(`reference_id.eq.${m.id},id.eq.${m.id}`);
+            } catch {}
+          }
+        })();
+      }
 
       // Asynchronously purge orphaned appointments and transactions from DB and localStorage
       if (orphanedList.length > 0) {
@@ -376,6 +419,32 @@ export default function PetOwnerPortalPage() {
     },
     enabled: isLoaded && (!!user?.id || !!dbUser?.id),
   });
+
+  const upcomingAppointmentsCount = useMemo(
+    () => ownerAppointments.filter((a: any) => a.status === "confirmed").length,
+    [ownerAppointments]
+  );
+  const missedAppointmentsCount = useMemo(
+    () => ownerAppointments.filter((a: any) => a.status === "missed").length,
+    [ownerAppointments]
+  );
+  const completedAppointmentsCount = useMemo(
+    () => ownerAppointments.filter((a: any) => a.status === "completed").length,
+    [ownerAppointments]
+  );
+
+  const displayedAppointments = useMemo(() => {
+    if (appointmentFilter === "upcoming") {
+      return ownerAppointments.filter((a: any) => a.status === "confirmed");
+    }
+    if (appointmentFilter === "missed") {
+      return ownerAppointments.filter((a: any) => a.status === "missed");
+    }
+    if (appointmentFilter === "completed") {
+      return ownerAppointments.filter((a: any) => a.status === "completed");
+    }
+    return ownerAppointments;
+  }, [ownerAppointments, appointmentFilter]);
 
   const handleCancelAppointment = async (appointmentId: string) => {
     try {
@@ -496,15 +565,190 @@ export default function PetOwnerPortalPage() {
   const handleOpenPassport = async (pet: any) => {
     setSelectedPetForPassport(pet);
     try {
-      const url = await QRCode.toDataURL(
-        `${window.location.origin}/verify/pet/${pet.id}?owner=${encodeURIComponent(ownerName)}&bgy=${encodeURIComponent(ownerBarangay)}`,
-        { width: 200, margin: 1 }
-      );
+      const publicVerifyUrl = `${window.location.origin}/verify/pet/${pet.id}?name=${encodeURIComponent(pet.name || "")}&species=${encodeURIComponent(pet.species || "")}&breed=${encodeURIComponent(pet.breed || "")}&tag=${encodeURIComponent(pet.microchip || pet.id || "")}&owner=${encodeURIComponent(ownerName || "")}&bgy=${encodeURIComponent(ownerBarangay || "")}&vax=${pet.rabiesVaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(pet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(pet.nextVaccinationDate || "")}`;
+      const url = await QRCode.toDataURL(publicVerifyUrl, { width: 360, margin: 1 });
       setQrPassportUrl(url);
       setPassportOpen(true);
     } catch {
       setPassportOpen(true);
     }
+  };
+
+  // Download Pet Passport Card (High-res PNG with CVO Header, QR code, and Pet Details)
+  const handleDownloadPassport = async () => {
+    if (!selectedPetForPassport) return;
+    setDownloadingPassport(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 800;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context unavailable");
+
+      // Draw rounded card background
+      ctx.fillStyle = "#ffffff";
+      if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(0, 0, 640, 800, 24);
+        ctx.fill();
+      } else {
+        ctx.fillRect(0, 0, 640, 800);
+      }
+
+      // Outer border
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 4;
+      if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(2, 2, 636, 796, 22);
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(2, 2, 636, 796);
+      }
+
+      // Emerald Header Banner
+      ctx.fillStyle = "#059669";
+      if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(0, 0, 640, 115, [24, 24, 0, 0]);
+        ctx.fill();
+      } else {
+        ctx.fillRect(0, 0, 640, 115);
+      }
+
+      // Gold Accent line under header
+      ctx.fillStyle = "#10b981";
+      ctx.fillRect(0, 115, 640, 4);
+
+      // Header Texts
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText("CITY OF CAGAYAN DE ORO • CITY VETERINARY OFFICE", 320, 38);
+
+      ctx.font = "900 22px sans-serif";
+      ctx.fillText("OFFICIAL DIGITAL PET PASSPORT", 320, 72);
+
+      ctx.font = "600 11px sans-serif";
+      ctx.fillStyle = "#d1fae5";
+      ctx.fillText("MUNICIPAL COMPANION ANIMAL IDENTIFICATION", 320, 95);
+
+      // QR Code container
+      ctx.fillStyle = "#f8fafc";
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 2;
+      if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(170, 145, 300, 300, 16);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(170, 145, 300, 300);
+        ctx.strokeRect(170, 145, 300, 300);
+      }
+
+      // Draw QR Code
+      if (qrPassportUrl) {
+        const qrImg = new Image();
+        qrImg.crossOrigin = "anonymous";
+        await new Promise<void>((resolve, reject) => {
+          qrImg.onload = () => resolve();
+          qrImg.onerror = reject;
+          qrImg.src = qrPassportUrl;
+        });
+        ctx.drawImage(qrImg, 190, 165, 260, 260);
+      }
+
+      // Pet Name
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "900 28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(selectedPetForPassport.name || "Companion Animal", 320, 490);
+
+      // Species & Breed
+      ctx.fillStyle = "#475569";
+      ctx.font = "600 14px sans-serif";
+      const speciesBreed = `${selectedPetForPassport.species || "Pet"} • ${selectedPetForPassport.breed || "Mixed"}`;
+      ctx.fillText(speciesBreed, 320, 520);
+
+      // Tag ID Pill
+      ctx.fillStyle = "#ecfdf5";
+      ctx.strokeStyle = "#10b981";
+      ctx.lineWidth = 1.5;
+      const tagText = `TAG ID: ${selectedPetForPassport.microchip || selectedPetForPassport.id || "N/A"}`;
+      if (typeof ctx.roundRect === "function") {
+        ctx.beginPath();
+        ctx.roundRect(140, 545, 360, 38, 19);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(140, 545, 360, 38);
+        ctx.strokeRect(140, 545, 360, 38);
+      }
+
+      ctx.fillStyle = "#047857";
+      ctx.font = "bold 13px monospace";
+      ctx.fillText(tagText, 320, 569);
+
+      // Guardian & Jurisdiction
+      ctx.fillStyle = "#334155";
+      ctx.font = "500 12px sans-serif";
+      ctx.fillText(`Registered Guardian: ${ownerName || "Cagayan de Oro Citizen"}`, 320, 622);
+      ctx.fillText(`Barangay Jurisdiction: ${ownerBarangay || "Cagayan de Oro City"}`, 320, 644);
+
+      // Divider
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(60, 675);
+      ctx.lineTo(580, 675);
+      ctx.stroke();
+
+      // Explanatory note
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "500 11px sans-serif";
+      ctx.fillText("Present this QR passport during mobile vaccination drives,", 320, 705);
+      ctx.fillText("spay/neuter outreach, or CVO clinic visits for instant medical retrieval.", 320, 725);
+
+      ctx.font = "bold 10px sans-serif";
+      ctx.fillStyle = "#059669";
+      ctx.fillText("SYNCVET • CAGAYAN DE ORO CITY VETERINARY OFFICE", 320, 762);
+
+      // Trigger download
+      const dataUrl = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      const petSlug = (selectedPetForPassport.name || "pet").toLowerCase().replace(/[^a-z0-9]/g, "-");
+      a.download = `cvo-pet-passport-${petSlug}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      toast.success("Pet Passport Card Downloaded", {
+        description: `Saved official passport card for ${selectedPetForPassport.name}`,
+      });
+    } catch (err) {
+      console.error("Error creating passport card:", err);
+      handleDownloadQrOnly();
+    } finally {
+      setDownloadingPassport(false);
+    }
+  };
+
+  // Download raw QR code image only
+  const handleDownloadQrOnly = () => {
+    if (!qrPassportUrl || !selectedPetForPassport) return;
+    const a = document.createElement("a");
+    a.href = qrPassportUrl;
+    const petSlug = (selectedPetForPassport.name || "pet").toLowerCase().replace(/[^a-z0-9]/g, "-");
+    a.download = `cvo-qr-${petSlug}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    toast.success("QR Code Downloaded", {
+      description: `Saved QR code for ${selectedPetForPassport.name}`,
+    });
   };
 
   // Proactive booster reminder: pets due within 14 days or overdue
@@ -607,7 +851,7 @@ export default function PetOwnerPortalPage() {
             <div className="mt-4 pt-3.5 border-t border-border/40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Building2 className="size-3.5 text-primary shrink-0" />
-                <span>CVO Clinic: J. Pacana St., Macabalan, CDO</span>
+                <span>CVO Clinic: CVO Complex, J.V. Seriña St., Carmen, CDO</span>
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="size-3.5 text-emerald-600 shrink-0" />
@@ -1183,6 +1427,95 @@ export default function PetOwnerPortalPage() {
               </div>
             </div>
 
+            {/* Unattended Appointment Callout Banner */}
+            {missedAppointmentsCount > 0 && (
+              <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in-0">
+                <div className="flex items-start gap-2.5">
+                  <div className="size-8 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/30">
+                    <CalendarClock className="size-4" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+                      {missedAppointmentsCount === 1
+                        ? "Unattended Schedule Notice: 1 appointment was missed"
+                        : `Unattended Schedule Notice: ${missedAppointmentsCount} appointments were missed`}
+                    </p>
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Appointments not attended on their scheduled date are flagged. Please reschedule your pet&apos;s procedure to secure a fresh municipal veterinary clinic slot.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+                  <Button
+                    size="sm"
+                    variant={appointmentFilter === "missed" ? "default" : "outline"}
+                    onClick={() => setAppointmentFilter("missed")}
+                    className="h-8 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white border-transparent cursor-pointer"
+                  >
+                    View Missed ({missedAppointmentsCount})
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Filter Pills */}
+            {ownerAppointments.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                <Button
+                  type="button"
+                  variant={appointmentFilter === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAppointmentFilter("all")}
+                  className={cn(
+                    "h-7 text-xs rounded-lg cursor-pointer",
+                    appointmentFilter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  All ({ownerAppointments.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant={appointmentFilter === "upcoming" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAppointmentFilter("upcoming")}
+                  className={cn(
+                    "h-7 text-xs rounded-lg cursor-pointer",
+                    appointmentFilter === "upcoming" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  Upcoming ({upcomingAppointmentsCount})
+                </Button>
+                <Button
+                  type="button"
+                  variant={appointmentFilter === "missed" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAppointmentFilter("missed")}
+                  className={cn(
+                    "h-7 text-xs rounded-lg cursor-pointer",
+                    appointmentFilter === "missed"
+                      ? "bg-amber-600 text-white dark:bg-amber-600 hover:bg-amber-700"
+                      : missedAppointmentsCount > 0
+                      ? "border-amber-500/50 text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  Missed / No-Show ({missedAppointmentsCount})
+                </Button>
+                <Button
+                  type="button"
+                  variant={appointmentFilter === "completed" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAppointmentFilter("completed")}
+                  className={cn(
+                    "h-7 text-xs rounded-lg cursor-pointer",
+                    appointmentFilter === "completed" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  Completed ({completedAppointmentsCount})
+                </Button>
+              </div>
+            )}
+
             {/* List of Appointments or Empty View */}
             {loadingAppointments ? (
               <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
@@ -1201,11 +1534,17 @@ export default function PetOwnerPortalPage() {
                   </p>
                 </div>
               </Card>
+            ) : displayedAppointments.length === 0 ? (
+              <Card className="p-6 text-center border-dashed border border-border/70 bg-muted/10 space-y-2 rounded-xl">
+                <p className="text-xs font-semibold text-foreground">No appointments under &quot;{appointmentFilter}&quot;</p>
+                <p className="text-[11px] text-muted-foreground">Select another filter above or book a new appointment.</p>
+              </Card>
             ) : (
               <div className="space-y-2.5">
-                {ownerAppointments.map((apt: any) => {
+                {displayedAppointments.map((apt: any) => {
                   const isSpayNeuter = apt.service_id === "spay-neuter";
                   const aptPet = pets.find((p) => p.id === apt.pet_id || p.name === apt.pet_name);
+                  const isMissed = apt.status === "missed";
 
                   return (
                     <Card
@@ -1214,19 +1553,23 @@ export default function PetOwnerPortalPage() {
                         "border transition-all duration-200 rounded-xl shadow-2xs hover:shadow-xs overflow-hidden",
                         apt.status === "cancelled"
                           ? "opacity-60 bg-muted/20 border-border/50"
+                          : isMissed
+                          ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/5 hover:border-amber-500/60"
                           : isSpayNeuter
                           ? "border-indigo-500/20 bg-card hover:border-indigo-500/40"
                           : "border-emerald-500/20 bg-card hover:border-emerald-500/40"
                       )}
                     >
-                      <CardContent className="p-3.5 sm:p-4">
+                      <CardContent className="p-3.5 sm:p-4 space-y-2.5">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                           {/* Left: Icon & Details */}
                           <div className="flex items-start sm:items-center gap-3 min-w-0">
                             <div
                               className={cn(
                                 "size-10 rounded-xl flex items-center justify-center shrink-0 border",
-                                isSpayNeuter
+                                isMissed
+                                  ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                  : isSpayNeuter
                                   ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
                                   : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                               )}
@@ -1269,10 +1612,12 @@ export default function PetOwnerPortalPage() {
                                       ? "border-blue-500/40 text-blue-600 bg-blue-500/5"
                                       : apt.status === "cancelled"
                                       ? "border-destructive/40 text-destructive bg-destructive/5"
+                                      : apt.status === "missed"
+                                      ? "border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/15 font-bold"
                                       : "border-amber-500/40 text-amber-600 bg-amber-500/5"
                                   )}
                                 >
-                                  {apt.status}
+                                  {apt.status === "missed" ? "Unattended (Missed)" : apt.status}
                                 </Badge>
                               </div>
 
@@ -1291,37 +1636,92 @@ export default function PetOwnerPortalPage() {
                                   #{apt.id.slice(0, 8).toUpperCase()}
                                 </span>
                               </div>
+
+                              {isMissed && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
+                                  <div className="flex items-center gap-1.5 font-medium">
+                                    <AlertTriangle className="size-3.5 text-amber-600 shrink-0" />
+                                    <span>Schedule unattended on {format(new Date(apt.date), "MMMM d")}. Please click Reschedule.</span>
+                                  </div>
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300 shrink-0 bg-amber-500/20 px-1.5 py-0.5 rounded">
+                                    Reschedule Required
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
                           {/* Right: Actions */}
                           <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40 justify-end">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedAppointmentForSlip(apt);
-                                setAppointmentSlipOpen(true);
-                              }}
-                              className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border hover:bg-muted cursor-pointer shadow-2xs"
-                            >
-                              <QrCode className="size-3.5 text-primary" />
-                              <span>Appointment Pass</span>
-                            </Button>
+                            {isMissed ? (
+                              <>
+                                <ScheduleProcedureDialog
+                                  initialService={apt.service_id === "spay-neuter" ? "spay-neuter" : "vaccination"}
+                                  initialPet={aptPet || { id: apt.pet_id, name: apt.pet_name }}
+                                  pets={pets}
+                                  rescheduleAppointmentId={apt.id}
+                                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                                  trigger={
+                                    <Button
+                                      size="sm"
+                                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs cursor-pointer"
+                                    >
+                                      <CalendarClock className="size-3.5" />
+                                      <span>Reschedule</span>
+                                    </Button>
+                                  }
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleCancelAppointment(apt.id)}
+                                  className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
+                                  title="Dismiss missed appointment"
+                                >
+                                  Dismiss
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAppointmentForSlip(apt);
+                                    setAppointmentSlipOpen(true);
+                                  }}
+                                  className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border hover:bg-muted cursor-pointer shadow-2xs"
+                                >
+                                  <QrCode className="size-3.5 text-primary" />
+                                  <span>Appointment Pass</span>
+                                </Button>
 
-                            {apt.status !== "cancelled" && apt.status !== "completed" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleCancelAppointment(apt.id)}
-                                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
-                                title="Cancel appointment and release slot"
-                              >
-                                Cancel
-                              </Button>
+                                {apt.status !== "cancelled" && apt.status !== "completed" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleCancelAppointment(apt.id)}
+                                    className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
+                                    title="Cancel appointment and release slot"
+                                  >
+                                    Cancel
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
+
+                        {/* Missed schedule explanation banner */}
+                        {isMissed && (
+                          <div className="flex items-start sm:items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+                            <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-0" />
+                            <div className="flex-1">
+                              <span className="font-semibold">Schedule Unattended:</span> This appointment on{" "}
+                              <strong>{format(new Date(apt.date), "MMMM d, yyyy")}</strong> was missed. Click <strong>Reschedule</strong> above to pick a new municipal clinic date.
+                            </div>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -1606,6 +2006,8 @@ export default function PetOwnerPortalPage() {
       <CVOClinicInfoCard
         vaxSlots={slotConfig.defaultVaccinationSlots}
         surgerySlots={slotConfig.defaultSpayNeuterSlots}
+        isStaff={isStaff}
+        currentUserRole={userRole}
       />
     </div>
   </div>
@@ -1620,10 +2022,10 @@ export default function PetOwnerPortalPage() {
       {/* ── Pet Digital Passport QR Modal ── */}
       <Dialog open={passportOpen} onOpenChange={setPassportOpen}>
         <DialogContent className="max-w-md p-5 bg-background">
-          <DialogHeader className="border-b pb-2">
-            <DialogTitle className="text-sm font-bold flex items-center gap-2">
-              <QrCode className="size-4 text-primary" />
-              Digital Pet Passport — {selectedPetForPassport?.name}
+          <DialogHeader className="border-b pb-2.5 pr-8">
+            <DialogTitle className="text-sm font-bold flex items-center gap-2 truncate">
+              <QrCode className="size-4 text-primary shrink-0" />
+              <span className="truncate">Digital Pet Passport — {selectedPetForPassport?.name}</span>
             </DialogTitle>
           </DialogHeader>
 
@@ -1646,8 +2048,24 @@ export default function PetOwnerPortalPage() {
               </p>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs">
-              Show this QR code to CVO vaccinators during mobile drives or walk-in visits for instant medical history retrieval.
+              Show this QR code to CVO clinicians during mobile drives or walk-in visits for instant medical history retrieval.
             </p>
+
+            {/* Single clean download button */}
+            <div className="pt-2 w-full">
+              <Button
+                onClick={handleDownloadPassport}
+                disabled={downloadingPassport}
+                className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer shadow-xs text-xs h-9.5"
+              >
+                {downloadingPassport ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                <span>Download Passport Card</span>
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

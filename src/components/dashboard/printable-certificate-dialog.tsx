@@ -59,7 +59,7 @@ export function PrintableCertificateDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto p-4 sm:p-6 bg-background">
-        <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b">
+        <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b pr-10 sm:pr-12">
           <div className="flex items-center gap-2">
             <ShieldCheck className="size-5 text-emerald-600" />
             <DialogTitle className="text-base font-bold">

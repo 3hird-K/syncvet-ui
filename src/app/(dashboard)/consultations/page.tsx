@@ -57,7 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, isTodayDate } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
 
 export default function ConsultationsPage() {
@@ -92,50 +92,56 @@ export default function ConsultationsPage() {
     });
   }, [allConsultations, isPetOwner, user]);
 
-  const waitingCount = consultations.filter((c) => c.status === "waiting").length;
-  const activeCount = consultations.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
-  const completedCount = consultations.filter((c) => c.status === "completed").length;
+  const [dateFilter, setDateFilter] = useState<"all" | "today">("all");
+
+  const todaysConsultations = useMemo(
+    () => consultations.filter((c) => isTodayDate(c.date)),
+    [consultations]
+  );
+  const todaysWaitingCount = todaysConsultations.filter((c) => c.status === "waiting").length;
+  const todaysActiveCount = todaysConsultations.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
+  const todaysCompletedCount = todaysConsultations.filter((c) => c.status === "completed").length;
 
   const metrics: PageMetric[] = [
     {
       title: "Today's Consultations",
-      value: `${consultations.length}`,
+      value: `${todaysConsultations.length}`,
       icon: Stethoscope,
       gradient: "from-blue-500/5",
       iconClass: "text-blue-500",
-      badge: "Clinical Walk-ins",
-      badgeClass: "text-blue-500 bg-blue-500/10",
-      sub: "Free municipal services",
+      badge: todaysWaitingCount > 0 ? `${todaysWaitingCount} Waiting` : "Queue Clear",
+      badgeClass: todaysWaitingCount > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
+      sub: "Walk-ins recorded today",
     },
     {
       title: "Waiting in Queue",
-      value: `${waitingCount}`,
+      value: `${todaysWaitingCount}`,
       icon: Clock,
       gradient: "from-amber-500/5",
       iconClass: "text-amber-500",
-      badge: "In Triage",
-      badgeClass: "text-amber-500 bg-amber-500/10",
-      sub: "Next for vitals/exam",
+      badge: todaysWaitingCount > 0 ? "In Triage" : "Floor Clear",
+      badgeClass: todaysWaitingCount > 0 ? "text-amber-500 bg-amber-500/10" : "text-muted-foreground bg-muted/20",
+      sub: "Next for vitals/exam today",
     },
     {
       title: "In Consultation / Tx",
-      value: `${activeCount}`,
+      value: `${todaysActiveCount}`,
       icon: AlertCircle,
       gradient: "from-purple-500/5",
       iconClass: "text-purple-500",
-      badge: "Active Encounters",
-      badgeClass: "text-purple-500 bg-purple-500/10",
-      sub: "Exam & treatment rooms",
+      badge: todaysActiveCount > 0 ? "Active Encounters" : "None Active",
+      badgeClass: todaysActiveCount > 0 ? "text-purple-500 bg-purple-500/10" : "text-muted-foreground bg-muted/20",
+      sub: "Exam & treatment rooms today",
     },
     {
-      title: "Completed Encounters",
-      value: `${completedCount}`,
+      title: "Completed Today",
+      value: `${todaysCompletedCount}`,
       icon: CheckCircle2,
       gradient: "from-emerald-500/5",
       iconClass: "text-emerald-500",
-      badge: "Resolved",
-      badgeClass: "text-emerald-500 bg-emerald-500/10",
-      sub: "Discharged with RX",
+      badge: todaysCompletedCount > 0 ? "Resolved" : "0 Today",
+      badgeClass: todaysCompletedCount > 0 ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground bg-muted/20",
+      sub: "Discharged with RX today",
     },
   ];
 
@@ -151,9 +157,10 @@ export default function ConsultationsPage() {
         c.diagnosis.toLowerCase().includes(q);
 
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      return matchesQuery && matchesStatus;
+      const matchesDate = dateFilter === "all" || (dateFilter === "today" && isTodayDate(c.date));
+      return matchesQuery && matchesStatus && matchesDate;
     });
-  }, [consultations, query, statusFilter]);
+  }, [consultations, query, statusFilter, dateFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -210,6 +217,17 @@ export default function ConsultationsPage() {
                 />
               </div>
 
+              {/* Date Filter */}
+              <Select value={dateFilter} onValueChange={(v: "all" | "today") => { setDateFilter(v); setPage(1); }}>
+                <SelectTrigger className="h-8 w-36 text-xs bg-muted/20">
+                  <SelectValue placeholder="All Dates" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dates ({consultations.length})</SelectItem>
+                  <SelectItem value="today">Today Only ({todaysConsultations.length})</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Status Filter */}
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger className="h-8 w-36 text-xs bg-muted/20">
@@ -231,7 +249,7 @@ export default function ConsultationsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Encounter #</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Encounter & Date</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner / Barangay</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase tracking-widest">Complaint & Diagnosis</TableHead>
@@ -245,14 +263,27 @@ export default function ConsultationsPage() {
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                    No clinical encounters match the filter.
+                    {dateFilter === "today" 
+                      ? "No clinical encounters recorded today." 
+                      : "No clinical encounters match the filter."}
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((c, idx) => (
                   <TableRow key={`${c.id}-${idx}`} className="hover:bg-muted/50">
                     <TableCell className="font-mono text-xs text-muted-foreground pl-6">
-                      {c.encounterNo}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-foreground">{c.encounterNo}</span>
+                        {isTodayDate(c.date) ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/20">
+                            Today
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-muted text-muted-foreground">
+                            {c.date || "Past"}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-muted-foreground/60">{c.time}</p>
                     </TableCell>
                     <TableCell>

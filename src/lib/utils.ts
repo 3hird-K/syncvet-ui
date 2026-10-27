@@ -17,3 +17,27 @@ export function getTwoLetterInitials(name?: string | null): string {
   }
   return (name.slice(0, 2) || "SV").toUpperCase();
 }
+
+export function getTodayDateString(): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "Asia/Manila",
+    }).format(new Date());
+  } catch {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+}
+
+export function isTodayDate(dateStr?: string | null): boolean {
+  if (!dateStr) return false;
+  const today = getTodayDateString();
+  const normalized = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
+  return normalized === today;
+}

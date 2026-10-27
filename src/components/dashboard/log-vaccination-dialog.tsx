@@ -147,7 +147,7 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
 
             <div className="grid gap-1.5">
               <Label htmlFor="vet" className="text-[10px] font-bold uppercase tracking-widest">
-                Administering Clinician / Vaccinator
+                Administering Veterinarian
               </Label>
               <Select value={vetName} onValueChange={setVetName}>
                 <SelectTrigger id="vet" className="h-9 text-xs">
@@ -157,7 +157,7 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
                   <SelectItem value="Dr. Elena Santos, DVM">Dr. Elena Santos, DVM</SelectItem>
                   <SelectItem value="Dr. Helen Ann P. Tacandong, DVM">Dr. Helen Ann P. Tacandong, DVM</SelectItem>
                   <SelectItem value="Dr. Sarah Chen, DVM">Dr. Sarah Chen, DVM</SelectItem>
-                  <SelectItem value="Officer Mark Velez">Officer Mark Velez (Field Vaccinator)</SelectItem>
+                  <SelectItem value="Dr. Mark Velez, DVM">Dr. Mark Velez, DVM</SelectItem>
                 </SelectContent>
               </Select>
             </div>

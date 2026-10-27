@@ -18,11 +18,10 @@ export type SupabaseTransaction = Database["public"]["Tables"]["service_transact
 export type SupabaseTransactionInsert = Database["public"]["Tables"]["service_transactions"]["Insert"];
 export type SupabaseTransactionUpdate = Database["public"]["Tables"]["service_transactions"]["Update"];
 
-export type SyncVetRole = "Administrator" | "Vaccinator" | "Veterinarian" | "Pet Owner";
+export type SyncVetRole = "Administrator" | "Veterinarian" | "Pet Owner";
 
 export const SYNCVET_ROLES: readonly SyncVetRole[] = [
   "Administrator",
-  "Vaccinator",
   "Veterinarian",
   "Pet Owner",
 ] as const;

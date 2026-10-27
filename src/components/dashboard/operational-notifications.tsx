@@ -14,7 +14,10 @@ import {
   Package,
   ArrowRight,
   ExternalLink,
+  CalendarClock,
+  AlertTriangle,
 } from "lucide-react";
+import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -81,10 +84,102 @@ export function OperationalNotifications() {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [realtimeAlerts, setRealtimeAlerts] = useState<OperationalAlert[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [ownerAppointments, setOwnerAppointments] = useState<any[]>([]);
+
+  // Query appointments for current pet owner to check for missed/unattended schedules
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAppointments = async () => {
+      try {
+        const ownerId = user?.id;
+        const seen = new Set<string>();
+        const list: any[] = [];
+
+        // 1. Supabase appointments table
+        if (ownerId) {
+          try {
+            const { data } = await supabase
+              .from("appointments")
+              .select("*")
+              .or(`owner_id.eq.${ownerId}`)
+              .neq("status", "cancelled");
+            if (data) {
+              data.forEach((d) => {
+                if (!seen.has(d.id)) {
+                  seen.add(d.id);
+                  list.push(d);
+                }
+              });
+            }
+          } catch {}
+
+          // 2. service_transactions
+          try {
+            const { data: txData } = await supabase
+              .from("service_transactions")
+              .select("*")
+              .or(`owner_id.eq.${ownerId}`)
+              .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
+              .neq("status", "cancelled");
+            if (txData) {
+              txData.forEach((tx: any) => {
+                const refId = tx.reference_id || tx.id;
+                if (!seen.has(refId)) {
+                  seen.add(refId);
+                  const serviceType = tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter";
+                  const petNameMatch = tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet";
+                  list.push({
+                    id: refId,
+                    owner_id: tx.owner_id,
+                    pet_name: petNameMatch,
+                    service_id: serviceType,
+                    date: tx.date ? tx.date.split("T")[0] : "",
+                    status: tx.status || "confirmed",
+                  });
+                }
+              });
+            }
+          } catch {}
+        }
+
+        // 3. localStorage cache (ensures offline/immediate sync)
+        try {
+          const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          local.forEach((item: any) => {
+            if (!seen.has(item.id) && item.status !== "cancelled" && (!ownerId || !item.owner_id || item.owner_id === ownerId)) {
+              seen.add(item.id);
+              list.push(item);
+            }
+          });
+        } catch {}
+
+        if (isMounted) {
+          setOwnerAppointments(list);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    fetchAppointments();
+
+    const handleUpdate = () => {
+      fetchAppointments();
+    };
+    window.addEventListener("storage", handleUpdate);
+    window.addEventListener("syncvet-appointment-updated", handleUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("storage", handleUpdate);
+      window.removeEventListener("syncvet-appointment-updated", handleUpdate);
+    };
+  }, [supabase, user?.id]);
 
   // Compute live alerts derived from active system data
   const derivedAlerts = useMemo<OperationalAlert[]>(() => {
     const list: OperationalAlert[] = [];
+    const todayStart = startOfDay(new Date());
 
     // 1. Citizen Inquiries & unread messages from pet owners (Only visible to Staff, never own messages)
     if (isStaff) {
@@ -112,74 +207,113 @@ export function OperationalNotifications() {
           priority: "high",
         });
       }
+
+      // 2. Bite Surveillance & Urgent Consultations
+      const biteCases = animalControlCases
+        .filter(
+          (c) =>
+            c.reason?.toLowerCase().includes("bite") ||
+            c.reason?.toLowerCase().includes("rabies")
+        )
+        .slice(0, 2);
+
+      for (const b of biteCases) {
+        const timeMs = new Date(b.dateCaptured || Date.now()).getTime();
+        list.push({
+          id: `bite-${b.caseId}`,
+          type: "bite",
+          title: "Bite Surveillance",
+          message: `Canine bite observation registered in ${b.barangay || "Lapasan"}`,
+          timestamp: formatRelativeTime(timeMs),
+          createdAt: timeMs,
+          href: "/consultations",
+          isRead: false,
+          priority: "high",
+        });
+      }
+
+      // 3. Cold-Chain Watch & Critical Inventory
+      const criticalInventory = inventory
+        .filter(
+          (i) =>
+            i.status === "low-stock" ||
+            i.status === "expiring-soon" ||
+            i.stock <= (i.minimumStock || 10)
+        )
+        .slice(0, 2);
+
+      for (const inv of criticalInventory) {
+        list.push({
+          id: `inv-${inv.id}`,
+          type: "inventory",
+          title: "Cold-Chain Watch",
+          message: `${inv.name} (Batch ${inv.batchNumber}) low stock: ${inv.stock} ${inv.unit} left`,
+          timestamp: "Today",
+          createdAt: Date.now() - 3600000,
+          href: "/vaccine-inventory",
+          isRead: false,
+          priority: "medium",
+        });
+      }
+
+      // 4. Clinical Queue Advisory
+      const waitingConsultations = consultations.filter((c) => c.status === "waiting").length;
+      if (waitingConsultations > 0) {
+        list.push({
+          id: "cons-waiting",
+          type: "vaccine",
+          title: "Clinical Queue Advisory",
+          message: `${waitingConsultations} citizen pet${waitingConsultations > 1 ? "s" : ""} waiting in CVO central triage`,
+          timestamp: "Live",
+          createdAt: Date.now() - 1800000,
+          href: "/consultations",
+          isRead: false,
+          priority: "medium",
+        });
+      }
     }
 
-    // 2. Bite Surveillance & Urgent Consultations
-    const biteCases = animalControlCases
-      .filter(
-        (c) =>
-          c.reason?.toLowerCase().includes("bite") ||
-          c.reason?.toLowerCase().includes("rabies")
-      )
-      .slice(0, 2);
+    // 5. Missed & Unattended Appointment Alerts for Pet Owners (Action Required to Reschedule)
+    if (ownerAppointments.length > 0) {
+      for (const appt of ownerAppointments) {
+        if (appt.status === "cancelled" || appt.status === "completed") continue;
 
-    for (const b of biteCases) {
-      const timeMs = new Date(b.dateCaptured || Date.now()).getTime();
-      list.push({
-        id: `bite-${b.caseId}`,
-        type: "bite",
-        title: "Bite Surveillance",
-        message: `Canine bite observation registered in ${b.barangay || "Lapasan"}`,
-        timestamp: formatRelativeTime(timeMs),
-        createdAt: timeMs,
-        href: "/consultations",
-        isRead: false,
-        priority: "high",
-      });
-    }
+        let isMissed = appt.status === "missed";
+        let parsedDate: Date | null = null;
+        try {
+          if (appt.date) {
+            const parsed = parseISO(appt.date);
+            if (isValid(parsed)) {
+              parsedDate = parsed;
+              if (isBefore(startOfDay(parsed), todayStart)) {
+                isMissed = true;
+              }
+            }
+          }
+        } catch {}
 
-    // 3. Cold-Chain Watch & Critical Inventory
-    const criticalInventory = inventory
-      .filter(
-        (i) =>
-          i.status === "low-stock" ||
-          i.status === "expiring-soon" ||
-          i.stock <= (i.minimumStock || 10)
-      )
-      .slice(0, 2);
+        if (isMissed) {
+          const petName = appt.pet_name || "Your pet";
+          const serviceName = appt.service_id === "spay-neuter" ? "Spay & Neuter" : "Vaccination";
+          const formattedDate = parsedDate ? format(parsedDate, "EEEE, MMMM d") : (appt.date || "scheduled date");
 
-    for (const inv of criticalInventory) {
-      list.push({
-        id: `inv-${inv.id}`,
-        type: "inventory",
-        title: "Cold-Chain Watch",
-        message: `${inv.name} (Batch ${inv.batchNumber}) low stock: ${inv.stock} ${inv.unit} left`,
-        timestamp: "Today",
-        createdAt: Date.now() - 3600000,
-        href: "/vaccine-inventory",
-        isRead: false,
-        priority: "medium",
-      });
-    }
-
-    // 4. Rabies Booster & Schedule Advisory
-    const waitingConsultations = consultations.filter((c) => c.status === "waiting").length;
-    if (waitingConsultations > 0) {
-      list.push({
-        id: "cons-waiting",
-        type: "vaccine",
-        title: "Clinical Queue Advisory",
-        message: `${waitingConsultations} citizen pet${waitingConsultations > 1 ? "s" : ""} waiting in CVO central triage`,
-        timestamp: "Live",
-        createdAt: Date.now() - 1800000,
-        href: "/consultations",
-        isRead: false,
-        priority: "medium",
-      });
+          list.push({
+            id: `missed-appt-${appt.id}`,
+            type: "vaccine",
+            title: `Missed ${serviceName} — Reschedule Now`,
+            message: `${petName}'s ${serviceName} on ${formattedDate} was unattended. Click to choose a new clinic date.`,
+            timestamp: "Needs Reschedule",
+            createdAt: parsedDate ? parsedDate.getTime() : Date.now(),
+            href: "/pet-owner",
+            isRead: false,
+            priority: "high",
+          });
+        }
+      }
     }
 
     return list;
-  }, [messages, animalControlCases, inventory, consultations]);
+  }, [isStaff, user?.id, messages, animalControlCases, inventory, consultations, ownerAppointments]);
 
   // Combine derived alerts with any incoming real-time alerts
   const allAlerts = useMemo(() => {
@@ -368,7 +502,7 @@ export function OperationalNotifications() {
           <div className="flex items-center gap-1.5">
             <Bell className="size-3.5 text-primary" />
             <span className="text-xs font-bold text-foreground">
-              Operational Alerts & Dispatch
+              {isPetOwner ? "Citizen & Procedure Notifications" : "Operational Alerts & Dispatch"}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -407,10 +541,12 @@ export function OperationalNotifications() {
             <div className="py-8 text-center space-y-2">
               <CheckCircle2 className="size-8 mx-auto text-emerald-500/70" />
               <p className="text-xs font-bold text-foreground">
-                All Operational Systems Clear
+                {isPetOwner ? "All Notifications Up to Date" : "All Operational Systems Clear"}
               </p>
               <p className="text-[11px] text-muted-foreground max-w-[220px] mx-auto">
-                No active emergencies, pending citizen inquiries, or cold-chain breaches.
+                {isPetOwner
+                  ? "No missed appointments or urgent clinical notices."
+                  : "No active emergencies, pending citizen inquiries, or cold-chain breaches."}
               </p>
             </div>
           ) : (

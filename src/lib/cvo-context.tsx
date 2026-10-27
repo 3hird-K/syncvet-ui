@@ -26,8 +26,8 @@ interface CVOContextType {
   fieldOperations: CVOFieldOperation[];
   auditLogs: CVOAuditLog[];
   offlineRecords: CVOOfflineVaccinationRecord[];
-  activeRoleView: "Administrator" | "Veterinarian" | "Vaccinator" | "Staff" | "Pet Owner";
-  setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Vaccinator" | "Staff" | "Pet Owner") => void;
+  activeRoleView: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner";
+  setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner") => void;
   addConsultation: (consultation: Omit<CVOConsultation, "id" | "encounterNo">) => CVOConsultation;
   updateConsultationStatus: (id: string, status: CVOConsultation["status"]) => void;
   updateConsultation: (id: string, updates: Partial<CVOConsultation>) => void;
@@ -205,7 +205,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [offlineRecords, setOfflineRecords] = useState<CVOOfflineVaccinationRecord[]>([]);
-  const [activeRoleView, setActiveRoleView] = useState<"Administrator" | "Veterinarian" | "Vaccinator" | "Staff" | "Pet Owner">("Administrator");
+  const [activeRoleView, setActiveRoleView] = useState<"Administrator" | "Veterinarian" | "Staff" | "Pet Owner">("Administrator");
 
   // Sync role view with logged in user role (e.g. Administrator, Pet Owner)
   useEffect(() => {
@@ -227,7 +227,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           dbRole ||
           (isAdminEmail ? "Administrator" : meta?.roleTitle ? normalizeSyncVetRole(meta.roleTitle) : "Pet Owner");
 
-        if (effectiveRole === "Administrator" || effectiveRole === "Veterinarian" || effectiveRole === "Vaccinator") {
+        if (effectiveRole === "Administrator" || effectiveRole === "Veterinarian") {
           setActiveRoleView(effectiveRole);
         } else {
           setActiveRoleView("Pet Owner");
@@ -726,7 +726,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
     addAuditLog({
       user: c.intakeOfficer,
-      role: "Vaccinator",
+      role: "Veterinarian",
       action: "Apprehended / Impounded Animal",
       entity: "Animal Control",
       recordId: caseId,
@@ -827,7 +827,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
     addAuditLog({
       user: "Field Mobile Unit",
-      role: "Vaccinator",
+      role: "Veterinarian",
       action: "Synchronized Offline Field Records",
       entity: "Field Operations",
       recordId: `SYNC-${Date.now()}`,
@@ -875,7 +875,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
     addAuditLog({
       user: "Current Operator",
-      role: "Vaccinator",
+      role: "Veterinarian",
       action: "Field Operation Scheduled",
       entity: "Field Operations",
       recordId: opId,
@@ -895,7 +895,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       auditLogs,
       offlineRecords,
       activeRoleView,
-      setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Vaccinator" | "Staff" | "Pet Owner") => {
+      setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner") => {
         setActiveRoleView(role);
         try {
           localStorage.setItem(STORAGE_KEYS.ROLE_VIEW, role);

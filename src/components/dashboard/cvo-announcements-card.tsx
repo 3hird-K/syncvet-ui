@@ -10,7 +10,7 @@ import {
   Syringe,
   AlertTriangle,
   ShieldAlert,
-  Sparkles,
+  Globe,
   MapPin,
   Trash2,
   Pencil,
@@ -19,10 +19,18 @@ import {
   User,
   ChevronDown,
   ChevronUp,
+  MoreVertical,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
@@ -55,7 +63,7 @@ const DEFAULT_ANNOUNCEMENTS: CVOAnnouncement[] = [
     id: "seed-2",
     title: "Daily Free Spay & Neuter (Kapon) Quotas Open",
     content:
-      "Walk-in surgical quotas for canine and feline castrations/spays are open Monday through Friday at our main clinic in J. Pacana St., Macabalan. Please fast your pets from solid food for 8 hours prior to surgical evaluation.",
+      "Walk-in surgical quotas for canine and feline castrations/spays are open Monday through Friday at our main clinic in CVO Complex, J.V. Seriña St., Carmen. Please fast your pets from solid food for 8 hours prior to surgical evaluation.",
     category: "Clinic Schedule",
     priority: "normal",
     author_name: "CVO Admin Desk",
@@ -122,14 +130,53 @@ export function CVOAnnouncementsCard({
     };
   }, [supabase, queryClient]);
 
-  // Combine DB announcements + local created announcements (if any) or fallback
+  // Auto-delete expired announcements from database
+  useEffect(() => {
+    if (!dbAnnouncements || dbAnnouncements.length === 0) return;
+    const now = Date.now();
+    const expired = dbAnnouncements.filter((a) => {
+      if (!a.expires_at) return false;
+      try {
+        const exp = new Date(a.expires_at);
+        if (a.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
+        return exp.getTime() <= now;
+      } catch {
+        return false;
+      }
+    });
+
+    if (expired.length > 0) {
+      expired.forEach(async (item) => {
+        try {
+          await supabase.from("announcements").delete().eq("id", item.id);
+        } catch {
+          // ignore
+        }
+      });
+      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+    }
+  }, [dbAnnouncements, supabase, queryClient]);
+
+  // Combine DB announcements + local created announcements (if any) or fallback, filtering out expired ones
   const announcements = useMemo(() => {
     const combined: CVOAnnouncement[] = [];
     const seenIds = new Set<string>();
+    const now = Date.now();
+
+    const isExpired = (item: CVOAnnouncement) => {
+      if (!item.expires_at) return false;
+      try {
+        const exp = new Date(item.expires_at);
+        if (item.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
+        return exp.getTime() <= now;
+      } catch {
+        return false;
+      }
+    };
 
     // 1. Add locally published in this session
     for (const item of localList) {
-      if (!seenIds.has(item.id)) {
+      if (!seenIds.has(item.id) && !isExpired(item)) {
         seenIds.add(item.id);
         combined.push(item);
       }
@@ -138,14 +185,14 @@ export function CVOAnnouncementsCard({
     // 2. Add from Supabase DB
     if (dbAnnouncements && dbAnnouncements.length > 0) {
       for (const item of dbAnnouncements) {
-        if (!seenIds.has(item.id)) {
+        if (!seenIds.has(item.id) && !isExpired(item)) {
           seenIds.add(item.id);
           combined.push(item);
         }
       }
     } else if (localList.length === 0) {
       // 3. Fallback seeds if database is still fresh/unmigrated
-      return DEFAULT_ANNOUNCEMENTS;
+      return DEFAULT_ANNOUNCEMENTS.filter((item) => !isExpired(item));
     }
 
     // Sort pinned first, then created_at desc
@@ -154,6 +201,11 @@ export function CVOAnnouncementsCard({
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [dbAnnouncements, localList]);
+
+  // Track the currently pinned announcement across the bulletin
+  const pinnedAnnouncement = useMemo(() => {
+    return announcements.find((a) => a.is_pinned) || null;
+  }, [announcements]);
 
   const handleCreated = (item: CVOAnnouncement) => {
     setLocalList((prev) => [item, ...prev]);
@@ -175,6 +227,62 @@ export function CVOAnnouncementsCard({
     } catch {
       setLocalList((prev) => prev.filter((a) => a.id !== id));
       toast.success("Announcement removed.");
+    }
+  };
+
+  const handleTogglePin = async (item: CVOAnnouncement, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const willPin = !item.is_pinned;
+
+    try {
+      if (willPin) {
+        // Automatically switch pin: unpin any other existing pinned announcement in DB
+        await supabase
+          .from("announcements")
+          .update({ is_pinned: false })
+          .eq("is_pinned", true);
+
+        // Pin this announcement
+        await supabase
+          .from("announcements")
+          .update({ is_pinned: true })
+          .eq("id", item.id);
+
+        // Update local query cache immediately
+        queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
+          old.map((a) => ({
+            ...a,
+            is_pinned: a.id === item.id,
+          }))
+        );
+        setLocalList((prev) =>
+          prev.map((a) => ({
+            ...a,
+            is_pinned: a.id === item.id,
+          }))
+        );
+
+        toast.success(`"${item.title}" is now pinned to the top!`);
+      } else {
+        // Unpin this announcement
+        await supabase
+          .from("announcements")
+          .update({ is_pinned: false })
+          .eq("id", item.id);
+
+        queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
+          old.map((a) => (a.id === item.id ? { ...a, is_pinned: false } : a))
+        );
+        setLocalList((prev) =>
+          prev.map((a) => (a.id === item.id ? { ...a, is_pinned: false } : a))
+        );
+
+        toast.success("Announcement unpinned.");
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+    } catch (err: any) {
+      toast.error("Failed to update pin status", { description: err?.message });
     }
   };
 
@@ -202,7 +310,7 @@ export function CVOAnnouncementsCard({
         };
       default:
         return {
-          icon: Sparkles,
+          icon: Globe,
           className: "bg-primary/10 text-primary border-primary/20",
         };
     }
@@ -237,7 +345,7 @@ export function CVOAnnouncementsCard({
             </div>
           </div>
 
-          {/* If user is staff (Admin, Vet, or Vaccinator), show Post Notice button */}
+          {/* If user is staff (Admin or Veterinarian), show Post Notice button */}
           {isStaff && (
             <div className="shrink-0">
               <CreateAnnouncementDialog
@@ -245,6 +353,7 @@ export function CVOAnnouncementsCard({
                 currentUserName={currentUserName}
                 currentUserRole={currentUserRole}
                 onAnnouncementCreated={handleCreated}
+                pinnedAnnouncement={pinnedAnnouncement}
               />
             </div>
           )}
@@ -304,6 +413,16 @@ export function CVOAnnouncementsCard({
                         Urgent
                       </Badge>
                     )}
+
+                    {item.expires_at && (
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 gap-1 font-medium"
+                      >
+                        <Clock className="size-2.5 text-amber-500" />
+                        <span>Expires {new Date(item.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                      </Badge>
+                    )}
                   </div>
 
                   <span className="text-[10px] font-mono text-muted-foreground flex items-center gap-1">
@@ -344,29 +463,53 @@ export function CVOAnnouncementsCard({
                       </span>
                     )}
 
-                    {/* Staff Edit & Delete Buttons */}
+                    {/* Staff 3-dots actions menu */}
                     {isStaff && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAnnouncementToEdit(item);
-                            setEditDialogOpen(true);
-                          }}
-                          className="p-1 text-muted-foreground hover:text-primary transition-colors rounded cursor-pointer"
-                          title="Edit announcement"
-                        >
-                          <Pencil className="size-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(item.id, e)}
-                          className="p-1 text-muted-foreground hover:text-red-500 transition-colors rounded cursor-pointer"
-                          title="Delete announcement"
-                        >
-                          <Trash2 className="size-3" />
-                        </button>
+                      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md cursor-pointer transition-colors"
+                              title="More actions (pin, edit, delete)"
+                            >
+                              <MoreVertical className="size-3.5" />
+                              <span className="sr-only">Actions</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44 text-xs shadow-md rounded-xl p-1 bg-popover">
+                            <DropdownMenuItem
+                              onClick={(e) => handleTogglePin(item, e)}
+                              className="cursor-pointer gap-2 py-1.5 text-xs font-medium"
+                            >
+                              <Pin className={`size-3.5 ${item.is_pinned ? "text-amber-500 fill-amber-500" : "text-muted-foreground"}`} />
+                              <span>{item.is_pinned ? "Unpin Announcement" : "Pin to Top"}</span>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAnnouncementToEdit(item);
+                                setEditDialogOpen(true);
+                              }}
+                              className="cursor-pointer gap-2 py-1.5 text-xs font-medium"
+                            >
+                              <Pencil className="size-3.5 text-muted-foreground" />
+                              <span>Update / Edit</span>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator className="my-1" />
+
+                            <DropdownMenuItem
+                              onClick={(e) => handleDelete(item.id, e)}
+                              className="cursor-pointer gap-2 py-1.5 text-xs font-medium text-destructive focus:text-destructive focus:bg-destructive/10"
+                            >
+                              <Trash2 className="size-3.5" />
+                              <span>Delete Announcement</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     )}
                   </div>
@@ -383,6 +526,7 @@ export function CVOAnnouncementsCard({
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onAnnouncementUpdated={handleUpdated}
+        pinnedAnnouncement={pinnedAnnouncement}
       />
     </Card>
   );

@@ -25,10 +25,7 @@ import {
   X,
   Minus,
   Send,
-  Stethoscope,
-  Building2,
   PawPrint,
-  Sparkles,
   ArrowRight,
   ThumbsUp,
   User,
@@ -39,6 +36,7 @@ import {
   MoreHorizontal,
   Reply,
   Check,
+  CheckCheck,
   ChevronDown,
   Loader2,
   Undo2,
@@ -184,6 +182,64 @@ export function CitizenChatWidget() {
     staleTime: 1000 * 30,
   });
 
+  // Real-time user presence tracking from Clerk and Supabase (matching /messages)
+  const { data: presenceMap = {} } = useQuery<
+    Record<
+      string,
+      {
+        isActive: boolean;
+        statusText: string;
+        lastSeenAt: string | null;
+        minutesAgo: number | null;
+      }
+    >
+  >({
+    queryKey: ["users-presence-map"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/presence");
+        if (!res.ok) return {};
+        return await res.json();
+      } catch {
+        return {};
+      }
+    },
+    refetchInterval: 8000,
+  });
+
+  // Heartbeat ping while the current user has the app open
+  useEffect(() => {
+    if (!user?.id) return;
+    const sendHeartbeat = () => {
+      fetch("/api/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      }).catch(() => {});
+    };
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 30000);
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
+  const getContactPresence = useCallback(
+    (c: ChatContact) => {
+      const isOfficial = c.id === "vet" || c.id === "admin";
+      if (isOfficial) {
+        return {
+          isActive: true,
+          statusText: "Active now",
+        };
+      }
+      const p = c.ownerId ? presenceMap[c.ownerId] : presenceMap[c.id];
+      return {
+        isActive: p?.isActive ?? false,
+        statusText: p?.statusText || "Offline",
+      };
+    },
+    [presenceMap]
+  );
+
   const userRecord = dbUsers.find((u) => u.id === user?.id);
   const isVet = activeRoleView === "Veterinarian" || userRecord?.role === "Veterinarian";
   const isStaff = activeRoleView !== "Pet Owner" && userRecord?.role !== "Pet Owner";
@@ -231,6 +287,7 @@ export function CitizenChatWidget() {
         (isKyle
           ? "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zSmg1cllNOG9kNGF3QWRESUZ3UVE4OE4zM3UifQ"
           : "");
+      const presence = presenceMap[u.id];
 
       return {
         id: isKyle ? "citizen" : u.id,
@@ -242,7 +299,7 @@ export function CitizenChatWidget() {
         fallback: getTwoLetterInitials(u.full_name || u.email || "PO"),
         badge: "Pet Owner",
         theme: "purple" as const,
-        isOnline: true,
+        isOnline: presence?.isActive ?? false,
         ownerId: u.id,
       };
     });
@@ -251,6 +308,7 @@ export function CitizenChatWidget() {
       (c) => c.id === "citizen" || c.ownerId === "user_3Jh5rWy35KtlFbJMi1wroOXOYot"
     );
     if (!hasCitizen) {
+      const kylePresence = presenceMap["user_3Jh5rWy35KtlFbJMi1wroOXOYot"];
       citizenContacts.unshift({
         id: "citizen",
         desk: "vet",
@@ -262,13 +320,13 @@ export function CitizenChatWidget() {
         fallback: "KU",
         badge: "Pet Owner",
         theme: "purple",
-        isOnline: true,
+        isOnline: kylePresence?.isActive ?? false,
         ownerId: "user_3Jh5rWy35KtlFbJMi1wroOXOYot",
       });
     }
 
     return [...baseContacts, ...citizenContacts];
-  }, [dbUsers]);
+  }, [dbUsers, presenceMap]);
 
   const findContact = useCallback(
     (contactId: string): ChatContact | undefined => {
@@ -603,6 +661,7 @@ export function CitizenChatWidget() {
               user={user}
               isLoaded={isLoaded}
               pawReactions={pawReactions}
+              presence={getContactPresence(contact)}
               onTogglePawReaction={togglePawReaction}
               onMinimize={() => toggleMinimize(contact.id)}
               onClose={() => closeWindow(contact.id)}
@@ -658,62 +717,78 @@ export function CitizenChatWidget() {
                   }
                   return c.id === "vet" || c.id === "admin";
                 })
-                .map((c) => (
-                <DropdownMenuItem
-                  key={c.id}
-                  onClick={() => handleOpenContact(c.id)}
-                  className="flex items-center gap-3 p-2.5 cursor-pointer rounded-xl hover:bg-muted/70 transition-all group focus:bg-muted/70"
-                >
-                  <div className="relative shrink-0">
-                    <Avatar className="size-10 rounded-full overflow-hidden border border-border/60 shadow-xs">
-                      {c.avatar ? (
-                        <AvatarImage
-                          src={c.avatar}
-                          alt={c.name}
-                          referrerPolicy="no-referrer"
-                          className={c.id === "admin" ? "object-contain p-1 bg-white" : "object-cover"}
+                .map((c) => {
+                  const { isActive, statusText } = getContactPresence(c);
+                  return (
+                    <DropdownMenuItem
+                      key={c.id}
+                      onClick={() => handleOpenContact(c.id)}
+                      className="flex items-center gap-3 p-2.5 cursor-pointer rounded-xl hover:bg-muted/70 transition-all group focus:bg-muted/70"
+                    >
+                      <div className="relative shrink-0">
+                        <Avatar className="size-10 rounded-full overflow-hidden border border-border/60 shadow-xs">
+                          {c.avatar ? (
+                            <AvatarImage
+                              src={c.avatar}
+                              alt={c.name}
+                              referrerPolicy="no-referrer"
+                              className={c.id === "admin" ? "object-contain p-1 bg-white" : "object-cover"}
+                            />
+                          ) : null}
+                          <AvatarFallback
+                            className={cn(
+                              "text-white font-bold text-xs",
+                              c.theme === "teal"
+                                ? "bg-teal-600"
+                                : c.theme === "purple"
+                                ? "bg-purple-600"
+                                : "bg-emerald-600"
+                            )}
+                          >
+                            {c.fallback}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span
+                          className={cn(
+                            "absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-card ring-1 transition-colors",
+                            isActive
+                              ? "bg-emerald-500 ring-emerald-500/20 shadow-2xs"
+                              : "bg-zinc-400 dark:bg-zinc-600 ring-zinc-400/20"
+                          )}
+                          title={isActive ? "Active now" : statusText}
                         />
-                      ) : null}
-                      <AvatarFallback
-                        className={cn(
-                          "text-white font-bold text-xs",
-                          c.theme === "teal"
-                            ? "bg-teal-600"
-                            : c.theme === "purple"
-                            ? "bg-purple-600"
-                            : "bg-emerald-600"
-                        )}
-                      >
-                        {c.fallback}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-card bg-emerald-500 ring-1 ring-emerald-500/20" />
-                  </div>
+                      </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <p className="font-bold text-xs text-foreground truncate group-hover:text-primary transition-colors">
-                        {c.shortName}
-                      </p>
-                      <span
-                        className={cn(
-                          "text-[9px] font-semibold px-1.5 py-0 rounded-full border shrink-0",
-                          c.theme === "teal"
-                            ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20"
-                            : c.theme === "purple"
-                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
-                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                        )}
-                      >
-                        {c.badge}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground truncate leading-snug">
-                      {c.roleDescription}
-                    </p>
-                  </div>
-                </DropdownMenuItem>
-              ))}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <p className="font-bold text-xs text-foreground truncate group-hover:text-primary transition-colors">
+                            {c.shortName}
+                          </p>
+                          <span
+                            className={cn(
+                              "text-[9px] font-semibold px-1.5 py-0 rounded-full border shrink-0",
+                              c.theme === "teal"
+                                ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20"
+                                : c.theme === "purple"
+                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                            )}
+                          >
+                            {c.badge}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground truncate leading-snug flex items-center justify-between gap-1">
+                          <span className="truncate">{c.roleDescription}</span>
+                          {!isActive && (
+                            <span className="text-[9px] text-muted-foreground/70 shrink-0 font-medium">
+                              {statusText}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -787,10 +862,21 @@ export function CitizenChatWidget() {
                     </AvatarFallback>
                   </Avatar>
 
-                  {/* Active Online Status Green Dot (if not unread and not typing) */}
-                  {unread === 0 && !isTyping && (
-                    <span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-card bg-emerald-500 ring-1 ring-emerald-500/20" />
-                  )}
+                  {/* Active Online Status Dot (if not unread and not typing) */}
+                  {unread === 0 && !isTyping && (() => {
+                    const { isActive, statusText } = getContactPresence(contact);
+                    return (
+                      <span
+                        className={cn(
+                          "absolute bottom-0 right-0 size-3 rounded-full border-2 border-card ring-1 transition-colors",
+                          isActive
+                            ? "bg-emerald-500 ring-emerald-500/20 shadow-2xs"
+                            : "bg-zinc-400 dark:bg-zinc-600 ring-zinc-400/20"
+                        )}
+                        title={isActive ? "Active now" : statusText}
+                      />
+                    );
+                  })()}
                 </button>
 
                 {/* ── Unread Messages Red Badge (Matches Image 1 & 2: '5' and '1') ── */}
@@ -848,6 +934,7 @@ function FacebookMessengerWindow({
   user,
   isLoaded,
   pawReactions,
+  presence,
   onTogglePawReaction,
   onMinimize,
   onClose,
@@ -859,6 +946,7 @@ function FacebookMessengerWindow({
   user: any;
   isLoaded: boolean;
   pawReactions: Record<string, string>;
+  presence?: { isActive: boolean; statusText: string };
   onTogglePawReaction: (msgId: string) => void;
   onMinimize: () => void;
   onClose: () => void;
@@ -1276,7 +1364,8 @@ function FacebookMessengerWindow({
                   ? {
                       ...m,
                       text: isUnsent ? "" : row.message_text,
-                      isEdited: isUnsent ? false : true,
+                      isEdited: isUnsent ? false : (row.message_text !== m.text ? true : m.isEdited),
+                      isRead: row.is_read !== undefined ? row.is_read : m.isRead,
                       isUnsent,
                       reaction: isUnsent ? undefined : meta.reaction,
                       replyTo: isUnsent ? undefined : meta.replyTo,
@@ -1518,13 +1607,13 @@ function FacebookMessengerWindow({
           "Animal transport permit requirements",
           "Report a stray bite incident",
           "Anti-rabies vaccine office hours",
-          "Macabalan CVO office location",
+          "Carmen CVO office location",
         ]
       : [
           "What should I do if my dog is bitten?",
           "Free Kapon schedule",
           "Anti-rabies vaccine hours",
-          "Clinic walk-in hours in Macabalan",
+          "Clinic walk-in hours in Carmen",
         ];
 
   return (
@@ -1562,7 +1651,15 @@ function FacebookMessengerWindow({
                 {contact.fallback}
               </AvatarFallback>
             </Avatar>
-            <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-card bg-emerald-500 ring-1 ring-emerald-500/20" />
+            <span
+              className={cn(
+                "absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-card ring-1 transition-colors",
+                presence?.isActive
+                  ? "bg-emerald-500 ring-emerald-500/20 shadow-2xs"
+                  : "bg-zinc-400 dark:bg-zinc-600 ring-zinc-400/20"
+              )}
+              title={presence?.isActive ? "Active now" : presence?.statusText || "Offline"}
+            />
           </div>
 
           <div className="min-w-0">
@@ -1570,8 +1667,13 @@ function FacebookMessengerWindow({
               {contact.shortName}
             </h3>
             <p className="text-[10px] text-muted-foreground truncate font-medium flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-              Active now
+              <span
+                className={cn(
+                  "size-1.5 rounded-full inline-block shrink-0",
+                  presence?.isActive ? "bg-emerald-500" : "bg-zinc-400 dark:bg-zinc-600"
+                )}
+              />
+              {presence?.statusText || (presence?.isActive ? "Active now" : "Offline")}
             </p>
           </div>
         </div>
@@ -1644,50 +1746,6 @@ function FacebookMessengerWindow({
                 <div className="h-7 w-28 rounded-2xl rounded-br-xs bg-primary/20 animate-pulse" />
               </div>
             </div>
-          ) : messages.length === 0 ? (
-            <div className="h-full flex flex-col justify-center items-center text-center p-3 space-y-3 animate-in fade-in-50 duration-200">
-            <div
-              className={cn(
-                "size-10 rounded-2xl flex items-center justify-center border shadow-2xs",
-                contact.theme === "teal"
-                  ? "bg-teal-500/10 text-teal-600 border-teal-500/20"
-                  : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-              )}
-            >
-              {contact.desk === "admin" ? (
-                <Building2 className="size-5" />
-              ) : (
-                <Stethoscope className="size-5" />
-              )}
-            </div>
-            <div className="space-y-1">
-              <h4 className="font-bold text-xs text-foreground flex items-center justify-center gap-1">
-                <span>{contact.name}</span>
-                <Sparkles className="size-3 text-primary" />
-              </h4>
-              <p className="text-[10.5px] text-muted-foreground max-w-[240px] leading-relaxed mx-auto">
-                {contact.roleDescription}
-              </p>
-            </div>
-
-            <div className="w-full space-y-1 pt-1 text-left">
-              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider px-1">
-                Suggested Topics:
-              </p>
-              {quickQuestions.slice(0, 3).map((q, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => handleSend(q)}
-                  className="w-full text-left text-[10.5px] p-2 rounded-xl bg-card border border-border/70 hover:border-primary/60 hover:bg-muted/40 transition-all cursor-pointer text-foreground flex items-center justify-between group shadow-2xs"
-                >
-                  <span className="truncate pr-2">{q}</span>
-                  <ArrowRight className="size-3 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
           ) : (
             <>
               {/* Top Backreading Skeleton: shows while loading older messages */}
@@ -1717,13 +1775,121 @@ function FacebookMessengerWindow({
                   </button>
                 </div>
               )}
-            {messages.map((msg, idx) => {
-              const isStaffMsg =
-                msg.senderRole === "Veterinarian" ||
-                msg.senderRole === "Staff" ||
-                msg.senderRole === "Admin" ||
-                msg.senderRole === "Administrator";
-              const isOutgoing = isStaff ? isStaffMsg : !isStaffMsg;
+
+              {/* ── Very Top of Every Chat: Contact Profile Header ── */}
+              {!hasMoreOlder && (
+                <div className="pt-3 pb-2 flex flex-col items-center text-center space-y-2 select-none animate-in fade-in duration-200">
+                  <div className="relative">
+                    <Avatar className="size-14 rounded-full border-2 border-border/80 shadow-md overflow-hidden bg-card">
+                      {contact.avatar ? (
+                        <AvatarImage
+                          src={contact.avatar}
+                          alt={contact.name}
+                          referrerPolicy="no-referrer"
+                          className={
+                            contact.id === "admin"
+                              ? "object-contain p-1 bg-white"
+                              : "object-cover"
+                          }
+                        />
+                      ) : null}
+                      <AvatarFallback
+                        className={cn(
+                          "text-white font-bold text-base",
+                          contact.theme === "teal"
+                            ? "bg-teal-600"
+                            : contact.theme === "purple"
+                            ? "bg-purple-600"
+                            : "bg-emerald-600"
+                        )}
+                      >
+                        {contact.fallback}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span
+                      className={cn(
+                        "absolute bottom-0 right-0 size-3 rounded-full border-2 border-card ring-1 transition-colors",
+                        presence?.isActive
+                          ? "bg-emerald-500 ring-emerald-500/20 shadow-2xs"
+                          : "bg-zinc-400 dark:bg-zinc-600 ring-zinc-400/20"
+                      )}
+                      title={presence?.isActive ? "Active now" : presence?.statusText || "Offline"}
+                    />
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <h4 className="font-bold text-xs text-foreground flex items-center justify-center">
+                      <span>{contact.name}</span>
+                    </h4>
+                    <p className="text-[10.5px] text-muted-foreground max-w-[240px] leading-relaxed mx-auto">
+                      {contact.roleDescription}
+                    </p>
+                    <p className="text-[9.5px] text-muted-foreground/70 font-medium">
+                      {isStaff
+                        ? `Official conversation record for registered pet owner ${contact.shortName} • ${presence?.statusText || "Offline"}`
+                        : contact.desk === "admin"
+                        ? "Connected to Cagayan de Oro City Veterinary Office (CVO) Admin Desk."
+                        : "Connected to City Veterinary Office Official Telemedicine Channel."}
+                    </p>
+                  </div>
+
+                  {/* If no messages yet, show suggested starter topics */}
+                  {messages.length === 0 && (
+                    <div className="w-full space-y-1 pt-2 text-left">
+                      <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider px-1">
+                        Suggested Topics:
+                      </p>
+                      {quickQuestions.slice(0, 3).map((q, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => handleSend(q)}
+                          className="w-full text-left text-[10.5px] p-2 rounded-xl bg-card border border-border/70 hover:border-primary/60 hover:bg-muted/40 transition-all cursor-pointer text-foreground flex items-center justify-between group shadow-2xs"
+                        >
+                          <span className="truncate pr-2">{q}</span>
+                          <ArrowRight className="size-3 text-muted-foreground group-hover:text-primary transition-transform group-hover:translate-x-0.5 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            {(() => {
+              // Find the last outgoing message that was read by the other person
+              let lastReadId: string | null = null;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i];
+                const isStaffMsg =
+                  m.senderRole === "Veterinarian" ||
+                  m.senderRole === "Staff" ||
+                  m.senderRole === "Admin" ||
+                  m.senderRole === "Administrator";
+                const isOut = isStaff ? isStaffMsg : !isStaffMsg;
+                if (isOut && !m.isUnsent) {
+                  const hasIncomingAfter = messages.slice(i + 1).some((afterMsg) => {
+                    const afterIsStaff =
+                      afterMsg.senderRole === "Veterinarian" ||
+                      afterMsg.senderRole === "Staff" ||
+                      afterMsg.senderRole === "Admin" ||
+                      afterMsg.senderRole === "Administrator";
+                    return isStaff ? !afterIsStaff : afterIsStaff;
+                  });
+                  if ((m.isRead ?? false) || hasIncomingAfter) {
+                    lastReadId = m.id;
+                    break;
+                  }
+                }
+              }
+
+              return messages.map((msg, idx) => {
+                const isStaffMsg =
+                  msg.senderRole === "Veterinarian" ||
+                  msg.senderRole === "Staff" ||
+                  msg.senderRole === "Admin" ||
+                  msg.senderRole === "Administrator";
+                const isOutgoing = isStaff ? isStaffMsg : !isStaffMsg;
+                const isLastReadOutgoing = msg.id === lastReadId;
 
               const prevMsg = idx > 0 ? messages[idx - 1] : null;
               const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null;
@@ -1987,16 +2153,69 @@ function FacebookMessengerWindow({
                       </div>
                     )}
 
-                    {/* Timestamp: Displayed on the last message of the group */}
+                    {/* Timestamp & Delivery / Seen Profile Indicator */}
                     {isGroupEnd && (
-                      <div className={cn("text-[8.5px] text-muted-foreground/70 px-1 mt-0.5", isOutgoing ? "text-right self-end" : "text-left self-start")}>
+                      <div
+                        className={cn(
+                          "text-[8.5px] text-muted-foreground/70 px-1 mt-0.5 flex items-center gap-1",
+                          isOutgoing ? "justify-end self-end" : "justify-start self-start"
+                        )}
+                      >
                         <span>{msg.timestamp}</span>
+                        {isOutgoing && !msg.isUnsent && (
+                          isLastReadOutgoing ? (
+                            <div
+                              className="inline-flex items-center select-none animate-in fade-in zoom-in-75 duration-200"
+                              title={`Seen by ${contact.name}`}
+                            >
+                              <Avatar className="size-3.5 rounded-full border border-background shadow-2xs ring-1 ring-border/40 overflow-hidden bg-muted transition-transform hover:scale-125">
+                                {contact.avatar ? (
+                                  <AvatarImage
+                                    src={contact.avatar}
+                                    alt={contact.name}
+                                    className={contact.avatar.includes("cdo-seal") ? "object-contain p-0.5 bg-white" : "object-cover"}
+                                  />
+                                ) : null}
+                                <AvatarFallback className="text-[6.5px] font-bold bg-primary/20 text-primary uppercase">
+                                  {contact.fallback}
+                                </AvatarFallback>
+                              </Avatar>
+                            </div>
+                          ) : (
+                            <span title="Delivered" className="inline-flex items-center">
+                              <CheckCheck className="size-2.5 text-muted-foreground/50" />
+                            </span>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {!isGroupEnd && isLastReadOutgoing && (
+                      <div className="flex justify-end px-1 mt-0.5 select-none animate-in fade-in zoom-in-75 duration-200">
+                        <div
+                          className="inline-flex items-center"
+                          title={`Seen by ${contact.name}`}
+                        >
+                          <Avatar className="size-3.5 rounded-full border border-background shadow-2xs ring-1 ring-border/40 overflow-hidden bg-muted transition-transform hover:scale-125">
+                            {contact.avatar ? (
+                              <AvatarImage
+                                src={contact.avatar}
+                                alt={contact.name}
+                                className={contact.avatar.includes("cdo-seal") ? "object-contain p-0.5 bg-white" : "object-cover"}
+                              />
+                            ) : null}
+                            <AvatarFallback className="text-[6.5px] font-bold bg-primary/20 text-primary uppercase">
+                              {contact.fallback}
+                            </AvatarFallback>
+                          </Avatar>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
 
             {checkContactTyping(contact, isOtherTyping, typingInfo, user?.id) && (
               <div className="flex items-center gap-2 text-muted-foreground text-[10px] p-2 bg-muted/40 rounded-xl max-w-[85%] animate-in fade-in-50 duration-200 mt-2">

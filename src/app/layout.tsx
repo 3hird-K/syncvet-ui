@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CookieConsent } from "@/components/cookie-consent";
 import { AccountTerminationWatcher } from "@/components/auth/account-termination-watcher";
+import { QueryProvider } from "@/components/providers/query-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -100,7 +101,9 @@ export default function RootLayout({
                 `,
               }}
             />
-            {children}
+            <QueryProvider>
+              {children}
+            </QueryProvider>
             <CookieConsent />
             <Toaster position="bottom-right" expand={true} />
           </ThemeProvider>

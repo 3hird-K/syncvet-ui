@@ -25,18 +25,16 @@ export default function DashboardGroupLayout({
   const isMessagesPage = pathname?.startsWith("/messages");
 
   return (
-    <QueryProvider>
-      <UserSyncProvider>
-        <CVOProvider>
-          <ChatProvider>
-            <DashboardRouteGuard>
-              <AppShell>{children}</AppShell>
-              {!isMessagesPage && <CitizenChatWidget />}
-            </DashboardRouteGuard>
-          </ChatProvider>
-        </CVOProvider>
-      </UserSyncProvider>
-    </QueryProvider>
+    <UserSyncProvider>
+      <CVOProvider>
+        <ChatProvider>
+          <DashboardRouteGuard>
+            <AppShell>{children}</AppShell>
+            {!isMessagesPage && <CitizenChatWidget />}
+          </DashboardRouteGuard>
+        </ChatProvider>
+      </CVOProvider>
+    </UserSyncProvider>
   );
 }
 

@@ -216,14 +216,14 @@ export default function UsersPage() {
       sub: "Licensed DVMs",
     },
     {
-      title: "Vaccinators",
-      value: loading ? "..." : String(stats.vaccinators),
-      icon: Syringe,
-      gradient: "from-cyan-500/5",
-      iconClass: "text-cyan-400",
-      badge: "Field Ops",
-      badgeClass: "text-cyan-400 bg-cyan-400/10",
-      sub: "Vaccination Officers",
+      title: "Pet Owners",
+      value: loading ? "..." : String(stats.petOwners),
+      icon: PawPrint,
+      gradient: "from-purple-500/5",
+      iconClass: "text-purple-400",
+      badge: "Citizens",
+      badgeClass: "text-purple-400 bg-purple-400/10",
+      sub: "Registered pet owners",
     },
   ];
 
@@ -255,7 +255,7 @@ export default function UsersPage() {
               CVO Staff Directory Restricted
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              The User Directory is reserved for City Veterinary Office staff (Administrators, Clinicians, and Vaccinators). As a registered Pet Owner, you have full access to manage your own pets and appointments.
+              The User Directory is reserved for City Veterinary Office staff (Administrators and Veterinarians). As a registered Pet Owner, you have full access to manage your own pets and appointments.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
@@ -316,13 +316,6 @@ export default function UsersPage() {
                 >
                   <ShieldCheck className="size-3.5 mr-2 text-rose-500" />
                   <span>Administrators Only ({stats.admins})</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleExport("Vaccinator")}
-                >
-                  <Syringe className="size-3.5 mr-2 text-cyan-500" />
-                  <span>Vaccinators Only ({stats.vaccinators})</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer text-xs"

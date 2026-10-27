@@ -299,7 +299,7 @@ export function ClinicalExaminationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[96vw] max-h-[92vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-2xl pointer-events-auto">
-        <DialogHeader className="border-b pb-3.5">
+        <DialogHeader className="border-b pb-3.5 pr-10 sm:pr-12">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">

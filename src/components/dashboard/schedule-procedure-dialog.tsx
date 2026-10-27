@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { format, parseISO, isValid } from "date-fns";
+import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   AlertTriangle,
+  CalendarClock,
   ChevronRight,
   Phone,
   User,
@@ -59,6 +60,7 @@ interface ScheduleProcedureDialogProps {
   initialService?: ProcedureServiceType;
   initialPet?: any;
   pets?: any[];
+  rescheduleAppointmentId?: string;
   ownerProfile?: {
     name?: string;
     contact?: string;
@@ -72,6 +74,7 @@ export function ScheduleProcedureDialog({
   initialService = "vaccination",
   initialPet,
   pets = [],
+  rescheduleAppointmentId,
   ownerProfile,
   trigger,
   onSuccess,
@@ -105,6 +108,9 @@ export function ScheduleProcedureDialog({
       }> = [];
       const seen = new Set<string>();
 
+      const todayStart = startOfDay(new Date());
+      const unpersistedMissedList: Array<{ id: string; service_id: string; date: string }> = [];
+
       // 1. appointments table
       try {
         const { data } = await supabase
@@ -116,11 +122,27 @@ export function ScheduleProcedureDialog({
           data.forEach((d) => {
             if (!seen.has(d.id)) {
               seen.add(d.id);
+              let effStatus = d.status || "confirmed";
+              try {
+                const parsed = parseISO(d.date);
+                if (
+                  isValid(parsed) &&
+                  isBefore(startOfDay(parsed), todayStart) &&
+                  effStatus !== "completed" &&
+                  effStatus !== "cancelled"
+                ) {
+                  effStatus = "missed";
+                  if (d.status !== "missed") {
+                    unpersistedMissedList.push({ id: d.id, service_id: d.service_id, date: d.date });
+                  }
+                }
+              } catch {}
+
               items.push({
                 id: d.id,
                 date: d.date,
                 service_id: d.service_id,
-                status: d.status,
+                status: effStatus,
                 pet_id: d.pet_id || undefined,
                 pet_name: d.pet_name,
                 owner_id: d.owner_id,
@@ -148,11 +170,31 @@ export function ScheduleProcedureDialog({
               const petNameMatch = tx.title && tx.title.includes(" for ")
                 ? tx.title.split(" for ").slice(1).join(" for ").trim()
                 : (tx.title || "").trim();
+              const serviceType = tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter";
+              const dateVal = tx.date ? tx.date.split("T")[0] : "";
+              let effStatus = tx.status || "confirmed";
+              try {
+                if (dateVal) {
+                  const parsed = parseISO(dateVal);
+                  if (
+                    isValid(parsed) &&
+                    isBefore(startOfDay(parsed), todayStart) &&
+                    effStatus !== "completed" &&
+                    effStatus !== "cancelled"
+                  ) {
+                    effStatus = "missed";
+                    if (tx.status !== "missed") {
+                      unpersistedMissedList.push({ id: refId, service_id: serviceType, date: dateVal });
+                    }
+                  }
+                }
+              } catch {}
+
               items.push({
                 id: refId,
-                date: tx.date ? tx.date.split("T")[0] : "",
-                service_id: tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter",
-                status: tx.status || "confirmed",
+                date: dateVal,
+                service_id: serviceType,
+                status: effStatus,
                 pet_name: petNameMatch,
                 owner_id: tx.owner_id,
               });
@@ -169,11 +211,26 @@ export function ScheduleProcedureDialog({
         local.forEach((l: any) => {
           if (!seen.has(l.id) && l.status !== "cancelled") {
             seen.add(l.id);
+            let effStatus = l.status || "confirmed";
+            try {
+              if (l.date) {
+                const parsed = parseISO(l.date);
+                if (
+                  isValid(parsed) &&
+                  isBefore(startOfDay(parsed), todayStart) &&
+                  effStatus !== "completed" &&
+                  effStatus !== "cancelled"
+                ) {
+                  effStatus = "missed";
+                }
+              }
+            } catch {}
+
             items.push({
               id: l.id,
               date: l.date,
               service_id: l.service_id,
-              status: l.status,
+              status: effStatus,
               pet_id: l.pet_id,
               pet_name: l.pet_name,
               owner_id: l.owner_id,
@@ -182,6 +239,48 @@ export function ScheduleProcedureDialog({
         });
       } catch (e) {
         // ignore
+      }
+
+      // Asynchronously persist any past unattended appointments as 'missed'
+      if (unpersistedMissedList.length > 0) {
+        (async () => {
+          for (const m of unpersistedMissedList) {
+            try {
+              await supabase
+                .from("appointments")
+                .update({
+                  status: "missed",
+                  notes: "Unattended scheduled appointment. Pet owner requested to reschedule.",
+                })
+                .eq("id", m.id);
+            } catch {}
+            try {
+              await supabase
+                .from("service_transactions")
+                .update({ status: "missed" })
+                .or(`reference_id.eq.${m.id},id.eq.${m.id}`);
+            } catch {}
+          }
+          try {
+            const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+            let localChanged = false;
+            const updated = local.map((item: any) => {
+              if (unpersistedMissedList.some((m) => m.id === item.id) && item.status !== "missed") {
+                localChanged = true;
+                return {
+                  ...item,
+                  status: "missed",
+                  notes: "Unattended scheduled appointment. Pet owner requested to reschedule.",
+                };
+              }
+              return item;
+            });
+            if (localChanged) {
+              localStorage.setItem("syncvet_local_appointments", JSON.stringify(updated));
+              window.dispatchEvent(new Event("syncvet-appointment-updated"));
+            }
+          } catch {}
+        })();
       }
 
       return items;
@@ -211,7 +310,14 @@ export function ScheduleProcedureDialog({
 
     return bookedAppointments.find((appt) => {
       if (appt.service_id !== "vaccination") return false;
-      if (appt.status === "cancelled" || appt.status === "completed") return false;
+      if (rescheduleAppointmentId && appt.id === rescheduleAppointmentId) return false;
+      if (appt.status === "cancelled" || appt.status === "completed" || appt.status === "missed") return false;
+      try {
+        const parsed = parseISO(appt.date);
+        if (isValid(parsed) && isBefore(startOfDay(parsed), startOfDay(new Date()))) {
+          return false;
+        }
+      } catch {}
 
       const apptPetId = (appt.pet_id || "").toLowerCase().trim();
       const apptPetName = (appt.pet_name || "").toLowerCase().trim();
@@ -221,7 +327,7 @@ export function ScheduleProcedureDialog({
         (targetPetName && apptPetName && targetPetName === apptPetName)
       );
     });
-  }, [bookedAppointments, currentPet]);
+  }, [bookedAppointments, currentPet, rescheduleAppointmentId]);
 
   const isVaccinationScheduled = Boolean(existingVaccinationAppointment);
 
@@ -233,7 +339,14 @@ export function ScheduleProcedureDialog({
 
     return bookedAppointments.find((appt) => {
       if (appt.service_id !== "spay-neuter") return false;
-      if (appt.status === "cancelled" || appt.status === "completed") return false;
+      if (rescheduleAppointmentId && appt.id === rescheduleAppointmentId) return false;
+      if (appt.status === "cancelled" || appt.status === "completed" || appt.status === "missed") return false;
+      try {
+        const parsed = parseISO(appt.date);
+        if (isValid(parsed) && isBefore(startOfDay(parsed), startOfDay(new Date()))) {
+          return false;
+        }
+      } catch {}
 
       const apptPetId = (appt.pet_id || "").toLowerCase().trim();
       const apptPetName = (appt.pet_name || "").toLowerCase().trim();
@@ -243,7 +356,7 @@ export function ScheduleProcedureDialog({
         (targetPetName && apptPetName && targetPetName === apptPetName)
       );
     });
-  }, [bookedAppointments, currentPet]);
+  }, [bookedAppointments, currentPet, rescheduleAppointmentId]);
 
   const isSpayNeuterScheduled = Boolean(existingSpayNeuterAppointment);
 
@@ -278,7 +391,7 @@ export function ScheduleProcedureDialog({
     }
   }, [isVaccinationScheduled, service]);
 
-  // Prevent duplicate appointment scheduling: check if currentPet ALREADY has an active appointment for the active service
+  // Prevent duplicate appointment scheduling: check if currentPet ALREADY has an active UPCOMING appointment for the active service
   const existingUpcomingAppointment = useMemo(() => {
     if (!currentPet) return null;
     const targetPetId = (currentPet.id || "").toLowerCase().trim();
@@ -287,8 +400,18 @@ export function ScheduleProcedureDialog({
     return bookedAppointments.find((appt) => {
       // Must match procedure service
       if (appt.service_id !== service) return false;
-      // Must be active (not cancelled, not completed)
-      if (appt.status === "cancelled" || appt.status === "completed") return false;
+      // If currently rescheduling this specific appointment, exclude it
+      if (rescheduleAppointmentId && appt.id === rescheduleAppointmentId) return false;
+      // Must be active (not cancelled, not completed, not missed)
+      if (appt.status === "cancelled" || appt.status === "completed" || appt.status === "missed") return false;
+
+      // Must be upcoming: today or in the future. Past appointments are not upcoming!
+      try {
+        const parsed = parseISO(appt.date);
+        if (isValid(parsed) && isBefore(startOfDay(parsed), startOfDay(new Date()))) {
+          return false;
+        }
+      } catch {}
 
       const apptPetId = (appt.pet_id || "").toLowerCase().trim();
       const apptPetName = (appt.pet_name || "").toLowerCase().trim();
@@ -299,7 +422,7 @@ export function ScheduleProcedureDialog({
 
       return isSamePet;
     });
-  }, [bookedAppointments, currentPet, service]);
+  }, [bookedAppointments, currentPet, service, rescheduleAppointmentId]);
 
   const isAlreadyScheduled = Boolean(existingUpcomingAppointment);
 
@@ -313,6 +436,48 @@ export function ScheduleProcedureDialog({
       return existingUpcomingAppointment.date;
     }
   }, [existingUpcomingAppointment]);
+
+  // Check if currentPet has an unattended / missed appointment for this service that needs rescheduling
+  const existingMissedAppointment = useMemo(() => {
+    if (!currentPet) return null;
+    const targetPetId = (currentPet.id || "").toLowerCase().trim();
+    const targetPetName = (currentPet.name || "").toLowerCase().trim();
+
+    return bookedAppointments.find((appt) => {
+      if (appt.service_id !== service) return false;
+      if (appt.status === "cancelled" || appt.status === "completed") return false;
+
+      let isPastDate = false;
+      try {
+        const parsed = parseISO(appt.date);
+        if (isValid(parsed) && isBefore(startOfDay(parsed), startOfDay(new Date()))) {
+          isPastDate = true;
+        }
+      } catch {}
+
+      const isMissed = appt.status === "missed" || isPastDate;
+      if (!isMissed) return false;
+
+      const apptPetId = (appt.pet_id || "").toLowerCase().trim();
+      const apptPetName = (appt.pet_name || "").toLowerCase().trim();
+
+      return (
+        (targetPetId && apptPetId && targetPetId === apptPetId) ||
+        (targetPetName && apptPetName && targetPetName === apptPetName)
+      );
+    });
+  }, [bookedAppointments, currentPet, service]);
+
+  const existingMissedDateFormatted = useMemo(() => {
+    if (!existingMissedAppointment?.date) return "";
+    try {
+      const parsed = parseISO(existingMissedAppointment.date);
+      if (isValid(parsed)) return format(parsed, "EEEE, MMMM d, yyyy");
+      return existingMissedAppointment.date;
+    } catch {
+      return existingMissedAppointment.date;
+    }
+  }, [existingMissedAppointment]);
 
   const serviceConfig = PROCEDURE_SERVICES[service];
 
@@ -484,16 +649,48 @@ export function ScheduleProcedureDialog({
         // ignore
       }
 
+      // 4. If rescheduling or resolving an unattended appointment, mark previous missed appointment as cancelled/superseded
+      const effectiveRescheduleId = rescheduleAppointmentId || existingMissedAppointment?.id;
+      if (effectiveRescheduleId) {
+        try {
+          await supabase
+            .from("appointments")
+            .update({ status: "cancelled", notes: `Rescheduled to ${formattedDate}` })
+            .eq("id", effectiveRescheduleId);
+
+          await supabase
+            .from("service_transactions")
+            .update({ status: "cancelled" })
+            .or(`reference_id.eq.${effectiveRescheduleId},id.eq.${effectiveRescheduleId}`);
+
+          const localList = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          const updatedLocal = localList.map((item: any) =>
+            item.id === effectiveRescheduleId
+              ? { ...item, status: "cancelled", notes: `Rescheduled to ${formattedDate}` }
+              : item
+          );
+          localStorage.setItem("syncvet_local_appointments", JSON.stringify(updatedLocal));
+        } catch (rErr) {
+          console.warn("Notice: Old appointment cancellation update:", rErr);
+        }
+      }
+
       // Invalidate queries so lists update in real time
       queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
       queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
       queryClient.invalidateQueries({ queryKey: ["user-transactions"] });
+      window.dispatchEvent(new Event("syncvet-appointment-updated"));
 
       toast.success(
-        `Appointment confirmed! Scheduled ${serviceConfig.shortTitle} for ${currentPet.name} on ${format(
-          appointmentDate,
-          "MMMM d, yyyy"
-        )}.`
+        effectiveRescheduleId
+          ? `Appointment successfully rescheduled! New booking for ${currentPet.name} is on ${format(
+              appointmentDate,
+              "MMMM d, yyyy"
+            )}.`
+          : `Appointment confirmed! Scheduled ${serviceConfig.shortTitle} for ${currentPet.name} on ${format(
+              appointmentDate,
+              "MMMM d, yyyy"
+            )}.`
       );
 
       setOpen(false);
@@ -531,10 +728,14 @@ export function ScheduleProcedureDialog({
             </div>
             <div>
               <DialogTitle className="text-lg font-bold text-foreground">
-                City Veterinary Office Procedure Scheduler
+                {rescheduleAppointmentId
+                  ? "Reschedule Procedure Appointment"
+                  : "City Veterinary Office Procedure Scheduler"}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Book official municipal appointments with live daily capacity limits (Monday – Friday)
+                {rescheduleAppointmentId
+                  ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
+                  : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
               </DialogDescription>
             </div>
           </div>
@@ -771,6 +972,29 @@ export function ScheduleProcedureDialog({
               </div>
             )}
 
+            {/* Notice if pet had an unattended/missed appointment that needs rescheduling */}
+            {existingMissedAppointment && !existingUpcomingAppointment && (
+              <div className="p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 space-y-2 animate-in fade-in-0 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                    <CalendarClock className="size-4 shrink-0 text-amber-600" />
+                    <span>Unattended Schedule — Reschedule Required</span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/40 font-bold px-1.5 py-0 h-4.5"
+                  >
+                    Missed Schedule
+                  </Badge>
+                </div>
+                <p className="leading-relaxed">
+                  <strong>{currentPet?.name}</strong> did not attend their scheduled {serviceConfig.shortTitle} appointment on{" "}
+                  <strong className="underline text-foreground">{existingMissedDateFormatted}</strong>.
+                  Please choose a new available clinic date below to automatically reschedule your pet&apos;s slot.
+                </p>
+              </div>
+            )}
+
             {/* Warning if pet is ALREADY scheduled for this procedure */}
             {isAlreadyScheduled && existingUpcomingAppointment && (
               <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 space-y-1.5 animate-in fade-in-0 shadow-2xs">
@@ -902,6 +1126,11 @@ export function ScheduleProcedureDialog({
                   <>
                     <ShieldCheck className="size-3.5" />
                     <span>Vaccination Not Due (Protected)</span>
+                  </>
+                ) : (existingMissedAppointment || rescheduleAppointmentId) ? (
+                  <>
+                    <CalendarClock className="size-3.5" />
+                    <span>Reschedule Missed {serviceConfig.shortTitle} Slot</span>
                   </>
                 ) : (
                   <>

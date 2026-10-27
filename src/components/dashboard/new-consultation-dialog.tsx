@@ -16,7 +16,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, getTodayDateString } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -138,7 +138,7 @@ export function NewConsultationDialog() {
       petsCount: number;
     }> = [];
 
-    // Strictly filter dbUsers to Pet Owners (exclude staff: Administrators, Veterinarians, Vaccinators)
+    // Strictly filter dbUsers to Pet Owners (exclude staff: Administrators, Veterinarians)
     const petOwnersOnly = dbUsers.filter((u: any) => {
       const role = normalizeSyncVetRole(u.role);
       return role === "Pet Owner";
@@ -575,7 +575,7 @@ export function NewConsultationDialog() {
 
     setLoading(true);
     setTimeout(() => {
-      const today = new Date().toISOString().split("T")[0];
+      const today = getTodayDateString();
       const timeStr = new Intl.DateTimeFormat("en-PH", {
         hour: "2-digit",
         minute: "2-digit",

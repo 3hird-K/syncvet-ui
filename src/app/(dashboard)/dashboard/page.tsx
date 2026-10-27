@@ -75,8 +75,7 @@ export default function DashboardHomePage() {
   const isStaff =
     isAdminEmail ||
     userRole === "Administrator" ||
-    userRole === "Veterinarian" ||
-    userRole === "Vaccinator";
+    userRole === "Veterinarian";
 
   const isPetOwner = !isStaff && !isDbLoading && isLoaded && userRole === "Pet Owner";
 
@@ -95,7 +94,7 @@ export default function DashboardHomePage() {
   }
 
   return (
-    <div className="flex-1 w-full min-w-0 max-w-7xl mx-auto space-y-5 p-4 sm:p-5 md:p-6 bg-background min-h-screen text-foreground">
+    <div className="flex-1 w-full min-w-0 max-w-7xl mx-auto space-y-5 p-4 sm:p-5 md:p-6 pb-10 bg-background text-foreground">
       {/* ── 1. CVO Command Center Header ── */}
       <DashboardHeader />
 
@@ -256,9 +255,21 @@ export default function DashboardHomePage() {
               </div>
             </CardHeader>
             <CardContent className="p-4 sm:p-5 pt-0 space-y-3 flex-1 flex flex-col justify-between text-xs">
-              <p className="text-muted-foreground leading-relaxed">
-                Deploy veterinary teams to Carmen, Lapasan, Bulua, Nazareth, and peripheral barangays for anti-rabies vaccination caravans, microchipping, and bite surveillance.
-              </p>
+              <div className="space-y-2.5">
+                <p className="text-muted-foreground leading-relaxed">
+                  Deploy veterinary teams to Carmen, Lapasan, Bulua, Nazareth, and peripheral barangays for anti-rabies vaccination caravans, microchipping, and bite surveillance.
+                </p>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="p-2 rounded-lg bg-muted/20 border border-border/60">
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Jurisdiction</p>
+                    <p className="text-xs font-bold text-foreground mt-0.5">80 Barangays</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/20 border border-border/60">
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Target</p>
+                    <p className="text-xs font-bold text-emerald-600 mt-0.5">70% Herd Immunity</p>
+                  </div>
+                </div>
+              </div>
               <div className="pt-3 border-t border-border/50 flex items-center justify-between gap-2">
                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                   Active Field Units

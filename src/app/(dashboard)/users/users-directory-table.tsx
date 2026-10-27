@@ -26,6 +26,10 @@ import {
   Cat,
   BadgeCheck,
   MapPin,
+  KeyRound,
+  UserCog,
+  Fingerprint,
+  X,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { toast } from "sonner";
@@ -126,8 +130,6 @@ function getAvatarBackground(role: SyncVetRole) {
   switch (role) {
     case "Administrator":
       return "bg-gradient-to-br from-rose-600 to-red-800 text-white";
-    case "Vaccinator":
-      return "bg-gradient-to-br from-cyan-600 to-blue-800 text-white";
     case "Veterinarian":
       return "bg-gradient-to-br from-emerald-600 to-teal-800 text-white";
     case "Pet Owner":
@@ -142,7 +144,6 @@ interface UsersDirectoryTableProps {
   stats?: {
     total: number;
     admins: number;
-    vaccinators: number;
     veterinarians: number;
     petOwners: number;
   };
@@ -225,10 +226,9 @@ export function UsersDirectoryTable({
   const isAdmin = currentUserRole === "Administrator";
 
   // Determine viewing mode / permissions automatically based on the logged-in user's role
-  const userPerspective: "admin" | "veterinary" | "vaccinator" | "pet_owner" = useMemo(() => {
+  const userPerspective: "admin" | "veterinary" | "pet_owner" = useMemo(() => {
     if (currentUserRole === "Administrator") return "admin";
     if (currentUserRole === "Veterinarian") return "veterinary";
-    if (currentUserRole === "Vaccinator") return "vaccinator";
     return "pet_owner";
   }, [currentUserRole]);
 
@@ -368,7 +368,7 @@ export function UsersDirectoryTable({
     setEditAddress(u.address || "");
 
     // When an Admin opens a user profile, default directly to "account" so they can edit the profile immediately!
-    // For clinicians & vaccinators, default to "pets" to inspect animal clinical & vaccination compliance.
+    // For clinicians, default to "pets" to inspect animal clinical & vaccination compliance.
     if (defaultTab) {
       setActiveTab(defaultTab);
     } else if (isAdmin) {
@@ -616,7 +616,7 @@ export function UsersDirectoryTable({
             variant="outline"
             className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold gap-1 bg-rose-500/10 text-rose-500 border-rose-500/20"
           >
-            <ShieldCheck className="size-3" />
+            <UserCog className="size-3" />
             Administrator
           </Badge>
         );
@@ -628,16 +628,6 @@ export function UsersDirectoryTable({
           >
             <Stethoscope className="size-3" />
             Veterinarian
-          </Badge>
-        );
-      case "Vaccinator":
-        return (
-          <Badge
-            variant="outline"
-            className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold gap-1 bg-cyan-500/10 text-cyan-500 border-cyan-500/20"
-          >
-            <Syringe className="size-3" />
-            Vaccinator
           </Badge>
         );
       case "Pet Owner":
@@ -709,10 +699,7 @@ export function UsersDirectoryTable({
                     <SelectItem key={role} value={role}>
                       <div className="flex items-center gap-2">
                         {role === "Administrator" && (
-                          <ShieldCheck className="size-3 text-rose-500" />
-                        )}
-                        {role === "Vaccinator" && (
-                          <Syringe className="size-3 text-cyan-500" />
+                          <UserCog className="size-3 text-rose-500" />
                         )}
                         {role === "Veterinarian" && (
                           <Stethoscope className="size-3 text-emerald-500" />
@@ -945,7 +932,7 @@ export function UsersDirectoryTable({
           open={!!selectedUser}
           onOpenChange={(open) => !open && setSelectedUser(null)}
         >
-          <SheetContent className="w-full sm:w-[94vw] md:w-[90vw] lg:w-[84vw] xl:w-[78vw] sm:max-w-none max-w-full p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden">
+          <SheetContent showCloseButton={false} className="w-full sm:w-[94vw] md:w-[90vw] lg:w-[84vw] xl:w-[78vw] sm:max-w-none max-w-full p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden">
             <SheetHeader className="sr-only">
               <SheetTitle>
                 {selectedUser ? `${selectedUser.full_name || selectedUser.email || "User"} Profile Dossier` : "User Profile Dossier"}
@@ -1047,15 +1034,6 @@ export function UsersDirectoryTable({
                         <span>Veterinary Clinical Access</span>
                       </Badge>
                     )}
-                    {userPerspective === "vaccinator" && (
-                      <Badge
-                        variant="outline"
-                        className="h-9 px-3.5 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 gap-2 text-xs font-semibold rounded-xl inline-flex items-center"
-                      >
-                        <Syringe className="size-4" />
-                        <span>Vaccinator Field Access</span>
-                      </Badge>
-                    )}
                     {userPerspective === "pet_owner" && (
                       <Badge
                         variant="outline"
@@ -1092,6 +1070,21 @@ export function UsersDirectoryTable({
                         </Button>
                       </div>
                     )}
+
+                    <div className="w-px h-5 bg-border/60 mx-0.5 hidden sm:block" />
+
+                    {/* Integrated Header Close Button (No overlap with Save Changes) */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedUser(null)}
+                      className="size-9 p-0 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                      title="Close profile (Esc)"
+                      aria-label="Close"
+                    >
+                      <X className="size-4" />
+                    </Button>
                   </div>
                 </motion.div>
 
@@ -1100,52 +1093,60 @@ export function UsersDirectoryTable({
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
-                  className="px-4 sm:px-6 md:px-7 py-2.5 bg-muted/10 border-b border-border/40 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 shrink-0 text-xs"
+                  className="px-4 sm:px-6 md:px-7 py-3 bg-muted/20 border-b border-border/50 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 shrink-0"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <PawPrint className="size-4 text-purple-400 shrink-0" />
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-purple-500/40">
+                    <div className="size-9 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                      <PawPrint className="size-4.5" />
+                    </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Registered Pets
                       </p>
-                      <p className="font-extrabold text-foreground truncate">
-                        {loadingPets ? "..." : allPets.length} Animal{allPets.length === 1 ? "" : "s"}
+                      <p className="text-sm font-extrabold text-foreground truncate">
+                        {loadingPets ? "..." : allPets.length} <span className="text-xs font-semibold text-muted-foreground">Animal{allPets.length === 1 ? "" : "s"}</span>
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
-                    <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-emerald-500/40">
+                    <div className="size-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Syringe className="size-4.5" />
+                    </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Rabies Vaccinated
                       </p>
-                      <p className="font-extrabold text-foreground truncate">
-                        {allPets.filter((p) => p.rabies_vaccinated).length} of {allPets.length} Vaccinated
+                      <p className="text-sm font-extrabold text-foreground truncate">
+                        {allPets.filter((p) => p.rabies_vaccinated).length} of {allPets.length} <span className="text-xs font-semibold text-muted-foreground">Vaccinated</span>
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Calendar className="size-4 text-indigo-400 shrink-0" />
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-blue-500/40">
+                    <div className="size-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Calendar className="size-4.5" />
+                    </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Appointments
                       </p>
-                      <p className="font-extrabold text-foreground truncate">
-                        {loadingAppointments ? "..." : userAppointments.length} Booked
+                      <p className="text-sm font-extrabold text-foreground truncate">
+                        {loadingAppointments ? "..." : userAppointments.length} <span className="text-xs font-semibold text-muted-foreground">Booked</span>
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="size-4 text-cyan-400 shrink-0" />
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-amber-500/40">
+                    <div className="size-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <FileText className="size-4.5" />
+                    </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
                         Service Records
                       </p>
-                      <p className="font-extrabold text-foreground truncate">
-                        {loadingTransactions ? "..." : userTransactions.length} Transactions
+                      <p className="text-sm font-extrabold text-foreground truncate">
+                        {loadingTransactions ? "..." : userTransactions.length} <span className="text-xs font-semibold text-muted-foreground">Transactions</span>
                       </p>
                     </div>
                   </div>
@@ -1204,17 +1205,12 @@ export function UsersDirectoryTable({
                     <div className="hidden xl:flex text-[11px] text-muted-foreground font-medium items-center gap-1.5 pb-1 shrink-0">
                       {userPerspective === "admin" && (
                         <span className="text-primary font-semibold flex items-center gap-1">
-                          <ShieldCheck className="size-3" /> CVO Administrator Controls & Account Management
+                          <UserCog className="size-3" /> CVO Administrator Controls & Account Management
                         </span>
                       )}
                       {userPerspective === "veterinary" && (
                         <span className="text-emerald-500 font-semibold flex items-center gap-1">
                           <Stethoscope className="size-3" /> Clinical History & Rabies Registry Active
-                        </span>
-                      )}
-                      {userPerspective === "vaccinator" && (
-                        <span className="text-cyan-500 font-semibold flex items-center gap-1">
-                          <Syringe className="size-3" /> Field Vaccination & Tag Verification Active
                         </span>
                       )}
                       {userPerspective === "pet_owner" && (
@@ -1270,26 +1266,6 @@ export function UsersDirectoryTable({
                       </div>
                     )}
 
-                    {userPerspective === "vaccinator" && (
-                      <div className="bg-cyan-500/10 border border-cyan-500/25 rounded-2xl p-4 flex items-center justify-between text-xs text-cyan-600 dark:text-cyan-400">
-                        <div className="flex items-center gap-3">
-                          <div className="size-9 rounded-xl bg-cyan-500/20 flex items-center justify-center shrink-0">
-                            <Syringe className="size-5 text-cyan-500" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-foreground">
-                              Field Vaccination & Rabies Tag Verification
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">
-                              Verifying anti-rabies vaccination status and municipal tag IDs for registered animals of {selectedUser.full_name || selectedUser.email}.
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="border-cyan-500/30 text-cyan-500 bg-cyan-500/10 text-[10px] font-bold uppercase tracking-wider">
-                          Field Officer
-                        </Badge>
-                      </div>
-                    )}
 
                     {userPerspective === "pet_owner" && (
                       <div className="bg-purple-500/10 border border-purple-500/25 rounded-2xl p-4 flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
@@ -1478,17 +1454,29 @@ export function UsersDirectoryTable({
                                   <h4 className="text-sm font-bold text-foreground">
                                     {apt.service_id.replace(/_/g, " ").toUpperCase()}
                                   </h4>
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "text-[10px] font-semibold capitalize",
-                                      apt.status === "confirmed" && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-                                      apt.status === "completed" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                                      apt.status === "pending" && "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                    )}
-                                  >
-                                    {apt.status}
-                                  </Badge>
+                                  {(() => {
+                                    const isPastUnattended =
+                                      (apt.status === "confirmed" || apt.status === "pending") &&
+                                      apt.date &&
+                                      new Date(apt.date) < new Date(new Date().setHours(0, 0, 0, 0));
+                                    const isMissed = apt.status === "missed" || isPastUnattended;
+
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[10px] font-semibold capitalize",
+                                          isMissed && "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 font-bold",
+                                          !isMissed && apt.status === "confirmed" && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                                          !isMissed && apt.status === "completed" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                          !isMissed && apt.status === "pending" && "bg-amber-500/10 text-amber-500 border-amber-500/20",
+                                          apt.status === "cancelled" && "bg-muted text-muted-foreground border-border/50"
+                                        )}
+                                      >
+                                        {isMissed ? "Missed / No-Show" : apt.status}
+                                      </Badge>
+                                    );
+                                  })()}
                                 </div>
                                 <p className="text-xs text-muted-foreground">
                                   Pet: <strong>{apt.pet_name}</strong> · Location: {apt.location || "CDO City Veterinary Office"}
@@ -1586,22 +1574,29 @@ export function UsersDirectoryTable({
                   {/* ── TAB: ACCOUNT & PERMISSIONS (EDIT PROFILE) ── */}
                   <TabsContent value="account" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
                     {isAdmin ? (
-                      <div className="bg-primary/10 border border-primary/25 rounded-2xl p-3.5 sm:p-4 text-xs text-primary flex items-center gap-3">
-                        <div className="size-9 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
-                          <ShieldCheck className="size-5 text-primary" />
+                      <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-primary/10 border border-emerald-500/25 rounded-2xl p-4 text-xs text-foreground flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-3">
+                          <div className="size-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400">
+                            <UserCog className="size-5" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-foreground flex items-center gap-2">
+                              Administrator Account Management Mode
+                            </p>
+                            <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                              You have full authority to modify personal details, reassign system roles (Administrator, Veterinarian, Pet Owner), and save directory changes.
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-foreground">
-                            Administrator Account Management Mode
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            You have full authority to modify personal details, reassign system roles (Admin, Veterinarian, Vaccinator, Pet Owner), and save updates directly.
-                          </p>
-                        </div>
+                        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider shrink-0 hidden sm:inline-flex">
+                          Privileged Mode
+                        </Badge>
                       </div>
                     ) : (
-                      <div className="bg-muted/60 border border-border/60 text-muted-foreground rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 text-xs">
-                        <Lock className="size-4 text-muted-foreground shrink-0" />
+                      <div className="bg-muted/60 border border-border/60 text-muted-foreground rounded-2xl p-4 flex items-center gap-3 text-xs shadow-2xs">
+                        <div className="size-9 rounded-xl bg-muted border border-border/60 flex items-center justify-center shrink-0">
+                          <Lock className="size-4 text-muted-foreground" />
+                        </div>
                         <div>
                           <p className="font-bold text-foreground">Read-Only Directory Mode</p>
                           <p className="text-[11px] text-muted-foreground">
@@ -1613,62 +1608,83 @@ export function UsersDirectoryTable({
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                       {/* Personal Info Box */}
-                      <div className="bg-card border border-border/60 rounded-2xl p-4 sm:p-5 space-y-4">
-                        <div className="flex items-center gap-2 pb-2 border-b border-border/40">
-                          <User className="size-4 text-primary" />
-                          <h4 className="text-sm font-bold text-foreground">Personal Information</h4>
+                      <div className="bg-card border border-border/70 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
+                        <div className="flex items-center justify-between pb-3 border-b border-border/50">
+                          <div className="flex items-center gap-2.5">
+                            <div className="size-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                              <User className="size-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-foreground">Personal Information</h4>
+                              <p className="text-[11px] text-muted-foreground">Citizen profile and municipal contact details</p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] font-semibold bg-muted/50 border-border/60">
+                            Civic Registry
+                          </Badge>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                           <div className="space-y-1.5">
-                            <Label htmlFor="first-name" className="text-xs font-semibold">First Name</Label>
+                            <Label htmlFor="first-name" className="text-xs font-semibold text-foreground">First Name</Label>
                             <Input
                               id="first-name"
                               value={editFirstName}
                               onChange={(e) => setEditFirstName(e.target.value)}
                               disabled={!isAdmin}
-                              className="h-9 text-xs rounded-xl"
+                              className="h-10 text-xs rounded-xl border-border/70 bg-background/50 focus:ring-primary/30"
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label htmlFor="last-name" className="text-xs font-semibold">Last Name</Label>
+                            <Label htmlFor="last-name" className="text-xs font-semibold text-foreground">Last Name</Label>
                             <Input
                               id="last-name"
                               value={editLastName}
                               onChange={(e) => setEditLastName(e.target.value)}
                               disabled={!isAdmin}
-                              className="h-9 text-xs rounded-xl"
+                              className="h-10 text-xs rounded-xl border-border/70 bg-background/50 focus:ring-primary/30"
                             />
                           </div>
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label htmlFor="email" className="text-xs font-semibold">Email Address (Google/Clerk Auth)</Label>
-                          <Input
-                            id="email"
-                            value={selectedUser.email}
-                            disabled
-                            className="h-9 text-xs rounded-xl bg-muted/40 cursor-not-allowed opacity-80"
-                          />
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="email" className="text-xs font-semibold text-foreground">Email Address</Label>
+                            <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+                              <Lock className="size-2.5" /> Google / Clerk Auth
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <Mail className="size-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <Input
+                              id="email"
+                              value={selectedUser.email}
+                              disabled
+                              className="h-10 pl-9 text-xs rounded-xl bg-muted/40 border-border/60 cursor-not-allowed opacity-85 font-medium"
+                            />
+                          </div>
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label htmlFor="phone" className="text-xs font-semibold">Contact Mobile Number</Label>
-                          <Input
-                            id="phone"
-                            value={editPhoneNumber}
-                            onChange={(e) => setEditPhoneNumber(e.target.value)}
-                            placeholder="e.g. 09918552251"
-                            disabled={!isAdmin}
-                            className="h-9 text-xs rounded-xl"
-                          />
+                          <Label htmlFor="phone" className="text-xs font-semibold text-foreground">Contact Mobile Number</Label>
+                          <div className="relative">
+                            <Phone className="size-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <Input
+                              id="phone"
+                              value={editPhoneNumber}
+                              onChange={(e) => setEditPhoneNumber(e.target.value)}
+                              placeholder="e.g. 09918552251"
+                              disabled={!isAdmin}
+                              className="h-10 pl-9 text-xs rounded-xl border-border/70 bg-background/50 focus:ring-primary/30"
+                            />
+                          </div>
                         </div>
 
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <Label htmlFor="address" className="text-xs font-semibold">Barangay & Residential Address</Label>
-                            <span className="text-[10px] text-muted-foreground font-medium">
-                              80 CDO Barangays
+                            <Label htmlFor="address" className="text-xs font-semibold text-foreground">Barangay & Residential Address</Label>
+                            <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                              <MapPin className="size-3 text-muted-foreground" /> 80 CDO Barangays
                             </span>
                           </div>
 
@@ -1679,7 +1695,7 @@ export function UsersDirectoryTable({
                           >
                             <SelectTrigger
                               id="address"
-                              className="h-9 text-xs rounded-xl bg-background cursor-pointer"
+                              className="h-10 text-xs rounded-xl border-border/70 bg-background/50 cursor-pointer focus:ring-primary/30"
                             >
                               <SelectValue placeholder="Select barangay (e.g. Carmen, Cagayan de Oro City)" />
                             </SelectTrigger>
@@ -1706,18 +1722,28 @@ export function UsersDirectoryTable({
                       </div>
 
                       {/* System Role & Permissions Box */}
-                      <div className="bg-card border border-border/60 rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col justify-between">
+                      <div className="bg-card border border-border/70 rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col shadow-2xs">
                         <div className="space-y-4">
-                          <div className="flex items-center gap-2 pb-2 border-b border-border/40">
-                            <ShieldCheck className="size-4 text-rose-500" />
-                            <h4 className="text-sm font-bold text-foreground">Access Level & System Role</h4>
+                          <div className="flex items-center justify-between pb-3 border-b border-border/50">
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                                <Fingerprint className="size-4" />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-bold text-foreground">Access Level & System Role</h4>
+                                <p className="text-[11px] text-muted-foreground">Manage RBAC authorization & permissions</p>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] font-semibold bg-muted/50 border-border/60">
+                              3 Roles Available
+                            </Badge>
                           </div>
 
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                              <Label htmlFor="role" className="text-xs font-semibold">Designated System Role</Label>
+                              <Label htmlFor="role" className="text-xs font-semibold text-foreground">Designated System Role</Label>
                               {!isAdmin && (
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono bg-muted/60 px-2 py-0.5 rounded-md border border-border/40">
                                   <Lock className="size-2.5" /> Admin Lock
                                 </span>
                               )}
@@ -1727,44 +1753,119 @@ export function UsersDirectoryTable({
                               onValueChange={(val) => setEditRole(val as SyncVetRole)}
                               disabled={!isAdmin}
                             >
-                              <SelectTrigger id="role" className="h-10 text-xs rounded-xl">
+                              <SelectTrigger id="role" className="h-10 text-xs rounded-xl border-border/70 bg-background/50 focus:ring-primary/30">
                                 <SelectValue placeholder="Select a role" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Administrator">
+                                <SelectItem value="Administrator" className="cursor-pointer">
                                   <div className="flex items-center gap-2">
-                                    <ShieldCheck className="size-3.5 text-rose-500" />
-                                    <span>Administrator (Full Administrative Control)</span>
+                                    <UserCog className="size-3.5 text-rose-500" />
+                                    <span className="font-semibold">Administrator (Full Administrative Control)</span>
                                   </div>
                                 </SelectItem>
-                                <SelectItem value="Vaccinator">
-                                  <div className="flex items-center gap-2">
-                                    <Syringe className="size-3.5 text-cyan-500" />
-                                    <span>Vaccinator (Field Drives & Operations)</span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="Veterinarian">
+                                <SelectItem value="Veterinarian" className="cursor-pointer">
                                   <div className="flex items-center gap-2">
                                     <Stethoscope className="size-3.5 text-emerald-500" />
-                                    <span>Veterinarian (Licensed Clinical DVM)</span>
+                                    <span className="font-semibold">Veterinarian (Licensed Clinical DVM)</span>
                                   </div>
                                 </SelectItem>
-                                <SelectItem value="Pet Owner">
+                                <SelectItem value="Pet Owner" className="cursor-pointer">
                                   <div className="flex items-center gap-2">
-                                    <PawPrint className="size-3.5 text-purple-400" />
-                                    <span>Pet Owner (Citizen Pet Registry)</span>
+                                    <PawPrint className="size-3.5 text-purple-500" />
+                                    <span className="font-semibold">Pet Owner (Citizen Pet Registry)</span>
                                   </div>
                                 </SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
 
-                          <div className="bg-muted/30 border border-border/40 rounded-xl p-3.5 text-xs text-muted-foreground space-y-1.5">
-                            <p className="font-bold text-foreground">Role Specifications:</p>
-                            <p>• <strong>Administrator:</strong> Manage directory, system configs & analytics.</p>
-                            <p>• <strong>Vaccinator:</strong> Perform field tag verifications & mobile vaccination drives.</p>
-                            <p>• <strong>Veterinarian:</strong> Inspect health records, certify rabies status & diagnosis.</p>
-                            <p>• <strong>Pet Owner:</strong> Manage pet digital passports & municipal appointments.</p>
+                          {/* Interactive Role Specifications Matrix */}
+                          <div className="space-y-2 pt-1">
+                            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                              Role Specifications & Privileges:
+                            </p>
+                            <div className="space-y-2">
+                              {/* Administrator Card */}
+                              <div
+                                onClick={() => isAdmin && setEditRole("Administrator")}
+                                className={cn(
+                                  "p-3 rounded-xl border text-xs transition-all",
+                                  isAdmin && "cursor-pointer hover:border-rose-500/50",
+                                  editRole === "Administrator"
+                                    ? "bg-rose-500/10 border-rose-500/40 text-foreground ring-1 ring-rose-500/20 shadow-2xs"
+                                    : "bg-muted/30 border-border/40 text-muted-foreground opacity-75"
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                                    <UserCog className="size-3.5 text-rose-500" />
+                                    <span>Administrator</span>
+                                  </div>
+                                  {editRole === "Administrator" && (
+                                    <Badge variant="outline" className="text-[9px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30 font-bold uppercase">
+                                      Active Role
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] leading-relaxed">
+                                  Full authority to manage directory accounts, assign staff permissions, system configurations, audits & city-wide analytics.
+                                </p>
+                              </div>
+
+                              {/* Veterinarian Card */}
+                              <div
+                                onClick={() => isAdmin && setEditRole("Veterinarian")}
+                                className={cn(
+                                  "p-3 rounded-xl border text-xs transition-all",
+                                  isAdmin && "cursor-pointer hover:border-emerald-500/50",
+                                  editRole === "Veterinarian"
+                                    ? "bg-emerald-500/10 border-emerald-500/40 text-foreground ring-1 ring-emerald-500/20 shadow-2xs"
+                                    : "bg-muted/30 border-border/40 text-muted-foreground opacity-75"
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                                    <Stethoscope className="size-3.5 text-emerald-500" />
+                                    <span>Veterinarian</span>
+                                  </div>
+                                  {editRole === "Veterinarian" && (
+                                    <Badge variant="outline" className="text-[9px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold uppercase">
+                                      Active Role
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] leading-relaxed">
+                                  Inspect pet medical histories, issue rabies vaccine certifications, record clinical diagnoses & manage telemedicine.
+                                </p>
+                              </div>
+
+                              {/* Pet Owner Card */}
+                              <div
+                                onClick={() => isAdmin && setEditRole("Pet Owner")}
+                                className={cn(
+                                  "p-3 rounded-xl border text-xs transition-all",
+                                  isAdmin && "cursor-pointer hover:border-purple-500/50",
+                                  editRole === "Pet Owner"
+                                    ? "bg-purple-500/10 border-purple-500/40 text-foreground ring-1 ring-purple-500/20 shadow-2xs"
+                                    : "bg-muted/30 border-border/40 text-muted-foreground opacity-75"
+                                )}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-foreground">
+                                    <PawPrint className="size-3.5 text-purple-500" />
+                                    <span>Pet Owner</span>
+                                  </div>
+                                  {editRole === "Pet Owner" && (
+                                    <Badge variant="outline" className="text-[9px] bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30 font-bold uppercase">
+                                      Active Role
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] leading-relaxed">
+                                  Manage household pets, digital vaccination passports, municipal anti-rabies scheduling & inquiries.
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>

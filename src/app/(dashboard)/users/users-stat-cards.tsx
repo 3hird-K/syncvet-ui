@@ -1,4 +1,4 @@
-import { Users, Shield, Stethoscope, Syringe } from "lucide-react";
+import { Users, Shield, Stethoscope, PawPrint } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { syncVetUserStats } from "@/data/syncvet-users";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,7 @@ export function UsersStatCards({
   total,
   admins,
   veterinarians,
-  vaccinators,
+  petOwners,
 }: ReturnType<typeof syncVetUserStats>) {
   const items = [
     {
@@ -29,10 +29,10 @@ export function UsersStatCards({
       iconClass: "bg-emerald-500/15 text-emerald-500",
     },
     {
-      title: "Vaccinators",
-      value: String(vaccinators),
-      icon: Syringe,
-      iconClass: "bg-cyan-500/15 text-cyan-500",
+      title: "Pet Owners",
+      value: String(petOwners),
+      icon: PawPrint,
+      iconClass: "bg-purple-500/15 text-purple-400",
     },
   ] as const;
 

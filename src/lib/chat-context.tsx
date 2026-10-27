@@ -262,6 +262,7 @@ export interface ChatContextType {
   isFetchingOlder: boolean;
   isLoadingMessages: boolean;
   fetchOlderMessages: () => Promise<void>;
+  broadcastMessageRead: (chatId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -947,7 +948,8 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                   ? {
                       ...m,
                       text: row.message_text,
-                      isEdited: true,
+                      isEdited: row.message_text !== m.text ? true : m.isEdited,
+                      isRead: row.is_read !== undefined ? row.is_read : m.isRead,
                       reaction: meta.reaction,
                       replyTo: meta.replyTo || m.replyTo,
                     }
@@ -1033,6 +1035,20 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === payload.messageId ? { ...m, reaction: rxVal } : m
+            )
+          );
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "messages_read" },
+        ({ payload }: any) => {
+          if (!payload?.chatId) return;
+          setMessages((prev) =>
+            prev.map((m) =>
+              (!m.chatId || m.chatId === payload.chatId) && !m.isRead
+                ? { ...m, isRead: true }
+                : m
             )
           );
         }
@@ -1219,7 +1235,9 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         lower.includes("walk-in") ||
         lower.includes("walk in") ||
         lower.includes("address") ||
-        lower.includes("macabalan") ||
+        lower.includes("carmen") ||
+        lower.includes("seriña") ||
+        lower.includes("serina") ||
         lower.includes("location") ||
         lower.includes("clinic");
 
@@ -1239,15 +1257,15 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
             badge = "Bite Advisory";
           } else if (isKaponFaq) {
             reply =
-              "Free kapon is available at our Macabalan clinic and barangay drives for healthy pets 6 months and older. Fast pet for 8 hours prior.";
+              "Free kapon is available at our Carmen CVO Complex clinic and barangay drives for healthy pets 6 months and older. Fast pet for 8 hours prior.";
             badge = "Kapon Advisory";
           } else if (isVaccineFaq) {
             reply =
-              "Free anti-rabies vaccination is available Monday to Friday, 8 AM–5 PM at our Macabalan clinic and barangay drives.";
+              "Free anti-rabies vaccination is available Monday to Friday, 8 AM–5 PM at our Carmen CVO Complex clinic and barangay drives.";
             badge = "Vaccine Advisory";
           } else if (isClinicHoursFaq) {
             reply =
-              "Central clinic: J. Pacana St., Macabalan. Monday to Friday, 8 AM–5 PM. Hotline: (088) 857-3180.";
+              "Central clinic: CVO Complex, J.V. Seriña St., Carmen, CDO. Monday to Friday, 8 AM–5 PM. Hotline: (088) 857-3180.";
             badge = "Clinic Advisory";
           }
 
@@ -1658,11 +1676,17 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           .update({ is_read: true })
           .eq("chat_id", targetChatId)
           .neq("sender_role", "Pet Owner");
+
+        channelRef.current?.send({
+          type: "broadcast",
+          event: "messages_read",
+          payload: { chatId: targetChatId, readByUserId: user?.id },
+        });
       }
     } catch {
       // ignore
     }
-  }, [activeChatId, messages, supabase]);
+  }, [activeChatId, messages, supabase, user?.id]);
 
   // When messenger opens, automatically mark all messages as read
   useEffect(() => {
@@ -1787,6 +1811,16 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
     refetchMessages("desk-switch", desk);
   }, [refetchMessages]);
 
+  const broadcastMessageRead = useCallback((chatId: string) => {
+    try {
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "messages_read",
+        payload: { chatId, readByUserId: user?.id },
+      });
+    } catch {}
+  }, [user?.id]);
+
   return (
     <ChatContext.Provider
       value={{
@@ -1807,6 +1841,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         reactions,
         toggleReaction,
         clearChat,
+        broadcastMessageRead,
         isLoading,
         unreadCount,
         activeChatId,

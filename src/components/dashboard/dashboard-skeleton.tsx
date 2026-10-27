@@ -11,7 +11,7 @@ export function DashboardSkeleton({
 }: DashboardSkeletonProps) {
   if (variant === "admin") {
     return (
-      <div className="flex-1 w-full min-w-0 max-w-7xl mx-auto space-y-5 p-4 sm:p-5 md:p-6 bg-background min-h-screen text-foreground animate-in fade-in-50 duration-200">
+      <div className="flex-1 w-full min-w-0 max-w-7xl mx-auto space-y-5 p-4 sm:p-5 md:p-6 pb-10 bg-background text-foreground animate-in fade-in-50 duration-200">
         {/* ── 1. CVO Command Center Header Skeleton ── */}
         <div className="space-y-2 pb-2 border-b border-border/50">
           <div className="flex items-center gap-2">

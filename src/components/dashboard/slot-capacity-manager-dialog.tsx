@@ -45,6 +45,8 @@ interface SlotCapacityManagerDialogProps {
   onConfigChange?: () => void;
   isStaff?: boolean;
   userRole?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function SlotCapacityManagerDialog({
@@ -52,8 +54,19 @@ export function SlotCapacityManagerDialog({
   onConfigChange,
   isStaff: propIsStaff,
   userRole: propUserRole,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: SlotCapacityManagerDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (val: boolean) => {
+    if (isControlled) {
+      controlledOnOpenChange?.(val);
+    } else {
+      setInternalOpen(val);
+    }
+  };
   const [vaccinationSlots, setVaccinationSlots] = useState<number>(10);
   const [spayNeuterSlots, setSpayNeuterSlots] = useState<number>(5);
   const [dateOverrides, setDateOverrides] = useState<
@@ -95,8 +108,7 @@ export function SlotCapacityManagerDialog({
     propIsStaff ??
     (isAdminEmail ||
       resolvedRole === "Administrator" ||
-      resolvedRole === "Veterinarian" ||
-      resolvedRole === "Vaccinator");
+      resolvedRole === "Veterinarian");
 
   useEffect(() => {
     if (open) {
@@ -116,7 +128,7 @@ export function SlotCapacityManagerDialog({
   const handleSave = () => {
     if (!canEdit) {
       toast.error("Permission Denied", {
-        description: "Only administrators, veterinarians, and vaccinators can modify daily appointment quotas.",
+        description: "Only administrators and veterinarians can modify daily appointment quotas.",
       });
       return;
     }
@@ -174,10 +186,10 @@ export function SlotCapacityManagerDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
+      {trigger ? (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      ) : !isControlled ? (
+        <DialogTrigger asChild>
           <Button
             variant="outline"
             size="sm"
@@ -186,8 +198,8 @@ export function SlotCapacityManagerDialog({
             <Settings2 className="size-3.5 text-primary" />
             <span>{canEdit ? "Set Daily Quotas" : "View Daily Quotas"}</span>
           </Button>
-        )}
-      </DialogTrigger>
+        </DialogTrigger>
+      ) : null}
 
       <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-5 sm:p-6 bg-background rounded-2xl shadow-xl">
         <DialogHeader className="space-y-1 pb-3 border-b border-border/60">
@@ -226,7 +238,7 @@ export function SlotCapacityManagerDialog({
               <div className="space-y-0.5">
                 <span className="font-bold block">View-Only Quotas</span>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Daily appointment limits are regulated by the City Veterinary Office. Only administrators, veterinarians, and vaccinators can modify procedure quotas.
+                  Daily appointment limits are regulated by the City Veterinary Office. Only administrators and veterinarians can modify procedure quotas.
                 </p>
               </div>
             </div>

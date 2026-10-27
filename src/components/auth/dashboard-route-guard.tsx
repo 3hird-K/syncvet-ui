@@ -8,7 +8,7 @@ import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
-// Routes reserved exclusively for City Veterinary Office Staff (Admin, Vet, Vaccinator)
+// Routes reserved exclusively for City Veterinary Office Staff (Admin, Veterinarian)
 const STAFF_ONLY_ROUTES = [
   "/dashboard",
   "/vaccination-records",
@@ -41,7 +41,7 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
       if (!user?.id) return null;
       const { data } = await supabase
         .from("users")
-        .select("role")
+        .select("role, profile_completed, phone_number, address")
         .eq("id", user.id)
         .maybeSingle();
       return data;
@@ -49,7 +49,13 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
     enabled: isLoaded && !!user?.id,
   });
 
-  const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const metadata = user?.unsafeMetadata as {
+    roleTitle?: string;
+    accountType?: string;
+    profileCompleted?: boolean;
+    phoneNumber?: string;
+    address?: string;
+  } | undefined;
   const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
   const isAdminEmail = userEmail === "dime.neil03@gmail.com";
 
@@ -62,8 +68,7 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
   const isStaff =
     isAdminEmail ||
     userRole === "Administrator" ||
-    userRole === "Veterinarian" ||
-    userRole === "Vaccinator";
+    userRole === "Veterinarian";
 
   const isPetOwner = !isStaff && userRole === "Pet Owner";
 
@@ -73,6 +78,15 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
   const isPetOwnerRoute = PET_OWNER_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + "/")
   );
+
+  // Check if pet owner user has not completed onboarding (Staff: Admin and Vet never need onboarding)
+  const isProfileIncomplete =
+    isLoaded &&
+    !isDbLoading &&
+    !isStaff &&
+    isPetOwner &&
+    dbUser?.profile_completed !== true &&
+    !(metadata?.profileCompleted === true && !!(dbUser?.phone_number || metadata?.phoneNumber));
 
   // 1. Pet Owner attempting to view municipal staff operations
   const isPetOwnerUnauthorized = isLoaded && !isDbLoading && isPetOwner && isStaffRoute;
@@ -89,18 +103,24 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
     !isAdminEmail;
 
   useEffect(() => {
-    if (isPetOwnerUnauthorized) {
+    if (isProfileIncomplete) {
+      router.replace("/onboarding");
+    } else if (isPetOwnerUnauthorized) {
       router.replace("/pet-owner");
     } else if (isStaffOnPetOwnerRoute) {
       router.replace("/dashboard");
     } else if (isNonAdminOnManageUsers) {
       router.replace("/dashboard");
     }
-  }, [isPetOwnerUnauthorized, isStaffOnPetOwnerRoute, isNonAdminOnManageUsers, router]);
+  }, [isProfileIncomplete, isPetOwnerUnauthorized, isStaffOnPetOwnerRoute, isNonAdminOnManageUsers, router]);
 
   // Show skeleton during auth/role resolution or while redirecting unauthorized user
   if (!isLoaded || isDbLoading) {
     return <DashboardSkeleton variant={isStaffRoute ? "admin" : "pet-owner"} />;
+  }
+
+  if (isProfileIncomplete) {
+    return <DashboardSkeleton variant="pet-owner" />;
   }
 
   if (isPetOwnerUnauthorized) {

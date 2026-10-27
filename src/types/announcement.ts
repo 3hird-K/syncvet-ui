@@ -19,6 +19,7 @@ export interface CVOAnnouncement {
   target_barangay?: string | null;
   is_pinned: boolean;
   is_active: boolean;
+  expires_at?: string | null;
   created_at: string;
   updated_at?: string;
 }

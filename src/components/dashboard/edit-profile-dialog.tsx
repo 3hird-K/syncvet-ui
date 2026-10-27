@@ -66,16 +66,6 @@ function getRoleBadge(role: SyncVetRole) {
           Veterinarian
         </Badge>
       );
-    case "Vaccinator":
-      return (
-        <Badge
-          variant="outline"
-          className="text-[10px] font-bold text-cyan-500 border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 rounded-full"
-        >
-          <Syringe className="size-3 mr-1 text-cyan-500" />
-          Vaccinator
-        </Badge>
-      );
     case "Pet Owner":
     default:
       return (
@@ -440,26 +430,17 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                         <span>Veterinarian (Clinician)</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="Vaccinator" className="text-xs cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <Syringe className="size-3.5 text-cyan-500" />
-                        <span>Vaccinator (Field Officer)</span>
-                      </div>
-                    </SelectItem>
                   </SelectContent>
                 </Select>
               ) : (
                 <div className="h-10 rounded-xl border border-border/70 bg-muted/30 px-3 flex items-center justify-between text-xs text-foreground select-none">
                   <div className="flex items-center gap-2 font-medium">
                     {initialRole === "Veterinarian" && <Stethoscope className="size-3.5 text-emerald-500" />}
-                    {initialRole === "Vaccinator" && <Syringe className="size-3.5 text-cyan-500" />}
                     {initialRole === "Pet Owner" && <PawIcon className="size-3.5 text-emerald-600" />}
                     <span>
                       {initialRole === "Pet Owner"
                         ? "Pet Owner (Citizen)"
-                        : initialRole === "Veterinarian"
-                        ? "Veterinarian (Clinician)"
-                        : "Vaccinator (Field Officer)"}
+                        : "Veterinarian (Clinician)"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-semibold bg-muted/60 px-2 py-0.5 rounded-md border border-border/40">

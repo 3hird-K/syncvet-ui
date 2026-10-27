@@ -12,7 +12,6 @@ import {
   Plus,
   Settings2,
   Download,
-  Eye,
   ShieldCheck,
   Stethoscope,
   FileCheck2,
@@ -275,7 +274,6 @@ export default function PetRegistryPage() {
     { id: "owner", label: "Owner" },
     { id: "barangay", label: "Barangay" },
     { id: "vaccinated", label: "Vaccinated" },
-    { id: "qr", label: "QR Passport" },
   ];
 
   const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map((c) => c.id));
@@ -305,7 +303,7 @@ export default function PetRegistryPage() {
   // Generate QR for selected pet
   useEffect(() => {
     if (!selectedPet) return;
-    const petUrl = `${window.location.origin}/pet-registry?id=${selectedPet.id}`;
+    const petUrl = `${window.location.origin}/verify/pet/${selectedPet.id}?name=${encodeURIComponent(selectedPet.name)}&species=${encodeURIComponent(selectedPet.species)}&breed=${encodeURIComponent(selectedPet.breed)}&tag=${encodeURIComponent(selectedPet.microchip || selectedPet.id)}&owner=${encodeURIComponent(selectedPet.owner)}&bgy=${encodeURIComponent(selectedPet.barangay)}&vax=${selectedPet.vaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(selectedPet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(selectedPet.nextVaccinationDate || "")}`;
     QRCode.toDataURL(petUrl, { width: 140, margin: 1 })
       .then((url) => setQrCodeUrl(url))
       .catch((e) => console.error(e));
@@ -449,25 +447,17 @@ export default function PetRegistryPage() {
                   </TableHead>
                 )}
                 {visibleColumns.includes("vaccinated") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest pr-6">
                     Vaccinated
                   </TableHead>
                 )}
-                {visibleColumns.includes("qr") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
-                    QR Passport
-                  </TableHead>
-                )}
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">
-                  Action
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={visibleColumns.length + 1}
+                    colSpan={visibleColumns.length}
                     className="py-8 text-center text-muted-foreground"
                   >
                     No pets match your search.
@@ -477,8 +467,10 @@ export default function PetRegistryPage() {
                 rows.map((pet, idx) => (
                   <TableRow key={`${pet.id}-${idx}`} className="hover:bg-muted/50 cursor-pointer" onClick={() => setSelectedPet(pet)}>
                     {visibleColumns.includes("id") && (
-                      <TableCell className="font-mono text-xs text-muted-foreground pl-6">
-                        {pet.id}
+                      <TableCell className="font-mono text-xs text-muted-foreground pl-6" title={pet.id}>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-muted/60 text-muted-foreground font-mono text-[11px] border border-border/40 select-all">
+                          {pet.id.length > 8 ? `${pet.id.slice(0, 8)}...` : pet.id}
+                        </span>
                       </TableCell>
                     )}
                     {visibleColumns.includes("name") && (
@@ -505,7 +497,7 @@ export default function PetRegistryPage() {
                       </TableCell>
                     )}
                     {visibleColumns.includes("vaccinated") && (
-                      <TableCell>
+                      <TableCell className="pr-6">
                         <Badge
                           className={cn(
                             "text-[10px]",
@@ -518,51 +510,6 @@ export default function PetRegistryPage() {
                         </Badge>
                       </TableCell>
                     )}
-                    {visibleColumns.includes("qr") && (
-                      <TableCell>
-                        {pet.qr ? (
-                          <QrCode className="size-4 text-emerald-500" />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    )}
-                    <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedPet(pet)}
-                          className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
-                        >
-                          <Eye className="size-3.5" /> EMR Record
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setPetToEdit(pet);
-                            setEditDialogOpen(true);
-                          }}
-                          className="size-7 text-muted-foreground hover:text-foreground cursor-pointer rounded-md"
-                          title={`Edit ${pet.name}`}
-                        >
-                          <Pencil className="size-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setPetToDelete(pet);
-                            setDeleteDialogOpen(true);
-                          }}
-                          className="size-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-md"
-                          title={`Delete ${pet.name}`}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -724,7 +671,7 @@ export default function PetRegistryPage() {
                         <span>Rabisin Anti-Rabies (Canine/Feline)</span>
                         <Badge variant="outline" className="text-[9px]">Annual</Badge>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">Lot #AR-Q3-2026-014 • Vaccinator: Dr. Elena Santos, DVM</p>
+                      <p className="text-[10px] text-muted-foreground">Lot #AR-Q3-2026-014 • Veterinarian: Dr. Elena Santos, DVM</p>
                     </div>
                   </div>
                 </TabsContent>
@@ -774,6 +721,29 @@ export default function PetRegistryPage() {
                     <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
                       Scan to verify identity, anti-rabies immunity, and registered owner with the City Veterinary Office.
                     </p>
+                    {qrCodeUrl && (
+                      <div className="pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = qrCodeUrl;
+                            a.download = `cvo-pet-passport-${selectedPet.name || selectedPet.id}.png`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            toast.success("Pet Passport QR Downloaded", {
+                              description: `Saved QR code for ${selectedPet.name || "pet"}`,
+                            });
+                          }}
+                          className="h-8 gap-1.5 text-xs font-semibold cursor-pointer border-border hover:bg-muted"
+                        >
+                          <Download className="size-3.5 text-emerald-600" />
+                          <span>Download QR Code</span>
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>

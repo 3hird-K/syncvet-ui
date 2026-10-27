@@ -154,7 +154,13 @@ export function PublicHealthOverview() {
                   <div className="flex items-center gap-2">
                     <MapPin className="size-3.5 text-primary shrink-0" />
                     <div>
-                      <span className="font-bold text-foreground">Barangay {b.name}</span>
+                      <span className="font-bold text-foreground">
+                        {b.name.toLowerCase().includes("cagayan de oro")
+                          ? "Central CDO / Carmen CVO Area"
+                          : b.name.toLowerCase().startsWith("barangay") || b.name.toLowerCase().startsWith("brgy")
+                          ? b.name
+                          : `Barangay ${b.name}`}
+                      </span>
                       <span className="text-[10px] text-muted-foreground ml-2">
                         {b.consultations} Encounters
                       </span>

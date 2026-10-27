@@ -21,7 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, isTodayDate } from "@/lib/utils";
 import { useCVO } from "@/lib/cvo-context";
 
 export function MetricCards() {
@@ -56,10 +56,15 @@ export function MetricCards() {
     staleTime: 15000,
   });
 
-  // Compute live dynamic stats from real-time stores
-  const completedConsultations = consultations.filter((c) => c.status === "completed").length;
-  const inProgressConsultations = consultations.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
-  const waitingConsultations = consultations.filter((c) => c.status === "waiting").length;
+  // Filter encounters strictly for today so veterinarians and staff are never confused by prior/future dates
+  const todaysConsultations = useMemo(
+    () => consultations.filter((c) => isTodayDate(c.date)),
+    [consultations]
+  );
+  const todaysCompleted = todaysConsultations.filter((c) => c.status === "completed").length;
+  const todaysInProgress = todaysConsultations.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
+  const todaysWaiting = todaysConsultations.filter((c) => c.status === "waiting").length;
+
   const lowStockCount = inventory.filter((i) => i.status === "low-stock" || i.status === "expiring-soon").length;
   const pendingOfflineSync = offlineRecords.filter((r) => r.syncStatus === "pending").length;
   const activeImpounded = animalControlCases.filter((ac) => ac.status === "impounded").length;
@@ -81,33 +86,33 @@ export function MetricCards() {
         return [
           {
             title: "Today's Consultations",
-            value: `${consultations.length}`,
+            value: `${todaysConsultations.length}`,
             icon: Stethoscope,
             gradient: "from-emerald-500/10",
             iconClass: "text-emerald-500",
-            badge: `${waitingConsultations} Waiting`,
-            badgeClass: "text-amber-500 bg-amber-500/10",
-            sub: "Clinical EMR encounters",
+            badge: todaysWaiting > 0 ? `${todaysWaiting} Waiting` : "Queue Clear",
+            badgeClass: todaysWaiting > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
+            sub: "Clinical EMR encounters today",
           },
           {
             title: "In Treatment",
-            value: `${inProgressConsultations}`,
+            value: `${todaysInProgress}`,
             icon: Clock,
             gradient: "from-blue-500/10",
             iconClass: "text-blue-500",
-            badge: inProgressConsultations > 0 ? "Active In Exam" : "Floor Clear",
-            badgeClass: inProgressConsultations > 0 ? "text-blue-500 bg-blue-500/10" : "text-muted-foreground bg-muted/20",
-            sub: "Currently in exam rooms",
+            badge: todaysInProgress > 0 ? "Active In Exam" : "Floor Clear",
+            badgeClass: todaysInProgress > 0 ? "text-blue-500 bg-blue-500/10" : "text-muted-foreground bg-muted/20",
+            sub: "Currently in exam rooms today",
           },
           {
             title: "Completed Encounters",
-            value: `${completedConsultations}`,
+            value: `${todaysCompleted}`,
             icon: CheckCircle2,
             gradient: "from-indigo-500/10",
             iconClass: "text-indigo-400",
-            badge: "Resolved",
-            badgeClass: "text-indigo-400 bg-indigo-400/10",
-            sub: "Clinical treatments concluded",
+            badge: todaysCompleted > 0 ? "Resolved Today" : "0 Today",
+            badgeClass: todaysCompleted > 0 ? "text-indigo-400 bg-indigo-400/10" : "text-muted-foreground bg-muted/20",
+            sub: "Clinical treatments concluded today",
           },
           {
             title: "Rabies Quarantine Cases",
@@ -118,50 +123,6 @@ export function MetricCards() {
             badge: activeImpounded > 0 ? "Under Watch" : "No Bite Cases",
             badgeClass: activeImpounded > 0 ? "text-red-500 bg-red-500/10" : "text-emerald-500 bg-emerald-500/10",
             sub: "Mandatory bite observation",
-          },
-        ];
-
-      case "Vaccinator":
-        return [
-          {
-            title: "Active Barangay Reach",
-            value: `${activeBarangaysCount}`,
-            icon: MapPin,
-            gradient: "from-primary/10",
-            iconClass: "text-primary",
-            badge: "Covered Zones",
-            badgeClass: "text-primary bg-primary/10",
-            sub: "Logged in clinical activity",
-          },
-          {
-            title: "Anti-Rabies Doses Logged",
-            value: `${totalVaccinations}`,
-            icon: Syringe,
-            gradient: "from-emerald-500/10",
-            iconClass: "text-emerald-500",
-            badge: "Immunization Ledger",
-            badgeClass: "text-emerald-500 bg-emerald-500/10",
-            sub: "Recorded vaccinations",
-          },
-          {
-            title: "Offline Sync Queue",
-            value: `${pendingOfflineSync}`,
-            icon: Clock,
-            gradient: "from-amber-500/10",
-            iconClass: "text-amber-500",
-            badge: pendingOfflineSync > 0 ? "Pending Sync" : "All Synced",
-            badgeClass: pendingOfflineSync > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
-            sub: "Field entries in cache",
-          },
-          {
-            title: "Cold-Chain Vaccine Stock",
-            value: `${totalVaccineDoses.toLocaleString()}`,
-            icon: Package,
-            gradient: "from-blue-500/10",
-            iconClass: "text-blue-500",
-            badge: totalVaccineDoses > 0 ? "In Inventory" : "No Stock Logged",
-            badgeClass: totalVaccineDoses > 0 ? "text-blue-500 bg-blue-500/10" : "text-amber-500 bg-amber-500/10",
-            sub: "Rabisin & rabies stock",
           },
         ];
 
@@ -199,13 +160,13 @@ export function MetricCards() {
           },
           {
             title: "Today's Walk-in Queue",
-            value: `${consultations.length}`,
+            value: `${todaysConsultations.length}`,
             icon: Clock,
             gradient: "from-amber-500/10",
             iconClass: "text-amber-500",
-            badge: waitingConsultations > 0 ? `${waitingConsultations} In Queue` : "Queue Clear",
-            badgeClass: waitingConsultations > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
-            sub: "Consultation & vaccines",
+            badge: todaysWaiting > 0 ? `${todaysWaiting} In Queue` : "Queue Clear",
+            badgeClass: todaysWaiting > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
+            sub: "Consultation & vaccines today",
           },
         ];
 
@@ -224,13 +185,13 @@ export function MetricCards() {
           },
           {
             title: "Today's Walk-in Encounters",
-            value: `${consultations.length}`,
+            value: `${todaysConsultations.length}`,
             icon: Stethoscope,
             gradient: "from-emerald-500/10",
             iconClass: "text-emerald-500",
-            badge: inProgressConsultations > 0 ? `${inProgressConsultations} Active` : `${consultations.length} Total`,
+            badge: todaysInProgress > 0 ? `${todaysInProgress} Active` : todaysConsultations.length > 0 ? `${todaysConsultations.length} Today` : "0 Today",
             badgeClass: "text-emerald-500 bg-emerald-500/10",
-            sub: "Clinical & vaccinations",
+            sub: "Clinical & vaccinations today",
           },
           {
             title: "Inventory & FEFO Alerts",

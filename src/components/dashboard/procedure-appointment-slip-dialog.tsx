@@ -195,7 +195,7 @@ export function ProcedureAppointmentSlipDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-white dark:bg-card rounded-2xl shadow-2xl border-border">
+      <DialogContent className="sm:max-w-2xl md:max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-white dark:bg-card rounded-2xl shadow-2xl border-border">
         <DialogHeader className="sr-only">
           <DialogTitle>Official Procedure Appointment Slip</DialogTitle>
         </DialogHeader>
@@ -203,7 +203,7 @@ export function ProcedureAppointmentSlipDialog({
         {/* Printable Pass Container */}
         <div id="cvo-appointment-slip" className="space-y-5 text-foreground print:p-0">
           {/* Header Banner */}
-          <div className="flex items-start justify-between border-b border-border/80 pb-4">
+          <div className="flex items-start justify-between border-b border-border/80 pb-4 pr-10 sm:pr-12">
             <div className="flex items-center gap-3">
               <div className="size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
                 <Image

@@ -28,12 +28,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isStaff =
     isAdminEmail ||
     metadata?.roleTitle === "Administrator" ||
-    metadata?.roleTitle === "Veterinarian" ||
-    metadata?.roleTitle === "Vaccinator";
+    metadata?.roleTitle === "Veterinarian";
   const isPetOwner = !isStaff && (metadata?.accountType === "pet_owner" || metadata?.roleTitle === "Pet Owner");
 
   return (
-    <div className="flex h-svh overflow-hidden bg-background text-foreground">
+    <div className="flex fixed inset-0 h-screen max-h-screen w-full overflow-hidden bg-background text-foreground">
       {/* Desktop Sidebar */}
       <DashboardSidebar collapsed={collapsed} />
 

@@ -13,9 +13,9 @@ export default function SSOCallbackPage() {
       {/* Clerk's redirect handler runs seamlessly in the background */}
       <div className="opacity-0 pointer-events-none absolute inset-0">
         <AuthenticateWithRedirectCallback
-          signInForceRedirectUrl="/dashboard"
-          signUpForceRedirectUrl="/dashboard"
-          continueSignUpUrl="/dashboard"
+          signInForceRedirectUrl="/onboarding"
+          signUpForceRedirectUrl="/onboarding"
+          continueSignUpUrl="/onboarding"
         />
       </div>
     </main>

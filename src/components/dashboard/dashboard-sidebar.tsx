@@ -9,7 +9,6 @@ import {
   MapPin,
   Package,
   BarChart3,
-  Settings,
   HelpCircle,
   MoreVertical,
   CircleUser,
@@ -77,17 +76,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
           { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
           { label: "Field Operations", icon: MapPin, href: "/field-operations" },
-        ],
-      };
-    case "Vaccinator":
-      return {
-        serviceCategoryTitle: "Field Vaccination Services",
-        items: [
-          { label: "Operations Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records", section: "Field Operations & Stock" },
-          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
           { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
-          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
         ],
       };
     case "Pet Owner":
@@ -179,7 +168,6 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   const isStaffMetadata =
     metadata?.roleTitle === "Administrator" ||
     metadata?.roleTitle === "Veterinarian" ||
-    metadata?.roleTitle === "Vaccinator" ||
     metadata?.roleTitle === "Staff" ||
     metadata?.accountType === "administrator" ||
     metadata?.accountType === "veterinarian";
@@ -197,8 +185,6 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
       ? "Administrator"
       : dbOrMetaRole === "Veterinarian"
       ? "Veterinarian"
-      : dbOrMetaRole === "Vaccinator"
-      ? "Vaccinator"
       : "Pet Owner";
 
   const { serviceCategoryTitle, items: activeNavItems } = useMemo(
@@ -322,24 +308,6 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
       >
         {/* Support nav links */}
         <div className="flex flex-col gap-1">
-          <Link
-            href="/settings"
-            className={cn(
-              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150",
-              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
-              pathname === "/settings"
-                ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-            title={collapsed ? "Settings" : undefined}
-            onClick={onItemClick}
-          >
-            <Settings 
-              className={cn("size-4", pathname === "/settings" ? "text-white" : "text-muted-foreground")} 
-              strokeWidth={2} 
-            />
-            {!collapsed && <span>Settings</span>}
-          </Link>
           <Link
             href="/get-help"
             className={cn(
