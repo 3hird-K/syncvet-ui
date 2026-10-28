@@ -1127,37 +1127,6 @@ export default function ConsultationsPage() {
                 </div>
               )}
 
-              {/* Status Update Quick Bar (only for clinical consultations) */}
-              {!isPetOwner && selectedConsultation.category === "consultation" && (
-                <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Update Encounter Lifecycle
-                    </Label>
-                    {selectedConsultation.isOverdue && (
-                      <span className="text-[10px] text-rose-500 font-medium">Locked (Overdue)</span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(["waiting", "in-consultation", "treatment", "completed"] as const).map((st) => (
-                      <Button
-                        key={st}
-                        disabled={selectedConsultation.isOverdue}
-                        variant={selectedConsultation.status === st ? "default" : "outline"}
-                        size="sm"
-                        className={cn(
-                          "h-7 text-[11px] capitalize",
-                          selectedConsultation.isOverdue ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                        )}
-                        onClick={() => handleUpdateStatus(selectedConsultation, st)}
-                      >
-                        {st.replace("-", " ")}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Veterinary Examination Action Banner (only for clinical consultations) */}
               {!isPetOwner && selectedConsultation.category === "consultation" && (
                 <div className={cn(

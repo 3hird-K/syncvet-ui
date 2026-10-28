@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
+const PAGE_SIZE_OPTIONS = [5, 10, 50, 100] as const;
 
 interface TablePaginationProps {
   /** Current page (1-indexed) */

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, ShieldCheck, Scale, Calendar } from "lucide-react";
+import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, Scale, Calendar } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -147,8 +147,6 @@ export function RegisterPetDialog({
   const [gender, setGender] = useState<"Male" | "Female">("Male");
   const [birthYear, setBirthYear] = useState<string>(String(currentYear - 1));
   const [weightCategory, setWeightCategory] = useState<string>("Medium (10 – 25 kg)");
-  const [isSpayedNeutered, setIsSpayedNeutered] = useState(false);
-  const [rabiesVaccinated, setRabiesVaccinated] = useState(true);
   const [notes, setNotes] = useState("");
 
   // Pet Owner selection for Admin/Staff only
@@ -215,9 +213,9 @@ export function RegisterPetDialog({
           gender,
           birth_year: birthYear ? Number(birthYear) : null,
           weight_category: weightCategory || null,
-          is_spayed_neutered: isSpayedNeutered,
-          rabies_vaccinated: rabiesVaccinated,
-          is_vaccinated: rabiesVaccinated,
+          is_spayed_neutered: false,
+          rabies_vaccinated: false,
+          is_vaccinated: false,
           microchip_number: finalMicrochip,
           notes: notes.trim() || null,
           owner_id: targetOwnerId,
@@ -257,8 +255,6 @@ export function RegisterPetDialog({
       setGender("Male");
       setBirthYear(String(currentYear - 1));
       setWeightCategory("Medium (10 – 25 kg)");
-      setIsSpayedNeutered(false);
-      setRabiesVaccinated(true);
       setNotes("");
       setSelectedOwner(null);
       setOpen(false);
@@ -416,60 +412,6 @@ export function RegisterPetDialog({
                 </Select>
               </div>
             </div>
-
-            {/* Health & Immunity Toggles (from database.types.ts: is_spayed_neutered, rabies_vaccinated) */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setRabiesVaccinated((v) => !v)}
-                className={cn(
-                  "flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all",
-                  rabiesVaccinated
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 shadow-2xs"
-                    : "bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted/50"
-                )}
-              >
-                <div className="min-w-0 pr-1">
-                  <span className="text-[11px] font-bold block flex items-center gap-1">
-                    <ShieldCheck className="size-3 shrink-0" /> Rabies Vaccinated
-                  </span>
-                  <span className="text-[9px] text-muted-foreground block truncate">
-                    {rabiesVaccinated ? "Immunity Certified" : "Schedule Due"}
-                  </span>
-                </div>
-                <div className={cn(
-                  "size-4 rounded-full flex items-center justify-center shrink-0 border",
-                  rabiesVaccinated ? "bg-emerald-500 text-white border-emerald-600" : "border-border"
-                )}>
-                  {rabiesVaccinated && <Check className="size-2.5" />}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsSpayedNeutered((v) => !v)}
-                className={cn(
-                  "flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all",
-                  isSpayedNeutered
-                    ? "bg-primary/10 border-primary/30 text-primary shadow-2xs"
-                    : "bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted/50"
-                )}
-              >
-                <div className="min-w-0 pr-1">
-                  <span className="text-[11px] font-bold block">Spayed / Neutered</span>
-                  <span className="text-[9px] text-muted-foreground block truncate">
-                    {isSpayedNeutered ? "Kapon Procedure Complete" : "Intact"}
-                  </span>
-                </div>
-                <div className={cn(
-                  "size-4 rounded-full flex items-center justify-center shrink-0 border",
-                  isSpayedNeutered ? "bg-primary text-white border-primary" : "border-border"
-                )}>
-                  {isSpayedNeutered && <Check className="size-2.5" />}
-                </div>
-              </button>
-            </div>
-
 
             {/* Optional Notes (from database.types.ts: notes) */}
             <div className="grid gap-1">

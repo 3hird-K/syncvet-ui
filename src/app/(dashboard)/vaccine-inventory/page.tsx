@@ -11,7 +11,6 @@ import {
   ArrowUpDown,
   Pencil,
   Trash2,
-  Search,
   Loader2,
   PackageCheck,
 } from "lucide-react";
@@ -380,19 +379,6 @@ export default function VaccineInventoryPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {/* Search item / batch */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Search ledger..."
-                  className="h-8 pl-8 text-xs bg-muted/20 w-36 sm:w-44 rounded-lg"
-                />
-              </div>
 
               {/* Status Filter */}
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
@@ -435,9 +421,6 @@ export default function VaccineInventoryPage() {
                 visibleColumns={visibleColumns}
                 onToggleColumn={toggleColumn}
               />
-
-              {/* Create: + Add Batch Button directly in ledger header */}
-              <AddBatchDialog />
             </div>
           </div>
         </CardHeader>

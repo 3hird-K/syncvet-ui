@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+export interface RegisteredVet {
+  id: string;
+  name: string;
+  role: string;
+  avatarUrl?: string | null;
+  email?: string | null;
+}
+
+export const HELEN_VET: RegisteredVet = {
+  id: "helen-tacandong",
+  name: "Dr. Helen Ann P. Tacandong, DVM",
+  role: "City Veterinarian",
+  avatarUrl: "/dr-helen-tacandong.jpg",
+};
 import {
   Stethoscope,
   Heart,
@@ -34,11 +50,15 @@ import {
   ShieldCheck,
   Loader2,
   ClipboardCheck,
+  Lock,
+  Clock,
 } from "lucide-react";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { useCVO } from "@/lib/cvo-context";
 import { CVO_CLINICAL_SYSTEMS } from "./pet-owner-consultation-dialog";
 import { useUser } from "@clerk/nextjs";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -59,8 +79,124 @@ export function ClinicalExaminationDialog({
   onSaved,
 }: ClinicalExaminationDialogProps) {
   const { updateConsultation, activeRoleView } = useCVO();
-  const { user } = useUser();
+  const { user, isLoaded: isUserLoaded } = useUser();
   const [loading, setLoading] = useState(false);
+
+  // Fetch current user's database role and profile from Supabase
+  const { data: dbCurrentUser } = useQuery({
+    queryKey: ["current-user-role", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const supabase = getPublicSupabaseClient();
+      const { data } = await supabase
+        .from("users")
+        .select("id, role, avatar_url, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: isUserLoaded && !!user?.id,
+  });
+
+  const rawEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+  const isAdminEmail = rawEmail === "dime.neil03@gmail.com";
+  const meta = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const currentRole = normalizeSyncVetRole(
+    dbCurrentUser?.role ||
+    meta?.roleTitle ||
+    (isAdminEmail ? "Administrator" : "Pet Owner")
+  );
+  const isAdmin = isAdminEmail || currentRole === "Administrator" || activeRoleView === "Administrator";
+  const isVet = currentRole === "Veterinarian" || activeRoleView === "Veterinarian";
+
+  const currentUserName =
+    dbCurrentUser?.full_name?.trim() ||
+    user?.fullName?.trim() ||
+    user?.username ||
+    "Attending Veterinarian";
+  const currentUserAvatar = dbCurrentUser?.avatar_url || (isUserLoaded && user?.imageUrl ? user.imageUrl : undefined);
+
+  // Query actual registered veterinarians and staff from database
+  const { data: dbVets = [] } = useQuery<RegisteredVet[]>({
+    queryKey: ["registered-administering-vets"],
+    queryFn: async () => {
+      try {
+        const supabase = getPublicSupabaseClient();
+        const { data, error } = await supabase
+          .from("users")
+          .select("id, full_name, role, avatar_url, email")
+          .order("full_name", { ascending: true });
+
+        if (!error && data) {
+          return data
+            .filter((u) => {
+              const r = (u.role || "").toLowerCase();
+              return r.includes("vet") || r.includes("admin");
+            })
+            .map((u) => ({
+              id: u.id,
+              name: u.full_name?.trim() || u.email?.trim() || "Attending Veterinarian",
+              role: u.role || "Veterinarian",
+              avatarUrl: u.avatar_url,
+              email: u.email,
+            }));
+        }
+        return [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
+  });
+
+  // Combine registered vets from DB with Ms. Helen as primary/default, plus current user
+  const allAvailableVets = useMemo(() => {
+    const list: RegisteredVet[] = [];
+
+    // Ensure Ms. Helen is always at the top as the default City Veterinarian
+    const dbHelen = dbVets.find((v) =>
+      v.name.toLowerCase().includes("helen") || (v.email && v.email.toLowerCase().includes("helen"))
+    );
+    list.push({
+      id: dbHelen?.id || HELEN_VET.id,
+      name: dbHelen?.name || HELEN_VET.name,
+      role: dbHelen?.role || HELEN_VET.role,
+      avatarUrl: dbHelen?.avatarUrl || HELEN_VET.avatarUrl,
+      email: dbHelen?.email || HELEN_VET.email,
+    });
+
+    // Add other registered vets from Supabase DB (excluding duplicate Helen and any legacy dummy names)
+    for (const v of dbVets) {
+      const lowerName = v.name.toLowerCase();
+      if (
+        !lowerName.includes("helen") &&
+        !lowerName.includes("elena santos") &&
+        !lowerName.includes("sarah chen") &&
+        !(v.email && v.email.toLowerCase().includes("helen")) &&
+        !list.some((item) => item.id === v.id || item.name.toLowerCase() === lowerName)
+      ) {
+        list.push(v);
+      }
+    }
+
+    // Include logged-in user if vet or admin and not already in list
+    if (currentUserName) {
+      const alreadyInList = list.some(
+        (v) => v.name.toLowerCase() === currentUserName.toLowerCase() || (user?.id && v.id === user.id)
+      );
+      if (!alreadyInList) {
+        list.push({
+          id: user?.id || "current-user",
+          name: currentUserName,
+          role: isVet ? "Veterinarian" : "Administrator",
+          avatarUrl: currentUserAvatar,
+          email: user?.primaryEmailAddress?.emailAddress,
+        });
+      }
+    }
+
+    return list;
+  }, [dbVets, currentUserName, isVet, currentUserAvatar, user]);
 
   // Vitals
   const [weightKg, setWeightKg] = useState("10");
@@ -93,42 +229,29 @@ export function ClinicalExaminationDialog({
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>(undefined);
   const [status, setStatus] = useState<CVOConsultation["status"]>("completed");
-  const [attendingVet, setAttendingVet] = useState("Dr. Elena Santos, DVM");
-  const [availableVets, setAvailableVets] = useState<string[]>([
-    "Dr. Elena Santos, DVM",
-    "Dr. Helen Ann P. Tacandong, DVM",
-    "Dr. Sarah Chen, DVM",
-  ]);
+  const [attendingVet, setAttendingVet] = useState(HELEN_VET.name);
 
-  // Load available vets from database
-  useEffect(() => {
-    async function loadRegisteredVets() {
-      try {
-        const supabase = getPublicSupabaseClient();
-        const { data, error } = await supabase
-          .from("users")
-          .select("full_name, role")
-          .order("full_name", { ascending: true });
-
-        if (!error && data && data.length > 0) {
-          const registered = data
-            .filter((u) => {
-              const r = (u.role || "").toLowerCase();
-              return r.includes("vet") || r.includes("admin");
-            })
-            .map((u) => u.full_name?.trim())
-            .filter(Boolean) as string[];
-
-          if (registered.length > 0) {
-            setAvailableVets((prev) => Array.from(new Set([...registered, ...prev])));
-          }
+  // Compute active vet object for avatar and role display
+  const selectedVetObj = useMemo(() => {
+    if (!isAdmin && isVet && currentUserName) {
+      return (
+        allAvailableVets.find((v) => v.name.toLowerCase() === currentUserName.toLowerCase()) || {
+          id: user?.id || "current-vet",
+          name: currentUserName,
+          role: "Veterinarian",
+          avatarUrl: currentUserAvatar,
         }
-      } catch (e) {
-        console.warn("Notice loading vets:", e);
-      }
+      );
     }
-    loadRegisteredVets();
-  }, []);
+
+    const targetName = (attendingVet || HELEN_VET.name).toLowerCase();
+    return (
+      allAvailableVets.find((v) => v.name.toLowerCase() === targetName) ||
+      allAvailableVets.find((v) => targetName.includes(v.name.toLowerCase()) || v.name.toLowerCase().includes(targetName)) ||
+      allAvailableVets[0] ||
+      HELEN_VET
+    );
+  }, [allAvailableVets, attendingVet, isAdmin, isVet, currentUserName, currentUserAvatar, user]);
 
   // Sync state whenever consultation changes
   useEffect(() => {
@@ -174,7 +297,7 @@ export function ClinicalExaminationDialog({
     } else {
       setFollowUpDate(undefined);
     }
-    setStatus(consultation.status === "waiting" ? "completed" : consultation.status);
+    setStatus(consultation.status || "in-consultation");
 
     // Initial systems checklist
     if (consultation.clinicalSystems && Object.keys(consultation.clinicalSystems).length > 0) {
@@ -197,14 +320,35 @@ export function ClinicalExaminationDialog({
       });
     }
 
-    // Vet name priority: existing consultation vet if set, or logged-in vet
-    if (consultation.vetName && !consultation.vetName.includes("Queue Assignment")) {
-      setAttendingVet(consultation.vetName);
-    } else if (user?.fullName) {
-      setAttendingVet(user.fullName);
-      setAvailableVets((prev) => Array.from(new Set([user.fullName!, ...prev])));
+    // Vet name priority: If veterinarian role, locked to current user. If admin, consultation vet or default to Ms. Helen.
+    if (!isAdmin && isVet && currentUserName) {
+      setAttendingVet(currentUserName);
+    } else if (isAdmin) {
+      if (
+        consultation.vetName &&
+        !consultation.vetName.includes("Queue Assignment") &&
+        !consultation.vetName.includes("Attending CVO Vet") &&
+        !consultation.vetName.toLowerCase().includes("elena santos")
+      ) {
+        setAttendingVet(consultation.vetName);
+      } else {
+        setAttendingVet(HELEN_VET.name);
+      }
+    } else if (currentUserName) {
+      setAttendingVet(currentUserName);
     }
-  }, [consultation, user]);
+  }, [consultation, user, isAdmin, isVet, currentUserName]);
+
+  // Enforce role assignment whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      if (!isAdmin && isVet && currentUserName) {
+        setAttendingVet(currentUserName);
+      } else if (isAdmin && (!attendingVet || attendingVet.toLowerCase().includes("elena santos"))) {
+        setAttendingVet(HELEN_VET.name);
+      }
+    }
+  }, [open, isAdmin, isVet, currentUserName, attendingVet]);
 
   const toggleSign = (category: string, sign: string) => {
     setObservedSigns((prev) => {
@@ -263,7 +407,7 @@ export function ClinicalExaminationDialog({
         recommendations: recommendations.trim(),
         followUp,
         followUpDate: followUp && followUpDate ? format(followUpDate, "yyyy-MM-dd") : undefined,
-        vetName: attendingVet,
+        vetName: (!isAdmin && isVet && currentUserName) ? currentUserName : attendingVet,
         status,
         clinicalSystems: observedSigns,
         symptoms: allSymptomsList,
@@ -319,22 +463,63 @@ export function ClinicalExaminationDialog({
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-center">
-              <Select value={status} onValueChange={(val: any) => setStatus(val)}>
-                <SelectTrigger className="h-8 text-xs font-semibold rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="in-consultation">In Consultation</SelectItem>
-                  <SelectItem value="treatment">Treatment / In-Clinic</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="waiting">Waiting (Triage)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs font-bold capitalize px-3 py-1",
+                  status === "completed" && "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+                  status === "treatment" && "bg-purple-500/15 text-purple-600 border-purple-500/30",
+                  status === "in-consultation" && "bg-blue-500/15 text-blue-600 border-blue-500/30",
+                  status === "waiting" && "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                )}
+              >
+                {status.replace("-", " ")}
+              </Badge>
             </div>
           </div>
         </DialogHeader>
 
         <form onSubmit={handleSave} className="space-y-4 pt-2">
+          {/* Update Encounter Lifecycle */}
+          <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Clock className="size-3.5 text-primary" />
+                Update Encounter Lifecycle
+              </Label>
+              <span className="text-[11px] text-muted-foreground font-medium">
+                Current Status: <span className="font-bold text-foreground capitalize">{status.replace("-", " ")}</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(["waiting", "in-consultation", "treatment", "completed"] as const).map((st) => {
+                const isActive = status === st;
+                return (
+                  <Button
+                    key={st}
+                    type="button"
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs font-bold capitalize cursor-pointer rounded-lg transition-all",
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+                        : "bg-background text-foreground hover:bg-muted/70 border-border/70"
+                    )}
+                    onClick={() => {
+                      setStatus(st);
+                      updateConsultation(consultation.id, { status: st });
+                      toast.success(`Encounter #${consultation.encounterNo} updated`, {
+                        description: `Status changed to ${st.replace("-", " ")}.`,
+                      });
+                    }}
+                  >
+                    {st.replace("-", " ")}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
           {/* Patient Overview & Owner Narrative Banner */}
           <div className="rounded-xl border border-border/80 bg-muted/25 p-3.5 space-y-2 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -632,20 +817,92 @@ export function ClinicalExaminationDialog({
 
             {/* Attending Veterinarian */}
             <div className="pt-2 border-t border-border/50">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Attending Veterinarian / Technician</Label>
-                <Select value={attendingVet} onValueChange={setAttendingVet}>
-                  <SelectTrigger className="h-8 text-xs rounded-lg bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableVets.map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Attending Veterinarian / Technician</Label>
+                  {!isAdmin ? (
+                    <Badge variant="outline" className="text-[9px] font-medium text-muted-foreground bg-muted/40 border-border/60 gap-1 px-1.5 py-0 h-4">
+                      <Lock className="size-2.5 text-muted-foreground" />
+                      Locked to You
+                    </Badge>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground font-medium">
+                      Default: Ms. Helen (City Vet)
+                    </span>
+                  )}
+                </div>
+
+                {!isAdmin ? (
+                  <div
+                    className="h-9 px-2.5 rounded-lg border border-border/70 bg-muted/30 flex items-center justify-between text-xs"
+                    title="As a Veterinarian, this record is locked to you and cannot be reassigned."
+                  >
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      <Avatar className="size-5 shrink-0 border border-primary/20">
+                        {selectedVetObj?.avatarUrl ? (
+                          <AvatarImage src={selectedVetObj.avatarUrl} alt={selectedVetObj.name} className="object-cover" />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                          {(selectedVetObj?.name || currentUserName || "VT").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-semibold text-foreground truncate">
+                        {selectedVetObj?.name || currentUserName}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        ({selectedVetObj?.role || "Veterinarian"})
+                      </span>
+                    </div>
+                    <Lock className="size-3 text-muted-foreground/60 shrink-0 ml-1.5" />
+                  </div>
+                ) : (
+                  <Select value={attendingVet} onValueChange={setAttendingVet}>
+                    <SelectTrigger className="h-9 text-xs rounded-lg bg-background w-full">
+                      <div className="flex items-center gap-2 truncate">
+                        {selectedVetObj ? (
+                          <>
+                            <Avatar className="size-5 shrink-0 border border-primary/20">
+                              {selectedVetObj.avatarUrl ? (
+                                <AvatarImage src={selectedVetObj.avatarUrl} alt={selectedVetObj.name} className="object-cover" />
+                              ) : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                                {selectedVetObj.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-foreground text-xs truncate">
+                              {selectedVetObj.name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              ({selectedVetObj.role})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Select Attending Veterinarian</span>
+                        )}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="z-[90]">
+                      {allAvailableVets.map((v) => (
+                        <SelectItem key={v.id || v.name} value={v.name} className="text-xs cursor-pointer py-1.5">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="size-5 shrink-0 border border-primary/20">
+                              {v.avatarUrl ? (
+                                <AvatarImage src={v.avatarUrl} alt={v.name} className="object-cover" />
+                              ) : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                                {v.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-semibold text-foreground">{v.name}</span>
+                              <span className="text-[10px] text-muted-foreground">({v.role})</span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </div>

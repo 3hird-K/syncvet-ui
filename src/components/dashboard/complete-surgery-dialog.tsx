@@ -33,11 +33,14 @@ import {
   Pill,
   Sparkles,
   X,
+  Lock,
 } from "lucide-react";
 import { format, addDays, parseISO, isValid } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useCVO } from "@/lib/cvo-context";
-import { useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@clerk/nextjs";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { QueueEncounter } from "@/app/(dashboard)/consultations/page";
@@ -69,9 +72,51 @@ export function CompleteSurgeryDialog({
   onOpenChange,
   onCompleted,
 }: CompleteSurgeryDialogProps) {
-  const { addAuditLog } = useCVO();
+  const { addAuditLog, activeRoleView } = useCVO();
+  const { user, isLoaded: isUserLoaded } = useUser();
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
+
+  // Fetch current user's database role and profile from Supabase
+  const { data: dbCurrentUser } = useQuery({
+    queryKey: ["current-user-role", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const supabase = getPublicSupabaseClient();
+      const { data } = await supabase
+        .from("users")
+        .select("id, role, avatar_url, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: isUserLoaded && !!user?.id,
+  });
+
+  const rawEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+  const isAdminEmail = rawEmail === "dime.neil03@gmail.com";
+  const meta = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const currentRole = normalizeSyncVetRole(
+    dbCurrentUser?.role ||
+    meta?.roleTitle ||
+    (isAdminEmail ? "Administrator" : "Pet Owner")
+  );
+  const isAdmin = isAdminEmail || currentRole === "Administrator" || activeRoleView === "Administrator";
+  const isVet = currentRole === "Veterinarian" || activeRoleView === "Veterinarian";
+
+  const currentUserName =
+    dbCurrentUser?.full_name?.trim() ||
+    user?.fullName?.trim() ||
+    user?.username ||
+    "Attending Veterinarian";
+
+  const allSurgeons = useMemo(() => {
+    const list = [...CVO_SURGEONS];
+    if (currentUserName && !list.some((s) => s.toLowerCase().includes(currentUserName.toLowerCase()))) {
+      list.unshift(currentUserName);
+    }
+    return list;
+  }, [currentUserName]);
 
   // Pre-surgical clearance
   const [temperatureC, setTemperatureC] = useState("38.2");
@@ -87,6 +132,13 @@ export function CompleteSurgeryDialog({
     "Wear Elizabethan collar (E-collar) 24/7 for 7-10 days. Keep surgical incision dry and clean."
   );
   const [surgicalNotes, setSurgicalNotes] = useState("");
+
+  // Lock to logged-in Veterinarian if user is a Veterinarian
+  useEffect(() => {
+    if (!isAdmin && isVet && currentUserName) {
+      setOperatingSurgeon(currentUserName);
+    }
+  }, [isAdmin, isVet, currentUserName]);
 
   // Follow-up Suture Check: 7 to 10 days later
   const [followUpDate, setFollowUpDate] = useState(() => format(addDays(new Date(), 8), "yyyy-MM-dd"));
@@ -136,6 +188,7 @@ export function CompleteSurgeryDialog({
     const supabase = getPublicSupabaseClient();
     const rawAppointmentId = consultation.id.startsWith("proc-") ? consultation.id.replace("proc-", "") : consultation.id;
     const certNo = `CVO-KAPON-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const finalSurgeon = (!isAdmin && isVet && currentUserName) ? currentUserName : (operatingSurgeon || "Attending CVO Surgeon");
 
     try {
       // 1. Update Pet Record in Supabase to permanently mark as spayed/neutered
@@ -150,7 +203,7 @@ export function CompleteSurgeryDialog({
       }
 
       // 2. Update appointments table to 'completed' with surgical notes
-      const clinicalNotes = `Kapon Surgery Completed (${procedureType}). Operating Surgeon: ${operatingSurgeon}. Suture removal: ${followUpDisplay}.${postCareInstructions ? ` Post-care: ${postCareInstructions}.` : ""}${surgicalNotes ? ` Notes: ${surgicalNotes}.` : ""} Cert #${certNo}.`;
+      const clinicalNotes = `Kapon Surgery Completed (${procedureType}). Operating Surgeon: ${finalSurgeon}. Suture removal: ${followUpDisplay}.${postCareInstructions ? ` Post-care: ${postCareInstructions}.` : ""}${surgicalNotes ? ` Notes: ${surgicalNotes}.` : ""} Cert #${certNo}.`;
 
       try {
         await supabase
@@ -188,16 +241,16 @@ export function CompleteSurgeryDialog({
         localStorage.setItem("syncvet_local_appointments", JSON.stringify(updatedLocal));
 
         const assignedVets = JSON.parse(localStorage.getItem("syncvet_assigned_vets") || "{}");
-        assignedVets[rawAppointmentId] = operatingSurgeon;
-        if (consultation.id) assignedVets[consultation.id] = operatingSurgeon;
-        if (consultation.encounterNo) assignedVets[consultation.encounterNo] = operatingSurgeon;
-        if (consultation.petId) assignedVets[consultation.petId] = operatingSurgeon;
+        assignedVets[rawAppointmentId] = finalSurgeon;
+        if (consultation.id) assignedVets[consultation.id] = finalSurgeon;
+        if (consultation.encounterNo) assignedVets[consultation.encounterNo] = finalSurgeon;
+        if (consultation.petId) assignedVets[consultation.petId] = finalSurgeon;
         localStorage.setItem("syncvet_assigned_vets", JSON.stringify(assignedVets));
       } catch {}
 
       // 5. Log to CVO audit trail
       addAuditLog({
-        user: operatingSurgeon,
+        user: finalSurgeon,
         role: "Veterinarian",
         action: "Executed Spay & Neuter Surgery",
         entity: "Sterilization",
@@ -220,7 +273,7 @@ export function CompleteSurgeryDialog({
       const updatedEncounter: QueueEncounter = {
         ...consultation,
         status: "completed",
-        vetName: operatingSurgeon,
+        vetName: finalSurgeon,
         treatment: `Performed ${procedureType}`,
         medication: "Post-op analgesia spray & recovery care",
         dosageInstructions: `Incision check and suture assessment on ${followUpDisplay}. ${postCareInstructions}`,
@@ -423,19 +476,33 @@ export function CompleteSurgeryDialog({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div className="space-y-1">
-                    <Label className="text-xs font-medium text-foreground">Attending Surgeon</Label>
-                    <Select value={operatingSurgeon} onValueChange={setOperatingSurgeon}>
-                      <SelectTrigger className="h-8 text-xs bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CVO_SURGEONS.map((vet) => (
-                          <SelectItem key={vet} value={vet} className="text-xs py-1.5 cursor-pointer">
-                            {vet}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-foreground">Attending Surgeon</Label>
+                      {!isAdmin && (
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-normal">
+                          <Lock className="size-2.5" /> Locked to You
+                        </span>
+                      )}
+                    </div>
+                    {!isAdmin ? (
+                      <div className="h-8 px-2.5 rounded-md border border-border/70 bg-muted/30 flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span className="truncate">{operatingSurgeon || currentUserName}</span>
+                        <Lock className="size-3 text-muted-foreground/60 shrink-0 ml-1" />
+                      </div>
+                    ) : (
+                      <Select value={operatingSurgeon} onValueChange={setOperatingSurgeon}>
+                        <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allSurgeons.map((vet) => (
+                            <SelectItem key={vet} value={vet} className="text-xs py-1.5 cursor-pointer">
+                              {vet}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <div className="space-y-1">

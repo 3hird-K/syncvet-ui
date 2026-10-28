@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, WifiOff, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, WifiOff, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,12 +22,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCVO } from "@/lib/cvo-context";
+import { useUser } from "@clerk/nextjs";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { cvoBarangays } from "@/data/cvo-store";
 
 export function OfflineFieldEntryDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { addOfflineRecord } = useCVO();
+  const { addOfflineRecord, activeRoleView } = useCVO();
+  const { user } = useUser();
+
+  const rawEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+  const isAdminEmail = rawEmail === "dime.neil03@gmail.com";
+  const meta = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const currentRole = normalizeSyncVetRole(
+    meta?.roleTitle || (isAdminEmail ? "Administrator" : "Pet Owner")
+  );
+  const isAdmin = isAdminEmail || currentRole === "Administrator" || activeRoleView === "Administrator";
+  const isVet = currentRole === "Veterinarian" || activeRoleView === "Veterinarian";
+  const currentUserName = user?.fullName?.trim() || user?.username || "Officer Mark Velez";
 
   const [barangay, setBarangay] = useState("Lapasan");
   const [activityTitle, setActivityTitle] = useState("Mass Anti-Rabies Campaign");
@@ -40,6 +53,12 @@ export function OfflineFieldEntryDialog() {
   const [vaccineBrand, setVaccineBrand] = useState("Rabisin (Boehringer Ingelheim)");
   const [batchNumber, setBatchNumber] = useState("AR-Q3-2026-014");
   const [vaccinatorName, setVaccinatorName] = useState("Officer Mark Velez");
+
+  useEffect(() => {
+    if (!isAdmin && isVet && currentUserName) {
+      setVaccinatorName(currentUserName);
+    }
+  }, [isAdmin, isVet, currentUserName]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,12 +225,26 @@ export function OfflineFieldEntryDialog() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Administering Veterinarian</Label>
-            <Input
-              value={vaccinatorName}
-              onChange={(e) => setVaccinatorName(e.target.value)}
-              className="h-8 text-xs"
-            />
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Administering Veterinarian</Label>
+              {!isAdmin && (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-normal">
+                  <Lock className="size-2.5" /> Locked to You
+                </span>
+              )}
+            </div>
+            {!isAdmin ? (
+              <div className="h-8 px-2.5 rounded-md border border-border/70 bg-muted/30 flex items-center justify-between text-xs font-semibold text-foreground">
+                <span className="truncate">{vaccinatorName || currentUserName}</span>
+                <Lock className="size-3 text-muted-foreground/60 shrink-0 ml-1" />
+              </div>
+            ) : (
+              <Input
+                value={vaccinatorName}
+                onChange={(e) => setVaccinatorName(e.target.value)}
+                className="h-8 text-xs"
+              />
+            )}
           </div>
 
           <DialogFooter className="pt-2">

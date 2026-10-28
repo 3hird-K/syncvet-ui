@@ -57,7 +57,6 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
-import { LogVaccinationDialog } from "@/components/dashboard/log-vaccination-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { useUser } from "@clerk/nextjs";
 import { format, parseISO, isValid, isBefore, isAfter, addDays, startOfDay } from "date-fns";
@@ -166,8 +165,21 @@ export default function VaccinationRecordsPage() {
           // Extract batch if in notes
           let batchStr = "EMR-SYNC";
           if (apt.notes) {
-            const matchBatch = apt.notes.match(/\(([^)]+)\)/);
-            if (matchBatch && matchBatch[1]) batchStr = matchBatch[1];
+            const matchBatch =
+              apt.notes.match(/\((?:Batch:\s*)?([A-Z0-9-]{4,})\)/i) ||
+              apt.notes.match(/Batch:\s*([A-Z0-9-]+)/i);
+            if (matchBatch && matchBatch[1] && !matchBatch[1].toLowerCase().includes("under the skin")) {
+              batchStr = matchBatch[1];
+            }
+          }
+
+          // Extract attending veterinarian from notes if present
+          let vetName = "Attending CVO Vet";
+          if (apt.notes) {
+            const matchVet = apt.notes.match(/Attending:\s*([^.\n]+)/i);
+            if (matchVet && matchVet[1]) {
+              vetName = matchVet[1].trim();
+            }
           }
 
           return {
@@ -182,7 +194,7 @@ export default function VaccinationRecordsPage() {
             vaccine: "Anti-Rabies Prophylaxis (1.0 mL SC)",
             batch: batchStr,
             date: adminDate,
-            vet: "Dr. Elena Santos, DVM",
+            vet: vetName,
             nextDue: nextDueStr,
             status: "complete" as const,
             source: "emr" as const,
@@ -235,27 +247,64 @@ export default function VaccinationRecordsPage() {
       });
   }, [consultations]);
 
-  // Merge and deduplicate all records
+  // Merge and deduplicate all records (prevents double-counting when appointments exist alongside vaccination_records)
   const allRecords = useMemo(() => {
     const list: VaccinationRecordItem[] = [...dbRecords];
-    const seenPetsAndDates = new Set(
-      dbRecords.map((r) => `${(r.petName || "").toLowerCase()}-${r.date || ""}`)
-    );
 
-    // Merge EMR appointments
+    const isDuplicate = (candidate: VaccinationRecordItem, existingList: VaccinationRecordItem[]) => {
+      return existingList.some((existing) => {
+        // Direct ID match
+        if (existing.id && candidate.id && existing.id.toLowerCase() === candidate.id.toLowerCase()) {
+          return true;
+        }
+
+        // Match by pet: same petId (if valid) or same normalized pet name
+        const samePetId =
+          existing.petId &&
+          candidate.petId &&
+          existing.petId !== "—" &&
+          candidate.petId !== "—" &&
+          existing.petId === candidate.petId;
+
+        const samePetName =
+          existing.petName &&
+          candidate.petName &&
+          existing.petName.trim().toLowerCase() === candidate.petName.trim().toLowerCase();
+
+        if (samePetId || samePetName) {
+          // If dates match exactly
+          if (existing.date && candidate.date && existing.date === candidate.date) {
+            return true;
+          }
+          // If dates are within 14 days of each other (handles timezone UTC vs Local differences or scheduled appointment date vs administration date)
+          if (existing.date && candidate.date) {
+            try {
+              const d1 = new Date(existing.date).getTime();
+              const d2 = new Date(candidate.date).getTime();
+              if (!isNaN(d1) && !isNaN(d2)) {
+                const diffDays = Math.abs(d1 - d2) / (1000 * 60 * 60 * 24);
+                if (diffDays <= 14) {
+                  return true;
+                }
+              }
+            } catch {}
+          }
+        }
+
+        return false;
+      });
+    };
+
+    // Merge EMR appointments only if not already recorded in primary database records
     emrAppointments.forEach((ea) => {
-      const key = `${(ea.petName || "").toLowerCase()}-${ea.date || ""}`;
-      if (!seenPetsAndDates.has(key)) {
-        seenPetsAndDates.add(key);
+      if (!isDuplicate(ea, list)) {
         list.push(ea);
       }
     });
 
-    // Merge EMR consultations
+    // Merge EMR consultations only if not already recorded
     consultationVaccinations.forEach((cv) => {
-      const key = `${(cv.petName || "").toLowerCase()}-${cv.date || ""}`;
-      if (!seenPetsAndDates.has(key)) {
-        seenPetsAndDates.add(key);
+      if (!isDuplicate(cv, list)) {
         list.push(cv);
       }
     });
@@ -675,17 +724,14 @@ export default function VaccinationRecordsPage() {
           </>
         }
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 text-xs cursor-pointer shadow-xs"
-              onClick={handleExport}
-            >
-              <Download className="size-3.5" /> Export Ledger CSV
-            </Button>
-            <LogVaccinationDialog />
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 text-xs cursor-pointer shadow-xs"
+            onClick={handleExport}
+          >
+            <Download className="size-3.5" /> Export Ledger CSV
+          </Button>
         }
       />
 

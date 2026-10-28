@@ -39,12 +39,14 @@ import {
   RotateCw,
   Lock,
 } from "lucide-react";
-import { format, addYears } from "date-fns";
+import { format, addYears, parseISO } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useCVO } from "@/lib/cvo-context";
+import { useUser } from "@clerk/nextjs";
+import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, getTodayDateString } from "@/lib/utils";
 import type { QueueEncounter } from "@/app/(dashboard)/consultations/page";
 
 interface AdministerVaccinationDialogProps {
@@ -61,6 +63,13 @@ interface RegisteredVet {
   avatarUrl?: string | null;
   email?: string | null;
 }
+
+export const HELEN_VET: RegisteredVet = {
+  id: "helen-tacandong",
+  name: "Dr. Helen Ann P. Tacandong, DVM",
+  role: "City Veterinarian",
+  avatarUrl: "/dr-helen-tacandong.jpg",
+};
 
 const INJECTION_SITES = [
   "Right Shoulder Area",
@@ -80,9 +89,44 @@ export function AdministerVaccinationDialog({
   onOpenChange,
   onCompleted,
 }: AdministerVaccinationDialogProps) {
-  const { inventory, deductInventoryStock } = useCVO();
+  const { inventory, deductInventoryStock, activeRoleView } = useCVO();
+  const { user, isLoaded: isUserLoaded } = useUser();
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
+
+  // Fetch current user's database role and profile from Supabase
+  const { data: dbCurrentUser } = useQuery({
+    queryKey: ["current-user-role", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const supabase = getPublicSupabaseClient();
+      const { data } = await supabase
+        .from("users")
+        .select("id, role, avatar_url, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: isUserLoaded && !!user?.id,
+  });
+
+  const rawEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+  const isAdminEmail = rawEmail === "dime.neil03@gmail.com";
+  const meta = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const currentRole = normalizeSyncVetRole(
+    dbCurrentUser?.role ||
+    meta?.roleTitle ||
+    (isAdminEmail ? "Administrator" : "Pet Owner")
+  );
+  const isAdmin = isAdminEmail || currentRole === "Administrator" || activeRoleView === "Administrator";
+  const isVet = currentRole === "Veterinarian" || activeRoleView === "Veterinarian";
+
+  const currentUserName =
+    dbCurrentUser?.full_name?.trim() ||
+    user?.fullName?.trim() ||
+    user?.username ||
+    "Attending Veterinarian";
+  const currentUserAvatar = dbCurrentUser?.avatar_url || (isUserLoaded && user?.imageUrl ? user.imageUrl : undefined);
 
   // 24-Hour Clinical Finalization Rule: Check if record was completed >= 24 hours ago
   const isLockedPast24Hours = useMemo(() => {
@@ -143,6 +187,55 @@ export function AdministerVaccinationDialog({
     staleTime: 60000,
   });
 
+  // Combine registered vets from DB with Ms. Helen as primary/default, plus current user
+  const allAvailableVets = useMemo(() => {
+    const list: RegisteredVet[] = [];
+
+    // Ensure Ms. Helen is always at the top as the default City Veterinarian
+    const dbHelen = dbVets.find((v) =>
+      v.name.toLowerCase().includes("helen") || (v.email && v.email.toLowerCase().includes("helen"))
+    );
+    list.push({
+      id: dbHelen?.id || HELEN_VET.id,
+      name: dbHelen?.name || HELEN_VET.name,
+      role: dbHelen?.role || HELEN_VET.role,
+      avatarUrl: dbHelen?.avatarUrl || HELEN_VET.avatarUrl,
+      email: dbHelen?.email || HELEN_VET.email,
+    });
+
+    // Add other registered vets from DB (excluding duplicate Helen and dummy names)
+    for (const v of dbVets) {
+      const lowerName = v.name.toLowerCase();
+      if (
+        !lowerName.includes("helen") &&
+        !lowerName.includes("elena santos") &&
+        !lowerName.includes("sarah chen") &&
+        !(v.email && v.email.toLowerCase().includes("helen")) &&
+        !list.some((item) => item.id === v.id || item.name.toLowerCase() === lowerName)
+      ) {
+        list.push(v);
+      }
+    }
+
+    // Include logged-in user if vet or admin and not already in list
+    if (currentUserName) {
+      const alreadyInList = list.some(
+        (v) => v.name.toLowerCase() === currentUserName.toLowerCase() || (user?.id && v.id === user.id)
+      );
+      if (!alreadyInList) {
+        list.push({
+          id: user?.id || "current-vet",
+          name: currentUserName,
+          role: isVet ? "Veterinarian" : "Administrator",
+          avatarUrl: currentUserAvatar,
+          email: user?.primaryEmailAddress?.emailAddress,
+        });
+      }
+    }
+
+    return list;
+  }, [dbVets, currentUserName, isVet, currentUserAvatar, user]);
+
   // Live vaccine batches from FEFO inventory
   const activeVaccineBatches = useMemo(() => {
     return inventory.filter((i: any) => i.category === "Vaccines" && i.stock > 0);
@@ -163,11 +256,12 @@ export function AdministerVaccinationDialog({
   const [batchNo, setBatchNo] = useState(activeVaccineBatches[0]?.batchNumber || "");
   const [expiryDate, setExpiryDate] = useState(activeVaccineBatches[0]?.expirationDate || "");
   const [tagNumber, setTagNumber] = useState("");
-  const [attendingVet, setAttendingVet] = useState("");
+  const [attendingVet, setAttendingVet] = useState(HELEN_VET.name);
 
-  // Next Booster Date: 1 Year later under RA 9482
-  const nextBoosterDate = format(addYears(new Date(), 1), "yyyy-MM-dd");
-  const nextBoosterDisplay = format(addYears(new Date(), 1), "MMMM d, yyyy");
+  // Next Booster Date: 1 Year later under RA 9482 (Aligned with CDO local time / consultation date)
+  const baseAdminDate = consultation?.date ? consultation.date.split("T")[0] : getTodayDateString();
+  const nextBoosterDate = format(addYears(parseISO(baseAdminDate), 1), "yyyy-MM-dd");
+  const nextBoosterDisplay = format(addYears(parseISO(baseAdminDate), 1), "MMMM d, yyyy");
 
   // Keep batch and vaccine state aligned with active inventory
   useEffect(() => {
@@ -184,12 +278,25 @@ export function AdministerVaccinationDialog({
     }
   }, [activeVaccineBatches, batchNo]);
 
-  // Set default veterinarian once dbVets load
+  // If Veterinarian: automatically locked to the logged-in user ("you").
+  // If Admin: can choose who will be the administering vet (defaults to Ms. Helen).
   useEffect(() => {
-    if (dbVets.length > 0 && !attendingVet) {
-      setAttendingVet(dbVets[0].name);
+    if (!isAdmin && isVet && currentUserName) {
+      setAttendingVet(currentUserName);
+    } else if (isAdmin) {
+      if (
+        consultation?.vetName &&
+        consultation.vetName !== "Attending CVO Vet" &&
+        !consultation.vetName.toLowerCase().includes("elena santos")
+      ) {
+        setAttendingVet(consultation.vetName);
+      } else {
+        setAttendingVet(HELEN_VET.name);
+      }
+    } else if (currentUserName) {
+      setAttendingVet(currentUserName);
     }
-  }, [dbVets, attendingVet]);
+  }, [isAdmin, isVet, currentUserName, consultation]);
 
   // Sync state whenever consultation changes
   useEffect(() => {
@@ -202,11 +309,30 @@ export function AdministerVaccinationDialog({
       if (consultation.vitals?.temperatureC && consultation.vitals.temperatureC > 0) {
         setTemperatureC(String(consultation.vitals.temperatureC));
       }
-      if (consultation.vetName && consultation.vetName !== "Attending CVO Vet") {
+      if (!isAdmin && isVet && currentUserName) {
+        setAttendingVet(currentUserName);
+      } else if (
+        consultation.vetName &&
+        consultation.vetName !== "Attending CVO Vet" &&
+        !consultation.vetName.toLowerCase().includes("elena santos")
+      ) {
         setAttendingVet(consultation.vetName);
+      } else if (isAdmin) {
+        setAttendingVet(HELEN_VET.name);
       }
     }
-  }, [consultation]);
+  }, [consultation, isAdmin, isVet, currentUserName]);
+
+  // Reset/enforce whenever dialog opens
+  useEffect(() => {
+    if (open) {
+      if (!isAdmin && isVet && currentUserName) {
+        setAttendingVet(currentUserName);
+      } else if (isAdmin && (!attendingVet || attendingVet.toLowerCase().includes("elena santos"))) {
+        setAttendingVet(HELEN_VET.name);
+      }
+    }
+  }, [open, isAdmin, isVet, currentUserName, attendingVet]);
 
   const handleVaccineChange = (val: string) => {
     setSelectedVaccineBatch(val);
@@ -218,8 +344,24 @@ export function AdministerVaccinationDialog({
   };
 
   const selectedVetObj = useMemo(() => {
-    return dbVets.find((v) => v.name === attendingVet) || dbVets[0];
-  }, [dbVets, attendingVet]);
+    if (!isAdmin && isVet && currentUserName) {
+      const match = allAvailableVets.find((v) => v.name.toLowerCase() === currentUserName.toLowerCase());
+      if (match) return match;
+      return {
+        id: user?.id || "current-vet",
+        name: currentUserName,
+        role: "Veterinarian",
+        avatarUrl: currentUserAvatar,
+        email: user?.primaryEmailAddress?.emailAddress,
+      };
+    }
+    return (
+      allAvailableVets.find((v) => v.name.toLowerCase() === attendingVet.toLowerCase()) ||
+      allAvailableVets.find((v) => v.name.toLowerCase() === currentUserName.toLowerCase()) ||
+      allAvailableVets[0] ||
+      null
+    );
+  }, [allAvailableVets, attendingVet, isAdmin, isVet, currentUserName, currentUserAvatar, user]);
 
   const tempNum = parseFloat(temperatureC);
   const isFebrile = !isNaN(tempNum) && tempNum > 39.5;
@@ -259,12 +401,16 @@ export function AdministerVaccinationDialog({
 
     setSubmitting(true);
     const supabase = getPublicSupabaseClient();
-    const todayIso = new Date().toISOString().split("T")[0];
+    const todayIso = consultation?.date ? consultation.date.split("T")[0] : getTodayDateString();
+    const finalBoosterDate = format(addYears(parseISO(todayIso), 1), "yyyy-MM-dd");
+    const finalBoosterDisplay = format(addYears(parseISO(todayIso), 1), "MMMM d, yyyy");
     const chosenBatchItem = activeVaccineBatches.find((v: any) => v.batchNumber === batchNo.trim());
     const chosenVaccine = chosenBatchItem?.name || "Rabies Inactivated Vaccine (1.0 mL SC)";
     const recordNo = `VAX-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
     const rawAppointmentId = consultation.id.startsWith("proc-") ? consultation.id.replace("proc-", "") : consultation.id;
-    const finalVetName = attendingVet || selectedVetObj?.name || "Attending Veterinarian";
+    const finalVetName = (!isAdmin && isVet && currentUserName)
+      ? currentUserName
+      : (attendingVet || selectedVetObj?.name || "Attending Veterinarian");
 
     try {
       // 1. Update Pet Record in Supabase to mark verified vaccination
@@ -293,7 +439,7 @@ export function AdministerVaccinationDialog({
           vaccine_name: chosenVaccine,
           batch_number: batchNo.trim(),
           administered_date: todayIso,
-          next_due_date: nextBoosterDate,
+          next_due_date: finalBoosterDate,
           veterinarian: finalVetName,
           status: "complete",
         });
@@ -311,7 +457,7 @@ export function AdministerVaccinationDialog({
       }
 
       // 3. Update appointments table to 'completed' with clinical dose notes
-      const clinicalNotes = `Anti-Rabies Prophylaxis Completed. Injected: ${dosageMl} mL ${route} (${batchNo.trim()}). Site: ${injectionSite}. CVO Tag #${tagNumber.trim()}. Next annual booster: ${nextBoosterDisplay}. Attending: ${finalVetName}.`;
+      const clinicalNotes = `Anti-Rabies Prophylaxis Completed. Injected: ${dosageMl} mL ${route} (Batch: ${batchNo.trim()}). Site: ${injectionSite}. CVO Tag #${tagNumber.trim()}. Next annual booster: ${finalBoosterDisplay}. Attending: ${finalVetName}.`;
       
       try {
         await supabase
@@ -709,49 +855,89 @@ export function AdministerVaccinationDialog({
             </span>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
-              {/* Administering Veterinarian Selector with Images (Real Staff from DB) */}
+              {/* Administering Veterinarian Selector / Locked Display */}
               <div className="space-y-1 min-w-0">
-                <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate block">
-                  Administering Veterinarian *
-                </Label>
-                <Select value={attendingVet} onValueChange={setAttendingVet}>
-                  <SelectTrigger className="h-9 text-xs bg-background w-full">
-                    <div className="flex items-center gap-2 truncate">
-                      {selectedVetObj ? (
-                        <>
-                          <Avatar className="size-5 shrink-0 border border-primary/20">
-                            {selectedVetObj.avatarUrl ? <AvatarImage src={selectedVetObj.avatarUrl} alt={selectedVetObj.name} /> : null}
-                            <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
-                              {selectedVetObj.name.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-semibold text-foreground text-xs truncate">{selectedVetObj.name}</span>
-                          <span className="text-[10px] text-muted-foreground shrink-0">({selectedVetObj.role})</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Select Veterinarian</span>
-                      )}
+                <div className="flex items-center justify-between gap-1">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+                    Administering Veterinarian *
+                  </Label>
+                  {!isAdmin && (
+                    <Badge variant="outline" className="text-[9px] font-medium text-muted-foreground bg-muted/40 border-border/60 gap-1 px-1.5 py-0 h-4">
+                      <Lock className="size-2.5 text-muted-foreground" />
+                      Locked to You
+                    </Badge>
+                  )}
+                </div>
+
+                {!isAdmin ? (
+                  <div
+                    className="h-9 px-2.5 rounded-md border border-border/70 bg-muted/30 flex items-center justify-between text-xs"
+                    title="As a Veterinarian, you are administering this vaccine and cannot select another attending officer."
+                  >
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      <Avatar className="size-5 shrink-0 border border-primary/20">
+                        {selectedVetObj?.avatarUrl ? (
+                          <AvatarImage src={selectedVetObj.avatarUrl} alt={selectedVetObj.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                          {(selectedVetObj?.name || currentUserName || "VT").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-semibold text-foreground truncate">
+                        {selectedVetObj?.name || currentUserName}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        ({selectedVetObj?.role || "Veterinarian"})
+                      </span>
                     </div>
-                  </SelectTrigger>
-                  <SelectContent className="z-[90]">
-                    {dbVets.map((v) => (
-                      <SelectItem key={v.id} value={v.name} className="text-xs cursor-pointer py-1.5">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="size-5 shrink-0 border border-primary/20">
-                            {v.avatarUrl ? <AvatarImage src={v.avatarUrl} alt={v.name} /> : null}
-                            <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
-                              {v.name.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="font-semibold text-foreground">{v.name}</span>
-                            <span className="text-[10px] text-muted-foreground">({v.role})</span>
+                    <Lock className="size-3 text-muted-foreground/60 shrink-0 ml-1.5" />
+                  </div>
+                ) : (
+                  <Select value={attendingVet} onValueChange={setAttendingVet}>
+                    <SelectTrigger className="h-9 text-xs bg-background w-full">
+                      <div className="flex items-center gap-2 truncate">
+                        {selectedVetObj ? (
+                          <>
+                            <Avatar className="size-5 shrink-0 border border-primary/20">
+                              {selectedVetObj.avatarUrl ? (
+                                <AvatarImage src={selectedVetObj.avatarUrl} alt={selectedVetObj.name} />
+                              ) : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                                {selectedVetObj.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-foreground text-xs truncate">
+                              {selectedVetObj.name}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              ({selectedVetObj.role})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Select Veterinarian</span>
+                        )}
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="z-[90]">
+                      {allAvailableVets.map((v) => (
+                        <SelectItem key={v.id} value={v.name} className="text-xs cursor-pointer py-1.5">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="size-5 shrink-0 border border-primary/20">
+                              {v.avatarUrl ? <AvatarImage src={v.avatarUrl} alt={v.name} /> : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[9px] font-bold">
+                                {v.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-semibold text-foreground">{v.name}</span>
+                              <span className="text-[10px] text-muted-foreground">({v.role})</span>
+                            </div>
                           </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Next Annual Booster Due (Autogenerated 1 Year RA 9482) */}
