@@ -31,18 +31,18 @@ export function ActivityFeed({ className }: { className?: string }) {
   };
 
   return (
-    <Card className={cn("flex h-full flex-col border-border", className)}>
-      <CardHeader className="p-4 sm:p-5 pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5 min-w-0 flex-1">
-            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 border border-primary/20">
+    <Card className={cn("flex flex-col rounded-2xl border border-border/80 bg-card shadow-2xs overflow-hidden", className)}>
+      <CardHeader className="p-4 sm:p-5 pb-3.5 border-b border-border/50 bg-muted/15">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
               <Clock className="size-4" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <CardTitle className="text-sm sm:text-base font-bold tracking-tight text-foreground leading-snug">
                 Office Activity Timeline
               </CardTitle>
-              <CardDescription className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2 sm:line-clamp-none">
+              <CardDescription className="text-[10px] sm:text-[11px] text-muted-foreground leading-snug mt-0.5">
                 Real-time audit trail of official actions, clinical encounters, and field deployments
               </CardDescription>
             </div>
@@ -53,7 +53,7 @@ export function ActivityFeed({ className }: { className?: string }) {
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 space-y-3 pt-0 max-h-[420px] overflow-y-auto">
+      <CardContent className="p-4 sm:p-5 space-y-3 max-h-[420px] overflow-y-auto">
         {auditLogs.length === 0 ? (
           <div className="py-8 text-center border border-dashed rounded-lg border-border/80 bg-muted/10 space-y-2">
             <Clock className="size-6 text-muted-foreground/40 mx-auto" />

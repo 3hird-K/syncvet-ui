@@ -515,16 +515,16 @@ export function PetOwnerConsultationDialog({
                     </span>
                   </div>
                   <Select value={selectedPetId} onValueChange={handleSelectPet}>
-                    <SelectTrigger className="h-10 text-xs sm:text-sm font-semibold text-foreground rounded-xl bg-background border-border/80">
+                    <SelectTrigger className="h-9 text-xs font-medium text-foreground rounded-lg bg-background border-border/80">
                       <SelectValue placeholder="Choose a registered pet" />
                     </SelectTrigger>
-                    <SelectContent className="z-[90] rounded-xl">
+                    <SelectContent className="z-[90] rounded-lg text-xs">
                       {pets.map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-xs sm:text-sm font-medium cursor-pointer py-2">
-                          <div className="flex items-center gap-2">
-                            <PawPrint className="size-3.5 text-primary" />
-                            <span className="font-semibold">{p.name}</span>
-                            <span className="text-muted-foreground">
+                        <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
+                          <div className="flex items-center gap-2 text-xs">
+                            <PawPrint className="size-3.5 text-primary shrink-0" />
+                            <span className="font-semibold text-xs">{p.name}</span>
+                            <span className="text-muted-foreground text-[11px]">
                               ({p.species} • {p.breed || "Standard"} • {p.weightKg || (p as any).weight_kg || "?"} kg)
                             </span>
                           </div>
@@ -574,7 +574,7 @@ export function PetOwnerConsultationDialog({
                         <span className="font-semibold text-foreground text-xs">
                           {selectedPet.weightKg || (selectedPet as any).weight_kg
                             ? `${selectedPet.weightKg || (selectedPet as any).weight_kg} kg`
-                            : "12.4 kg"}
+                            : "N/A"}
                         </span>
                       </div>
                       <div className="bg-background/80 rounded-lg p-2 border border-border/50">

@@ -88,6 +88,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PetOwnerConsultationDialog } from "@/components/dashboard/pet-owner-consultation-dialog";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
@@ -257,6 +264,80 @@ export default function PetOwnerPortalPage() {
   });
   const queryClient = useQueryClient();
 
+  // Supabase Realtime subscription for live appointments and procedure updates
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-pet-owner-appointments")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+          queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+          queryClient.invalidateQueries({ queryKey: ["user-transactions"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, queryClient]);
+
+  // Automatically migrate any previous local appointments to Supabase in real-time
+  useEffect(() => {
+    if (!isLoaded || !user?.id) return;
+    const migrateLocalAppointments = async () => {
+      try {
+        const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+        if (!Array.isArray(local) || local.length === 0) return;
+
+        const ownerId = dbUser?.id || user.id;
+
+        for (const appt of local) {
+          if (!appt?.id) continue;
+          // Check if already present in Supabase appointments
+          const { data: existing } = await supabase
+            .from("appointments")
+            .select("id")
+            .eq("id", appt.id)
+            .maybeSingle();
+
+          if (!existing) {
+            // Validate pet_id against pets table
+            let validPetId: string | null = null;
+            if (appt.pet_id) {
+              const { data: pet } = await supabase
+                .from("pets")
+                .select("id")
+                .eq("id", appt.pet_id)
+                .maybeSingle();
+              if (pet?.id) validPetId = pet.id;
+            }
+
+            await supabase.from("appointments").insert({
+              id: appt.id,
+              owner_id: ownerId,
+              pet_id: validPetId,
+              pet_name: appt.pet_name || "Pet",
+              service_id: appt.service_id || "vaccination",
+              date: appt.date || format(new Date(), "yyyy-MM-dd"),
+              time_slot: appt.time_slot || "morning",
+              status: appt.status || "confirmed",
+              location: appt.location || "City Veterinary Office - Carmen Central Clinic",
+              notes: appt.notes || null,
+            });
+          }
+        }
+        queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+      } catch (err) {
+        console.warn("Appointments migration notice:", err);
+      }
+    };
+
+    migrateLocalAppointments();
+  }, [isLoaded, user?.id, dbUser?.id, supabase, queryClient]);
+
   // Fetch procedure appointments scheduled by this owner (cascade filtered to currently registered pets)
   const { data: ownerAppointments = [], isLoading: loadingAppointments } = useQuery({
     queryKey: ["user-appointments", user?.id, dbUser?.id, dbPets],
@@ -273,7 +354,7 @@ export default function PetOwnerPortalPage() {
           .from("appointments")
           .select("*")
           .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
-          .order("date", { ascending: true });
+          .order("date", { ascending: false });
 
         if (!error && data) {
           data.forEach((item) => {
@@ -294,7 +375,7 @@ export default function PetOwnerPortalPage() {
           .select("*")
           .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
           .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
-          .order("date", { ascending: true });
+          .order("date", { ascending: false });
 
         if (txData) {
           txData.forEach((tx: any) => {
@@ -335,23 +416,12 @@ export default function PetOwnerPortalPage() {
         // ignore
       }
 
-      // 4. Cascade check: Only keep appointments for pets that currently exist in the user's registered pets.
-      // If the pet was deleted (or user has no registered pets), cascade remove orphaned appointments.
-      const validRegisteredPetNames = new Set(dbPets.map((p: any) => p.name?.trim().toLowerCase()));
-      const validRegisteredPetIds = new Set(dbPets.map((p: any) => p.id));
-
-      const validList: any[] = [];
-      const orphanedList: any[] = [];
-
       const todayStart = startOfDay(new Date());
 
-      list.forEach((item: any) => {
-        const matchesId = item.pet_id && validRegisteredPetIds.has(item.pet_id);
-        const matchesName = item.pet_name && validRegisteredPetNames.has(item.pet_name.trim().toLowerCase());
-
-        if (dbPets.length > 0 && (matchesId || matchesName)) {
-          let effectiveStatus = item.status || "confirmed";
-          try {
+      const validList = list.map((item: any) => {
+        let effectiveStatus = item.status || "confirmed";
+        try {
+          if (item.date) {
             const parsed = parseISO(item.date);
             if (
               isValid(parsed) &&
@@ -361,16 +431,14 @@ export default function PetOwnerPortalPage() {
             ) {
               effectiveStatus = "missed";
             }
-          } catch {}
+          }
+        } catch {}
 
-          validList.push({
-            ...item,
-            status: effectiveStatus,
-            rawStatus: item.status,
-          });
-        } else {
-          orphanedList.push(item);
-        }
+        return {
+          ...item,
+          status: effectiveStatus,
+          rawStatus: item.status,
+        };
       });
 
       // Asynchronously persist any unattended past appointments as 'missed'
@@ -393,27 +461,8 @@ export default function PetOwnerPortalPage() {
         })();
       }
 
-      // Asynchronously purge orphaned appointments and transactions from DB and localStorage
-      if (orphanedList.length > 0) {
-        (async () => {
-          for (const o of orphanedList) {
-            try {
-              await supabase.from("appointments").delete().eq("id", o.id);
-            } catch {}
-            try {
-              await supabase
-                .from("service_transactions")
-                .delete()
-                .or(`reference_id.eq.${o.id},id.eq.${o.id}`);
-            } catch {}
-          }
-          try {
-            const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
-            const remaining = local.filter((l: any) => !orphanedList.some((o: any) => o.id === l.id));
-            localStorage.setItem("syncvet_local_appointments", JSON.stringify(remaining));
-          } catch {}
-        })();
-      }
+      // Sort from recent to old (newest date first)
+      validList.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
 
       return validList;
     },
@@ -434,16 +483,16 @@ export default function PetOwnerPortalPage() {
   );
 
   const displayedAppointments = useMemo(() => {
+    let list = ownerAppointments;
     if (appointmentFilter === "upcoming") {
-      return ownerAppointments.filter((a: any) => a.status === "confirmed");
+      list = ownerAppointments.filter((a: any) => a.status === "confirmed");
+    } else if (appointmentFilter === "missed") {
+      list = ownerAppointments.filter((a: any) => a.status === "missed");
+    } else if (appointmentFilter === "completed") {
+      list = ownerAppointments.filter((a: any) => a.status === "completed");
     }
-    if (appointmentFilter === "missed") {
-      return ownerAppointments.filter((a: any) => a.status === "missed");
-    }
-    if (appointmentFilter === "completed") {
-      return ownerAppointments.filter((a: any) => a.status === "completed");
-    }
-    return ownerAppointments;
+    // Sort from recent to old (newest date first)
+    return [...list].sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
   }, [ownerAppointments, appointmentFilter]);
 
   const handleCancelAppointment = async (appointmentId: string) => {
@@ -1409,7 +1458,32 @@ export default function PetOwnerPortalPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <Select
+                  value={appointmentFilter}
+                  onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
+                    setAppointmentFilter(val)
+                  }
+                >
+                  <SelectTrigger className="h-8 w-38 text-xs bg-muted/20 border-border/70 rounded-lg cursor-pointer">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs rounded-lg">
+                    <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
+                      All
+                    </SelectItem>
+                    <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
+                      Upcoming
+                    </SelectItem>
+                    <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
+                      Missed / No-Show
+                    </SelectItem>
+                    <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
+                      Completed
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
                 <ScheduleProcedureDialog
                   initialService="vaccination"
                   pets={pets}
@@ -1417,7 +1491,7 @@ export default function PetOwnerPortalPage() {
                   trigger={
                     <Button
                       size="sm"
-                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
+                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
                     >
                       <Plus className="size-3.5" />
                       <span>Book Appointment</span>
@@ -1452,67 +1526,9 @@ export default function PetOwnerPortalPage() {
                     onClick={() => setAppointmentFilter("missed")}
                     className="h-8 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white border-transparent cursor-pointer"
                   >
-                    View Missed ({missedAppointmentsCount})
+                    View Missed
                   </Button>
                 </div>
-              </div>
-            )}
-
-            {/* Filter Pills */}
-            {ownerAppointments.length > 0 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                <Button
-                  type="button"
-                  variant={appointmentFilter === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAppointmentFilter("all")}
-                  className={cn(
-                    "h-7 text-xs rounded-lg cursor-pointer",
-                    appointmentFilter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  All ({ownerAppointments.length})
-                </Button>
-                <Button
-                  type="button"
-                  variant={appointmentFilter === "upcoming" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAppointmentFilter("upcoming")}
-                  className={cn(
-                    "h-7 text-xs rounded-lg cursor-pointer",
-                    appointmentFilter === "upcoming" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  Upcoming ({upcomingAppointmentsCount})
-                </Button>
-                <Button
-                  type="button"
-                  variant={appointmentFilter === "missed" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAppointmentFilter("missed")}
-                  className={cn(
-                    "h-7 text-xs rounded-lg cursor-pointer",
-                    appointmentFilter === "missed"
-                      ? "bg-amber-600 text-white dark:bg-amber-600 hover:bg-amber-700"
-                      : missedAppointmentsCount > 0
-                      ? "border-amber-500/50 text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  Missed / No-Show ({missedAppointmentsCount})
-                </Button>
-                <Button
-                  type="button"
-                  variant={appointmentFilter === "completed" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAppointmentFilter("completed")}
-                  className={cn(
-                    "h-7 text-xs rounded-lg cursor-pointer",
-                    appointmentFilter === "completed" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  Completed ({completedAppointmentsCount})
-                </Button>
               </div>
             )}
 

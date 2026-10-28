@@ -39,6 +39,10 @@ interface CVOContextType {
   addOfflineRecord: (rec: Omit<CVOOfflineVaccinationRecord, "id" | "timestamp" | "syncStatus">) => void;
   syncOfflineRecords: () => Promise<number>;
   addAuditLog: (log: Omit<CVOAuditLog, "id" | "timestamp">) => void;
+  deductInventoryStock: (batchNumberOrId: string, quantity?: number) => Promise<boolean>;
+  addInventoryBatch: (item: Omit<CVOInventoryItem, "id" | "daysToExpiry">) => Promise<boolean>;
+  deleteInventoryBatch: (idOrBatchNumber: string) => Promise<boolean>;
+  updateInventoryBatch: (idOrBatchNumber: string, updates: Partial<CVOInventoryItem>) => Promise<boolean>;
   isRealtimeConnected: boolean;
 }
 
@@ -276,7 +280,9 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           .select("*")
           .order("fefo_priority", { ascending: true });
 
-        if (error) return [];
+        if (error || !data) {
+          return [];
+        }
         return (data || []).map(mapDbInventoryToCVO);
       } catch {
         return [];
@@ -885,6 +891,133 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     return newOp;
   };
 
+  const deductInventoryStock = async (batchNumberOrId: string, quantity: number = 1): Promise<boolean> => {
+    try {
+      const item = inventory.find((i) => i.batchNumber === batchNumberOrId || i.id === batchNumberOrId);
+      if (!item) return false;
+      const newStock = Math.max(0, item.stock - quantity);
+      const newStatus = newStock === 0 ? "expired" : newStock <= item.minimumStock ? "low-stock" : "in-stock";
+
+      queryClient.setQueryData<CVOInventoryItem[]>(["cvo_inventory"], (old = []) =>
+        old.map((i) =>
+          i.batchNumber === batchNumberOrId || i.id === batchNumberOrId
+            ? { ...i, stock: newStock, status: newStatus }
+            : i
+        )
+      );
+
+      await supabase
+        .from("inventory_items")
+        .update({ stock: newStock, status: newStatus })
+        .or(`id.eq.${item.id},batch_number.eq.${item.batchNumber}`);
+
+      queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const addInventoryBatch = async (newItem: Omit<CVOInventoryItem, "id" | "daysToExpiry">): Promise<boolean> => {
+    try {
+      const generatedUuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : undefined;
+
+      const expiry = new Date(newItem.expirationDate);
+      const diffTime = expiry.getTime() - new Date().getTime();
+      const daysToExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      const { data, error } = await supabase
+        .from("inventory_items")
+        .insert({
+          ...(generatedUuid ? { id: generatedUuid } : {}),
+          name: newItem.name,
+          category: newItem.category,
+          batch_number: newItem.batchNumber,
+          manufacturer: newItem.manufacturer,
+          stock: newItem.stock,
+          unit: newItem.unit,
+          minimum_stock: newItem.minimumStock,
+          expiration_date: newItem.expirationDate,
+          storage_location: newItem.storageLocation,
+          status: newItem.status,
+          fefo_priority: newItem.fefoPriority,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Supabase inventory insert error:", error);
+        return false;
+      }
+
+      const insertedItem: CVOInventoryItem = data ? mapDbInventoryToCVO(data) : {
+        ...newItem,
+        id: generatedUuid || `inv-${Date.now()}`,
+        daysToExpiry: Number.isFinite(daysToExpiry) ? daysToExpiry : 90,
+      };
+
+      queryClient.setQueryData<CVOInventoryItem[]>(["cvo_inventory"], (old = []) => [
+        insertedItem,
+        ...old.filter((i) => i.id !== insertedItem.id && i.batchNumber !== insertedItem.batchNumber),
+      ]);
+
+      queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      return true;
+    } catch (err) {
+      console.error("addInventoryBatch error:", err);
+      return false;
+    }
+  };
+
+  const deleteInventoryBatch = async (idOrBatchNumber: string): Promise<boolean> => {
+    try {
+      queryClient.setQueryData<CVOInventoryItem[]>(["cvo_inventory"], (old = []) =>
+        old.filter((i) => i.id !== idOrBatchNumber && i.batchNumber !== idOrBatchNumber)
+      );
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrBatchNumber);
+      if (isUuid) {
+        await supabase.from("inventory_items").delete().eq("id", idOrBatchNumber);
+      } else {
+        await supabase.from("inventory_items").delete().eq("batch_number", idOrBatchNumber);
+      }
+      queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const updateInventoryBatch = async (idOrBatchNumber: string, updates: Partial<CVOInventoryItem>): Promise<boolean> => {
+    try {
+      const dbUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.category !== undefined) dbUpdates.category = updates.category;
+      if (updates.batchNumber !== undefined) dbUpdates.batch_number = updates.batchNumber;
+      if (updates.manufacturer !== undefined) dbUpdates.manufacturer = updates.manufacturer;
+      if (updates.stock !== undefined) dbUpdates.stock = updates.stock;
+      if (updates.unit !== undefined) dbUpdates.unit = updates.unit;
+      if (updates.minimumStock !== undefined) dbUpdates.minimum_stock = updates.minimumStock;
+      if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate;
+      if (updates.storageLocation !== undefined) dbUpdates.storage_location = updates.storageLocation;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.fefoPriority !== undefined) dbUpdates.fefo_priority = updates.fefoPriority;
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrBatchNumber);
+      if (isUuid) {
+        await supabase.from("inventory_items").update(dbUpdates).eq("id", idOrBatchNumber);
+      } else {
+        await supabase.from("inventory_items").update(dbUpdates).eq("batch_number", idOrBatchNumber);
+      }
+      queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const value = useMemo(
     () => ({
       consultations,
@@ -912,6 +1045,10 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       addOfflineRecord,
       syncOfflineRecords,
       addAuditLog,
+      deductInventoryStock,
+      addInventoryBatch,
+      deleteInventoryBatch,
+      updateInventoryBatch,
       isRealtimeConnected,
     }),
     [
@@ -924,6 +1061,10 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       offlineRecords,
       activeRoleView,
       isRealtimeConnected,
+      deductInventoryStock,
+      addInventoryBatch,
+      deleteInventoryBatch,
+      updateInventoryBatch,
     ]
   );
 

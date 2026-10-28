@@ -1,23 +1,33 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
+  Check,
   CheckCheck,
   CheckCircle2,
   X,
-  MessageSquare,
   ShieldAlert,
   Syringe,
   Package,
+  PackagePlus,
   ArrowRight,
-  ExternalLink,
   CalendarClock,
   AlertTriangle,
+  Clock,
+  Calendar,
 } from "lucide-react";
-import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
+import {
+  format,
+  parseISO,
+  isValid,
+  isBefore,
+  isAfter,
+  addDays,
+  startOfDay,
+} from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,19 +37,29 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCVO } from "@/lib/cvo-context";
-import { useCitizenChat } from "@/lib/chat-context";
 import { useUser } from "@clerk/nextjs";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { cn, isTodayDate } from "@/lib/utils";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+
+export type OperationalAlertCategory =
+  | "booster_due"
+  | "booster_overdue"
+  | "low_stock"
+  | "fefo_expiry"
+  | "stock_added"
+  | "today_patient"
+  | "bite_surveillance"
+  | "new_booking";
 
 export interface OperationalAlert {
   id: string;
-  type: "inquiry" | "bite" | "inventory" | "vaccine" | "system";
+  category: OperationalAlertCategory;
   title: string;
   message: string;
-  timestamp: string; // ISO or relative
-  createdAt: number; // millisecond timestamp
+  timestamp: string;
+  createdAt: number;
   href: string;
   isRead: boolean;
   priority: "high" | "medium" | "low";
@@ -56,269 +76,335 @@ function formatRelativeTime(ms: number): string {
   return `${days}d ago`;
 }
 
+function getDestinationLabel(category: OperationalAlertCategory): string {
+  switch (category) {
+    case "booster_due":
+    case "booster_overdue":
+      return "Vaccination Records";
+    case "low_stock":
+    case "fefo_expiry":
+    case "stock_added":
+      return "Vaccine Inventory";
+    case "today_patient":
+    case "new_booking":
+      return "Consultations";
+    case "bite_surveillance":
+      return "Animal Bite Center";
+    default:
+      return "Dashboard";
+  }
+}
+
 export function OperationalNotifications() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useUser();
-  const { activeRoleView, consultations, animalControlCases, inventory } = useCVO();
+  const queryClient = useQueryClient();
+  const { activeRoleView, consultations, animalControlCases, inventory, auditLogs } = useCVO();
 
+  // Role validation: Strictly for Admin & Veterinarian staff
   const roleFromMeta = (user?.publicMetadata?.role as string) || (user?.unsafeMetadata?.role as string);
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || "";
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
   const isPetOwner =
-    pathname?.startsWith("/pet-owner") ||
-    activeRoleView === "Pet Owner" ||
-    roleFromMeta?.toLowerCase()?.includes("owner") ||
-    roleFromMeta?.toLowerCase()?.includes("citizen");
+    !isAdminEmail &&
+    (pathname?.startsWith("/pet-owner") ||
+      activeRoleView === "Pet Owner" ||
+      roleFromMeta?.toLowerCase()?.includes("owner") ||
+      roleFromMeta?.toLowerCase()?.includes("citizen"));
 
   const isStaff = !isPetOwner;
-
-  const userRef = useRef(user);
-  userRef.current = user;
-
-  const isStaffRef = useRef(isStaff);
-  isStaffRef.current = isStaff;
-
-  const { messages } = useCitizenChat();
-  const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [realtimeAlerts, setRealtimeAlerts] = useState<OperationalAlert[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<"all" | "unread">("all");
   const [isOpen, setIsOpen] = useState(false);
-  const [ownerAppointments, setOwnerAppointments] = useState<any[]>([]);
 
-  // Query appointments for current pet owner to check for missed/unattended schedules
+  // Load persisted read & dismissed state from localStorage so counts don't revert on refresh
   useEffect(() => {
-    let isMounted = true;
-    const fetchAppointments = async () => {
+    try {
+      const storedRead = localStorage.getItem("syncvet_notif_read_ids");
+      if (storedRead) {
+        setReadIds(new Set(JSON.parse(storedRead)));
+      }
+      const storedDismissed = localStorage.getItem("syncvet_notif_dismissed_ids");
+      if (storedDismissed) {
+        setDismissedIds(new Set(JSON.parse(storedDismissed)));
+      }
+    } catch {
+      // ignore JSON parse error
+    }
+  }, []);
+
+  const persistReadIds = (newIds: Set<string>) => {
+    setReadIds(newIds);
+    try {
+      localStorage.setItem("syncvet_notif_read_ids", JSON.stringify(Array.from(newIds)));
+    } catch {}
+  };
+
+  const persistDismissedIds = (newIds: Set<string>) => {
+    setDismissedIds(newIds);
+    try {
+      localStorage.setItem("syncvet_notif_dismissed_ids", JSON.stringify(Array.from(newIds)));
+    } catch {}
+  };
+
+  const supabase = useMemo(() => getPublicSupabaseClient(), []);
+
+  // 1. Fetch vaccination records for Booster Due Soon & Overdue Boosters
+  const { data: vaxRecords = [] } = useQuery({
+    queryKey: ["notifications_vaccination_records"],
+    queryFn: async () => {
       try {
-        const ownerId = user?.id;
-        const seen = new Set<string>();
-        const list: any[] = [];
-
-        // 1. Supabase appointments table
-        if (ownerId) {
-          try {
-            const { data } = await supabase
-              .from("appointments")
-              .select("*")
-              .or(`owner_id.eq.${ownerId}`)
-              .neq("status", "cancelled");
-            if (data) {
-              data.forEach((d) => {
-                if (!seen.has(d.id)) {
-                  seen.add(d.id);
-                  list.push(d);
-                }
-              });
-            }
-          } catch {}
-
-          // 2. service_transactions
-          try {
-            const { data: txData } = await supabase
-              .from("service_transactions")
-              .select("*")
-              .or(`owner_id.eq.${ownerId}`)
-              .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
-              .neq("status", "cancelled");
-            if (txData) {
-              txData.forEach((tx: any) => {
-                const refId = tx.reference_id || tx.id;
-                if (!seen.has(refId)) {
-                  seen.add(refId);
-                  const serviceType = tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter";
-                  const petNameMatch = tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet";
-                  list.push({
-                    id: refId,
-                    owner_id: tx.owner_id,
-                    pet_name: petNameMatch,
-                    service_id: serviceType,
-                    date: tx.date ? tx.date.split("T")[0] : "",
-                    status: tx.status || "confirmed",
-                  });
-                }
-              });
-            }
-          } catch {}
-        }
-
-        // 3. localStorage cache (ensures offline/immediate sync)
-        try {
-          const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
-          local.forEach((item: any) => {
-            if (!seen.has(item.id) && item.status !== "cancelled" && (!ownerId || !item.owner_id || item.owner_id === ownerId)) {
-              seen.add(item.id);
-              list.push(item);
-            }
-          });
-        } catch {}
-
-        if (isMounted) {
-          setOwnerAppointments(list);
-        }
-      } catch (e) {
-        // ignore
+        const { data, error } = await supabase
+          .from("vaccination_records")
+          .select("id, record_no, pet_name, species, owner_name, vaccine_name, next_due_date, status, administered_date")
+          .order("next_due_date", { ascending: true });
+        if (error || !data) return [];
+        return data;
+      } catch {
+        return [];
       }
-    };
+    },
+    staleTime: 30000,
+    enabled: isStaff,
+  });
 
-    fetchAppointments();
+  // 2. Fetch procedure appointments for Today's Patients & New Bookings
+  const { data: queueAppointments = [] } = useQuery({
+    queryKey: ["notifications_queue_appointments"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from("appointments")
+          .select("id, pet_name, service_id, status, date, time, time_slot, created_at, notes, users(full_name)")
+          .order("date", { ascending: false });
+        if (error || !data) return [];
+        return data;
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 30000,
+    enabled: isStaff,
+  });
 
-    const handleUpdate = () => {
-      fetchAppointments();
-    };
-    window.addEventListener("storage", handleUpdate);
-    window.addEventListener("syncvet-appointment-updated", handleUpdate);
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener("storage", handleUpdate);
-      window.removeEventListener("syncvet-appointment-updated", handleUpdate);
-    };
-  }, [supabase, user?.id]);
-
-  // Compute live alerts derived from active system data
+  // Generate operational alerts across required categories
   const derivedAlerts = useMemo<OperationalAlert[]>(() => {
+    if (!isStaff) return [];
+
     const list: OperationalAlert[] = [];
-    const todayStart = startOfDay(new Date());
+    const today = startOfDay(new Date());
+    const in30Days = addDays(today, 30);
+    const in60Days = addDays(today, 60);
 
-    // 1. Citizen Inquiries & unread messages from pet owners (Only visible to Staff, never own messages)
-    if (isStaff) {
-      const currentUserName = user?.fullName?.toLowerCase().trim();
-      const recentPetOwnerMessages = messages
-        .filter((m) => {
-          if (m.senderRole !== "Pet Owner") return false;
-          if (user?.id && (m as any).senderId === user.id) return false;
-          if (currentUserName && m.senderName?.toLowerCase().trim() === currentUserName) return false;
-          return true;
-        })
-        .slice(-3);
-
-      for (const msg of recentPetOwnerMessages) {
-        const timeMs = new Date(msg.timestamp).getTime() || Date.now();
-        list.push({
-          id: `msg-${msg.id}`,
-          type: "inquiry",
-          title: "Citizen Inquiry",
-          message: `${msg.senderName}: "${msg.text.length > 55 ? msg.text.slice(0, 52) + "..." : msg.text}"`,
-          timestamp: formatRelativeTime(timeMs),
-          createdAt: timeMs,
-          href: "/messages",
-          isRead: false,
-          priority: "high",
-        });
+    // ── 1. Annual Boosters Due Soon (Within next 30 days) ──
+    const dueSoon = vaxRecords.filter((r: any) => {
+      if (!r.next_due_date || r.next_due_date === "—") return false;
+      try {
+        const d = parseISO(r.next_due_date);
+        return isValid(d) && isAfter(d, today) && isBefore(d, in30Days);
+      } catch {
+        return false;
       }
+    });
 
-      // 2. Bite Surveillance & Urgent Consultations
-      const biteCases = animalControlCases
-        .filter(
-          (c) =>
-            c.reason?.toLowerCase().includes("bite") ||
-            c.reason?.toLowerCase().includes("rabies")
-        )
-        .slice(0, 2);
-
-      for (const b of biteCases) {
-        const timeMs = new Date(b.dateCaptured || Date.now()).getTime();
-        list.push({
-          id: `bite-${b.caseId}`,
-          type: "bite",
-          title: "Bite Surveillance",
-          message: `Canine bite observation registered in ${b.barangay || "Lapasan"}`,
-          timestamp: formatRelativeTime(timeMs),
-          createdAt: timeMs,
-          href: "/consultations",
-          isRead: false,
-          priority: "high",
-        });
-      }
-
-      // 3. Cold-Chain Watch & Critical Inventory
-      const criticalInventory = inventory
-        .filter(
-          (i) =>
-            i.status === "low-stock" ||
-            i.status === "expiring-soon" ||
-            i.stock <= (i.minimumStock || 10)
-        )
-        .slice(0, 2);
-
-      for (const inv of criticalInventory) {
-        list.push({
-          id: `inv-${inv.id}`,
-          type: "inventory",
-          title: "Cold-Chain Watch",
-          message: `${inv.name} (Batch ${inv.batchNumber}) low stock: ${inv.stock} ${inv.unit} left`,
-          timestamp: "Today",
-          createdAt: Date.now() - 3600000,
-          href: "/vaccine-inventory",
-          isRead: false,
-          priority: "medium",
-        });
-      }
-
-      // 4. Clinical Queue Advisory
-      const waitingConsultations = consultations.filter((c) => c.status === "waiting").length;
-      if (waitingConsultations > 0) {
-        list.push({
-          id: "cons-waiting",
-          type: "vaccine",
-          title: "Clinical Queue Advisory",
-          message: `${waitingConsultations} citizen pet${waitingConsultations > 1 ? "s" : ""} waiting in CVO central triage`,
-          timestamp: "Live",
-          createdAt: Date.now() - 1800000,
-          href: "/consultations",
-          isRead: false,
-          priority: "medium",
-        });
-      }
+    for (const r of dueSoon.slice(0, 4)) {
+      const d = parseISO(r.next_due_date);
+      const diffDays = Math.max(1, Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+      list.push({
+        id: `booster-due-${r.id || r.record_no}`,
+        category: "booster_due",
+        title: "Annual Booster Due Soon",
+        message: `${r.pet_name || "Pet"} (${r.species || "Dog"}) • Rabies booster due in ${diffDays} day${diffDays === 1 ? "" : "s"} (${format(d, "MMM d, yyyy")}). Owner: ${r.owner_name || "Citizen"}`,
+        timestamp: `${diffDays}d left`,
+        createdAt: d.getTime() - 30 * 24 * 60 * 60 * 1000,
+        href: "/vaccination-records",
+        isRead: false,
+        priority: diffDays <= 7 ? "high" : "medium",
+      });
     }
 
-    // 5. Missed & Unattended Appointment Alerts for Pet Owners (Action Required to Reschedule)
-    if (ownerAppointments.length > 0) {
-      for (const appt of ownerAppointments) {
-        if (appt.status === "cancelled" || appt.status === "completed") continue;
-
-        let isMissed = appt.status === "missed";
-        let parsedDate: Date | null = null;
-        try {
-          if (appt.date) {
-            const parsed = parseISO(appt.date);
-            if (isValid(parsed)) {
-              parsedDate = parsed;
-              if (isBefore(startOfDay(parsed), todayStart)) {
-                isMissed = true;
-              }
-            }
-          }
-        } catch {}
-
-        if (isMissed) {
-          const petName = appt.pet_name || "Your pet";
-          const serviceName = appt.service_id === "spay-neuter" ? "Spay & Neuter" : "Vaccination";
-          const formattedDate = parsedDate ? format(parsedDate, "EEEE, MMMM d") : (appt.date || "scheduled date");
-
-          list.push({
-            id: `missed-appt-${appt.id}`,
-            type: "vaccine",
-            title: `Missed ${serviceName} — Reschedule Now`,
-            message: `${petName}'s ${serviceName} on ${formattedDate} was unattended. Click to choose a new clinic date.`,
-            timestamp: "Needs Reschedule",
-            createdAt: parsedDate ? parsedDate.getTime() : Date.now(),
-            href: "/pet-owner",
-            isRead: false,
-            priority: "high",
-          });
-        }
+    // ── 2. Overdue Boosters (Past due date) ──
+    const overdue = vaxRecords.filter((r: any) => {
+      if (r.status === "overdue") return true;
+      if (!r.next_due_date || r.next_due_date === "—") return false;
+      try {
+        const d = parseISO(r.next_due_date);
+        return isValid(d) && isBefore(startOfDay(d), today);
+      } catch {
+        return false;
       }
+    });
+
+    for (const r of overdue.slice(0, 4)) {
+      const d = parseISO(r.next_due_date);
+      const diffDays = Math.max(1, Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24)));
+      list.push({
+        id: `booster-overdue-${r.id || r.record_no}`,
+        category: "booster_overdue",
+        title: "Overdue Rabies Booster",
+        message: `${r.pet_name || "Pet"} (${r.species || "Dog"}) • Rabies booster overdue by ${diffDays} day${diffDays === 1 ? "" : "s"}. Citizen follow-up required under RA 9482.`,
+        timestamp: `${diffDays}d overdue`,
+        createdAt: Date.now() - diffDays * 24 * 60 * 60 * 1000,
+        href: "/vaccination-records",
+        isRead: false,
+        priority: "high",
+      });
+    }
+
+    // ── 3. Low Stock Alerts (Inventory threshold breaches) ──
+    const lowStockItems = inventory.filter(
+      (i) => i.status === "low-stock" || i.stock <= (i.minimumStock || 15)
+    );
+
+    for (const item of lowStockItems.slice(0, 3)) {
+      const isOut = item.stock <= 0;
+      list.push({
+        id: `low-stock-${item.id || item.batchNumber}`,
+        category: "low_stock",
+        title: isOut ? "Out of Stock Alert" : "Low Stock Alert",
+        message: `${item.name} • ${isOut ? "0 doses left in storage" : `Only ${item.stock} ${item.unit} remaining`} (Minimum safe count: ${item.minimumStock || 15}).`,
+        timestamp: isOut ? "Restock Needed" : "Low Stock",
+        createdAt: Date.now() - 3600000,
+        href: "/vaccine-inventory",
+        isRead: false,
+        priority: isOut ? "high" : "medium",
+      });
+    }
+
+    // ── 4. FEFO Near Expiry (Expiring within 60 days) ──
+    const nearExpiryItems = inventory.filter((i) => {
+      if (i.status === "expiring-soon") return true;
+      if (!i.expirationDate) return false;
+      try {
+        const exp = parseISO(i.expirationDate);
+        if (!isValid(exp)) return false;
+        return isAfter(exp, today) && isBefore(exp, in60Days);
+      } catch {
+        return false;
+      }
+    });
+
+    for (const item of nearExpiryItems.slice(0, 3)) {
+      const exp = parseISO(item.expirationDate);
+      const diffDays = Math.max(1, Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+      list.push({
+        id: `fefo-expiry-${item.id || item.batchNumber}`,
+        category: "fefo_expiry",
+        title: "FEFO Near Expiry Priority",
+        message: `${item.name} (Lot #${item.batchNumber}) • Expires on ${format(exp, "MMM d, yyyy")} (${diffDays} days left). First-Expire, First-Out rule applies.`,
+        timestamp: `${diffDays}d left`,
+        createdAt: exp.getTime() - 60 * 24 * 60 * 60 * 1000,
+        href: "/vaccine-inventory",
+        isRead: false,
+        priority: diffDays <= 30 ? "high" : "medium",
+      });
+    }
+
+    // ── 5. Added Vaccine Stocks (Recent intake logs and stock receipts) ──
+    const recentStockLogs = auditLogs
+      .filter((log) => {
+        const act = (log.action || "").toLowerCase();
+        return act.includes("batch") || act.includes("inventory") || act.includes("stock");
+      })
+      .slice(0, 2);
+
+    for (const log of recentStockLogs) {
+      const timeMs = new Date(log.timestamp).getTime() || Date.now();
+      list.push({
+        id: `stock-log-${log.id}`,
+        category: "stock_added",
+        title: "Added Vaccine Stock",
+        message: log.details || `Logged new batch ${log.recordId} into clinic storage.`,
+        timestamp: formatRelativeTime(timeMs),
+        createdAt: timeMs,
+        href: "/vaccine-inventory",
+        isRead: false,
+        priority: "low",
+      });
+    }
+
+    if (recentStockLogs.length === 0 && inventory.length > 0) {
+      const newestBatch = inventory[inventory.length - 1];
+      list.push({
+        id: `stock-batch-${newestBatch.id || newestBatch.batchNumber}`,
+        category: "stock_added",
+        title: "Vaccine Stock Available",
+        message: `${newestBatch.stock} ${newestBatch.unit} of ${newestBatch.name} (Lot #${newestBatch.batchNumber}) active in ${newestBatch.storageLocation || "Main Refrigerator"}.`,
+        timestamp: "Active Stock",
+        createdAt: Date.now() - 7200000,
+        href: "/vaccine-inventory",
+        isRead: false,
+        priority: "low",
+      });
+    }
+
+    // ── 6. Today's Patient Schedule (Scheduled intakes & procedures) ──
+    const todayConsultations = consultations.filter((c) => isTodayDate(c.date));
+    const todayAppts = queueAppointments.filter((a: any) => a.date && isTodayDate(a.date));
+
+    const allTodayPatients = [
+      ...todayConsultations.map((c) => ({
+        id: c.id,
+        name: c.petName,
+        species: c.species,
+        owner: c.ownerName,
+        time: c.time || "09:00 AM",
+        service: c.chiefComplaint || "Clinical Consultation",
+      })),
+      ...todayAppts.map((a: any) => ({
+        id: a.id,
+        name: a.pet_name || "Pet",
+        species: "Patient",
+        owner: a.users?.full_name || "Citizen",
+        time: a.time || (a.time_slot === "afternoon" ? "01:30 PM" : "09:00 AM"),
+        service: a.service_id === "spay-neuter" ? "Spay & Neuter" : "Anti-Rabies Vaccination",
+      })),
+    ].slice(0, 4);
+
+    for (const p of allTodayPatients) {
+      list.push({
+        id: `today-pt-${p.id}`,
+        category: "today_patient",
+        title: "Today's Patient Intake",
+        message: `${p.name} (${p.species}) • ${p.service} scheduled today at ${p.time}. Owner: ${p.owner}`,
+        timestamp: p.time,
+        createdAt: Date.now(),
+        href: "/consultations",
+        isRead: false,
+        priority: "high",
+      });
+    }
+
+    // ── 7. Essential Bite Surveillance Alerts ──
+    const biteCases = animalControlCases
+      .filter((c) => (c.reason || "").toLowerCase().includes("bite") || (c.reason || "").toLowerCase().includes("rabies"))
+      .slice(0, 2);
+
+    for (const b of biteCases) {
+      const timeMs = new Date(b.dateCaptured || Date.now()).getTime();
+      list.push({
+        id: `bite-${b.caseId}`,
+        category: "bite_surveillance",
+        title: "Bite Surveillance Advisory",
+        message: `Canine bite surveillance active in ${b.barangay || "Lapasan"}. Observation protocol assigned.`,
+        timestamp: formatRelativeTime(timeMs),
+        createdAt: timeMs,
+        href: "/consultations",
+        isRead: false,
+        priority: "high",
+      });
     }
 
     return list;
-  }, [isStaff, user?.id, messages, animalControlCases, inventory, consultations, ownerAppointments]);
+  }, [isStaff, vaxRecords, queueAppointments, inventory, consultations, animalControlCases, auditLogs]);
 
-  // Combine derived alerts with any incoming real-time alerts
+  // Merge realtime alerts & filter out dismissed items
   const allAlerts = useMemo(() => {
     const combined = [...realtimeAlerts, ...derivedAlerts];
-    // Deduplicate by ID
     const seen = new Set<string>();
     const unique: OperationalAlert[] = [];
     for (const a of combined) {
@@ -330,116 +416,72 @@ export function OperationalNotifications() {
         });
       }
     }
-    // Sort highest priority first, then latest
     return unique.sort((a, b) => b.createdAt - a.createdAt);
   }, [realtimeAlerts, derivedAlerts, dismissedIds, readIds]);
 
-  const unreadAlerts = useMemo(
-    () => allAlerts.filter((a) => !a.isRead),
-    [allAlerts]
-  );
+  const filteredAlerts = useMemo(() => {
+    if (selectedFilter === "unread") {
+      return allAlerts.filter((a) => !a.isRead);
+    }
+    return allAlerts;
+  }, [allAlerts, selectedFilter]);
 
-  // Subscribe to live Postgres changes across tables
+  const unreadCount = useMemo(() => allAlerts.filter((a) => !a.isRead).length, [allAlerts]);
+
+  // Realtime Postgres subscriptions: Exclude chat messages; listen to inventory, appointments, & vax records
   useEffect(() => {
-    const channelId = `cvo-realtime-notifications-${Math.random().toString(36).slice(2, 8)}`;
+    if (!isStaff) return;
+    const channelId = `cvo-operational-alerts-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
       .channel(channelId)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chat_messages" },
+        { event: "INSERT", schema: "public", table: "inventory_items" },
         (payload: any) => {
           const row = payload.new;
           if (!row) return;
-
-          const currentUser = userRef.current;
-          const currentUserId = currentUser?.id;
-          const currentUserName = currentUser?.fullName?.toLowerCase().trim();
-          const isStaffNow = isStaffRef.current;
-
-          // Never notify the author of their own outgoing message!
-          if (currentUserId && row.sender_id === currentUserId) return;
-          if (
-            currentUserName &&
-            row.sender_name &&
-            row.sender_name.toLowerCase().trim() === currentUserName
-          ) {
-            return;
-          }
-
-          if (row.sender_role === "Pet Owner") {
-            // Citizen message -> Only notify veterinary and administrative staff
-            if (!isStaffNow) return;
-
-            const newAlert: OperationalAlert = {
-              id: `rt-msg-${row.id}`,
-              type: "inquiry",
-              title: "Live Citizen Inquiry",
-              message: `${row.sender_name || "Pet Owner"}: "${(row.message_text || "").slice(0, 50)}..."`,
-              timestamp: "Just now",
-              createdAt: Date.now(),
-              href: "/messages",
-              isRead: false,
-              priority: "high",
-            };
-            setRealtimeAlerts((prev) => [newAlert, ...prev]);
-          } else {
-            // Staff message (Vet or Admin Desk) -> Only notify the intended pet owner in notification bell
-            if (isStaffNow) return;
-
-            supabase
-              .from("chats")
-              .select("owner_id")
-              .eq("id", row.chat_id)
-              .maybeSingle()
-              .then(({ data }) => {
-                if (data && currentUserId && data.owner_id === currentUserId) {
-                  const senderTitle =
-                    row.sender_name ||
-                    (row.sender_role === "Admin" || row.sender_role === "Staff" ? "CVO Admin Desk" : "Dr. Helen");
-                  const newAlert: OperationalAlert = {
-                    id: `rt-msg-${row.id}`,
-                    type: "inquiry",
-                    title: `Message from ${senderTitle}`,
-                    message: `${senderTitle}: "${(row.message_text || "").slice(0, 50)}..."`,
-                    timestamp: "Just now",
-                    createdAt: Date.now(),
-                    href: "/messages",
-                    isRead: false,
-                    priority: "high",
-                  };
-                  setRealtimeAlerts((prev) => [newAlert, ...prev]);
-                }
-              });
-          }
+          const newAlert: OperationalAlert = {
+            id: `rt-inv-${row.id || Date.now()}`,
+            category: "stock_added",
+            title: "Added Vaccine Stock",
+            message: `New batch ${row.batch_number || "BATCH"} (${row.quantity || row.stock || 0} ${row.unit || "doses"} of ${row.item_name || row.name}) logged into inventory.`,
+            timestamp: "Just now",
+            createdAt: Date.now(),
+            href: "/vaccine-inventory",
+            isRead: false,
+            priority: "medium",
+          };
+          setRealtimeAlerts((prev) => [newAlert, ...prev]);
+          queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
         }
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "consultations" },
+        { event: "INSERT", schema: "public", table: "appointments" },
         (payload: any) => {
           const row = payload.new;
-          if (row) {
-            const isBite =
-              (row.chief_complaint || "").toLowerCase().includes("bite") ||
-              (row.diagnosis || "").toLowerCase().includes("rabies");
-            const newAlert: OperationalAlert = {
-              id: `rt-cons-${row.id}`,
-              type: isBite ? "bite" : "vaccine",
-              title: isBite ? "Urgent Bite Incident" : "New Patient Intake",
-              message: `${row.pet_name || "Patient"} • ${row.owner_name || "Citizen"} (${row.chief_complaint || "Consultation requested"})`,
-              timestamp: "Just now",
-              createdAt: Date.now(),
-              href: "/consultations",
-              isRead: false,
-              priority: isBite ? "high" : "medium",
-            };
-            setRealtimeAlerts((prev) => [newAlert, ...prev]);
-            if (isBite) {
-              toast.warning(`Urgent Bite Consultation: ${row.pet_name || "Patient"}`, {
-                description: `${row.owner_barangay || "Cagayan de Oro"} • ${row.chief_complaint}`,
-              });
-            }
-          }
+          if (!row) return;
+          const serviceName = row.service_id === "spay-neuter" ? "Spay & Neuter" : "Anti-Rabies Vaccination";
+          const newAlert: OperationalAlert = {
+            id: `rt-appt-${row.id || Date.now()}`,
+            category: "new_booking",
+            title: "New Citizen Booking",
+            message: `New appointment registered for ${row.pet_name || "Pet"} (${serviceName}) on ${row.date || "scheduled date"}.`,
+            timestamp: "Just now",
+            createdAt: Date.now(),
+            href: "/consultations",
+            isRead: false,
+            priority: "medium",
+          };
+          setRealtimeAlerts((prev) => [newAlert, ...prev]);
+          queryClient.invalidateQueries({ queryKey: ["notifications_queue_appointments"] });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "vaccination_records" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["notifications_vaccination_records"] });
         }
       )
       .subscribe();
@@ -447,31 +489,36 @@ export function OperationalNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, router]);
+  }, [supabase, isStaff, queryClient]);
 
-  const markAllAsRead = useCallback(() => {
-    setReadIds((prev) => {
-      const next = new Set(prev);
-      for (const a of allAlerts) {
-        next.add(a.id);
-      }
-      return next;
-    });
-  }, [allAlerts]);
+  // If user is a Pet Owner or in Pet Owner view, do not display the notification bell
+  if (!isStaff || pathname?.startsWith("/pet-owner")) {
+    return null;
+  }
 
-  const dismissAlert = useCallback((e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setDismissedIds((prev) => new Set(prev).add(id));
-  }, []);
-
-  const handleAlertClick = (alert: OperationalAlert) => {
-    setReadIds((prev) => new Set(prev).add(alert.id));
-    setIsOpen(false);
-    router.push(alert.href);
+  const markAllAsRead = () => {
+    const allIds = new Set([...readIds, ...allAlerts.map((a) => a.id)]);
+    persistReadIds(allIds);
   };
 
-  const unreadCount = unreadAlerts.length;
+  const dismissAlert = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = new Set(dismissedIds);
+    updated.add(id);
+    persistDismissedIds(updated);
+  };
+
+  const handleAlertClick = (alert: OperationalAlert) => {
+    const updated = new Set(readIds);
+    updated.add(alert.id);
+    persistReadIds(updated);
+    setIsOpen(false);
+    toast.info(alert.title, {
+      description: alert.message,
+      duration: 5000,
+    });
+    router.push(alert.href);
+  };
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -479,154 +526,155 @@ export function OperationalNotifications() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all cursor-pointer shadow-none"
-          aria-label="System and Operational Notifications"
-          title={
-            unreadCount > 0
-              ? `${unreadCount} unread operational alert${unreadCount > 1 ? "s" : ""}`
-              : "Operational Notifications & Alerts (All Clear)"
-          }
+          className="relative size-10 rounded-full bg-muted/60 dark:bg-zinc-800/90 hover:bg-muted dark:hover:bg-zinc-700 text-foreground transition-all cursor-pointer flex items-center justify-center shrink-0 border border-border/40"
+          aria-label="Operational Notifications"
         >
-          <Bell className="size-4 text-foreground/80" />
+          <Bell className="size-5.5 fill-current text-foreground" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 flex size-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-amber-500 ring-2 ring-background text-[8px] font-bold text-white items-center justify-center" />
+            <span className="absolute -top-1 -right-1 z-10 flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-rose-600 text-[11px] font-extrabold text-white shadow-md border-2 border-background animate-in zoom-in-75">
+              {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-84 sm:w-92 p-2 space-y-1.5 z-50 shadow-xl border border-border/60">
+
+      <DropdownMenuContent
+        align="end"
+        sideOffset={8}
+        className="w-[360px] sm:w-[400px] p-3 bg-background border border-border shadow-xl rounded-2xl z-50 animate-in fade-in-50 zoom-in-95"
+      >
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/50">
-          <div className="flex items-center gap-1.5">
-            <Bell className="size-3.5 text-primary" />
-            <span className="text-xs font-bold text-foreground">
-              {isPetOwner ? "Citizen & Procedure Notifications" : "Operational Alerts & Dispatch"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {unreadCount > 0 ? (
-              <Badge
-                variant="outline"
-                className="text-[9px] px-1.5 py-0 border-amber-500/40 text-amber-600 bg-amber-500/10 font-bold"
-              >
-                {unreadCount} New
-              </Badge>
-            ) : (
-              <Badge
-                variant="outline"
-                className="text-[9px] px-1.5 py-0 border-emerald-500/30 text-emerald-600 bg-emerald-500/10 font-semibold"
-              >
-                Live Ready
-              </Badge>
-            )}
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={markAllAsRead}
-                className="text-[10px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-0.5 cursor-pointer ml-1"
-                title="Mark all alerts as read"
-              >
-                <CheckCheck className="size-3" />
-                <span>Read all</span>
-              </button>
-            )}
-          </div>
+        <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
+          <h3 className="text-base font-bold text-foreground tracking-tight">
+            Notifications
+          </h3>
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllAsRead}
+              className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              title="Mark all notifications as read"
+            >
+              <Check className="size-3.5" />
+              <span>Mark all as read</span>
+            </button>
+          )}
         </div>
 
-        {/* Alerts List */}
-        <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-0.5">
-          {allAlerts.length === 0 ? (
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 py-2">
+          <button
+            type="button"
+            onClick={() => setSelectedFilter("all")}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer",
+              selectedFilter === "all"
+                ? "bg-primary text-primary-foreground shadow-2xs"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted"
+            )}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedFilter("unread")}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer",
+              selectedFilter === "unread"
+                ? "bg-primary text-primary-foreground shadow-2xs"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted"
+            )}
+          >
+            Unread {unreadCount > 0 && <span className="ml-1 text-red-500 font-bold">{unreadCount}</span>}
+          </button>
+        </div>
+
+        {/* Recent Activity Section Header */}
+        <div className="flex items-center justify-between pt-1 pb-1.5 px-0.5">
+          <span className="text-xs font-bold text-foreground">Recent Activity</span>
+          {allAlerts.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setSelectedFilter("all")}
+              className="text-xs text-primary font-semibold hover:underline cursor-pointer"
+            >
+              See all
+            </button>
+          )}
+        </div>
+
+        {/* Alerts List - without left-side avatar container (User: 'first remove that side of the notification') */}
+        <div className="space-y-1 max-h-[360px] overflow-y-auto pr-0.5 py-1">
+          {filteredAlerts.length === 0 ? (
             <div className="py-8 text-center space-y-2">
               <CheckCircle2 className="size-8 mx-auto text-emerald-500/70" />
-              <p className="text-xs font-bold text-foreground">
-                {isPetOwner ? "All Notifications Up to Date" : "All Operational Systems Clear"}
-              </p>
+              <p className="text-xs font-bold text-foreground">No notifications</p>
               <p className="text-[11px] text-muted-foreground max-w-[220px] mx-auto">
-                {isPetOwner
-                  ? "No missed appointments or urgent clinical notices."
-                  : "No active emergencies, pending citizen inquiries, or cold-chain breaches."}
+                You're all caught up with clinic operations and inventory updates.
               </p>
             </div>
           ) : (
-            allAlerts.map((alert) => {
+            filteredAlerts.map((alert) => {
               const isUnread = !alert.isRead;
               return (
                 <div
                   key={alert.id}
                   onClick={() => handleAlertClick(alert)}
                   className={cn(
-                    "p-2.5 rounded-xl border transition-all cursor-pointer space-y-1 relative group select-none",
+                    "group relative flex items-start justify-between gap-3 p-2.5 rounded-xl transition-all cursor-pointer select-none",
                     isUnread
-                      ? "bg-muted/40 border-border/80 hover:bg-muted/70 hover:border-primary/40 shadow-2xs"
-                      : "bg-background/50 border-border/30 hover:bg-muted/30 text-muted-foreground"
+                      ? "bg-muted/40 hover:bg-muted/70"
+                      : "hover:bg-muted/30 opacity-80 hover:opacity-100"
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={cn(
-                        "font-bold text-xs flex items-center gap-1.5 truncate",
-                        isUnread ? "text-foreground" : "text-muted-foreground"
-                      )}
-                    >
-                      {alert.type === "inquiry" && (
-                        <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
-                      )}
-                      {alert.type === "bite" && (
-                        <span className="size-2 rounded-full bg-amber-500 shrink-0" />
-                      )}
-                      {alert.type === "inventory" && (
-                        <span className="size-2 rounded-full bg-purple-500 shrink-0" />
-                      )}
-                      {alert.type === "vaccine" && (
-                        <span className="size-2 rounded-full bg-blue-500 shrink-0" />
-                      )}
-                      {alert.title}
-                    </span>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[9px] text-muted-foreground font-mono">
-                        {alert.timestamp}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => dismissAlert(e, alert.id)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Dismiss alert"
-                      >
-                        <X className="size-3" />
-                      </button>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className={cn(
+                      "text-xs leading-snug line-clamp-2",
+                      isUnread ? "font-semibold text-foreground" : "font-normal text-muted-foreground"
+                    )}>
+                      <span className="font-bold text-foreground">{alert.title}: </span>
+                      <span className={cn(isUnread ? "text-foreground/90 font-medium" : "text-muted-foreground")}>{alert.message}</span>
+                    </p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span>{alert.timestamp}</span>
+                      <span>•</span>
+                      <span className="text-primary font-medium">{getDestinationLabel(alert.category)}</span>
                     </div>
                   </div>
 
-                  <p
-                    className={cn(
-                      "text-[11px] leading-snug line-clamp-2",
-                      isUnread ? "font-medium text-foreground/90" : "text-muted-foreground"
+                  {/* Right side: Unread blue indicator dot + Dismiss X */}
+                  <div className="flex items-center gap-1.5 shrink-0 pt-1">
+                    {isUnread && (
+                      <span className="size-2 rounded-full bg-blue-600 shrink-0" />
                     )}
-                  >
-                    {alert.message}
-                  </p>
+                    <button
+                      type="button"
+                      onClick={(e) => dismissAlert(e, alert.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                      title="Dismiss notification"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
                 </div>
               );
             })
           )}
         </div>
 
-        <DropdownMenuSeparator className="my-1" />
-
-        {/* Footer Link */}
-        <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full text-xs text-primary font-bold justify-between h-7.5 cursor-pointer hover:bg-primary/10 rounded-lg"
-          >
-            <span>View Operations Hub on Dashboard</span>
-            <ArrowRight className="size-3" />
-          </Button>
-        </Link>
+        {/* Footer Link to Dashboard Operations */}
+        <div className="pt-2 border-t border-border/50 mt-1">
+          <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs text-primary font-bold justify-between h-8 cursor-pointer hover:bg-primary/10 rounded-xl"
+            >
+              <span>View Operations Dashboard</span>
+              <ArrowRight className="size-3.5" />
+            </Button>
+          </Link>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

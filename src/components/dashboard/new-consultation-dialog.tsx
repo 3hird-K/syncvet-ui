@@ -12,6 +12,12 @@ import {
   Clock,
   Sparkles,
   Calendar,
+  Save,
+  Pill,
+  FileText,
+  MapPin,
+  X,
+  AlertCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -25,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,7 +47,7 @@ import { useCVO } from "@/lib/cvo-context";
 import { cvoBarangays } from "@/data/cvo-store";
 import { toast } from "sonner";
 import { useUser } from "@clerk/nextjs";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { CVO_CLINICAL_SYSTEMS } from "./pet-owner-consultation-dialog";
@@ -56,15 +63,55 @@ function formatSafeDate(d?: string | null): string {
   }
 }
 
+function getHistoryStatusBadge(status?: string) {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  if (s === "completed") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+        <CheckCircle2 className="size-3 shrink-0" /> Completed
+      </span>
+    );
+  }
+  if (s === "cancelled") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30">
+        <X className="size-3 shrink-0" /> Cancelled
+      </span>
+    );
+  }
+  if (s === "missed" || s === "not attended" || s === "unattended" || s === "overdue") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+        <AlertCircle className="size-3 shrink-0" /> Not Attended
+      </span>
+    );
+  }
+  if (s === "waiting" || s === "confirmed" || s === "scheduled") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
+        <Clock className="size-3 shrink-0" /> {s === "confirmed" || s === "scheduled" ? "Confirmed" : "Waiting"}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border capitalize">
+      {status.replace(/[-_]/g, " ")}
+    </span>
+  );
+}
+
 export function NewConsultationDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { addConsultation, activeRoleView, consultations } = useCVO();
+  const { addConsultation, activeRoleView, consultations, inventory } = useCVO();
   const { user } = useUser();
+  const queryClient = useQueryClient();
 
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
   const [selectedPetId, setSelectedPetId] = useState<string>("");
   const [showManualDetails, setShowManualDetails] = useState<boolean>(false);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
 
   const [petName, setPetName] = useState("");
   const [species, setSpecies] = useState<"Dog" | "Cat" | "Livestock">("Dog");
@@ -304,6 +351,12 @@ export function NewConsultationDialog() {
       badge: string;
       vet?: string;
       status: string;
+      treatment?: string;
+      medication?: string;
+      dosageInstructions?: string;
+      chiefComplaint?: string;
+      diagnosis?: string;
+      veterinarianNotes?: string;
     }> = [];
 
     const normPet = petName.trim().toLowerCase();
@@ -322,6 +375,12 @@ export function NewConsultationDialog() {
           badge: c.serviceType || "Consultation",
           vet: c.vetName,
           status: c.status || "completed",
+          treatment: c.treatment,
+          medication: c.medication,
+          dosageInstructions: c.dosageInstructions,
+          chiefComplaint: c.chiefComplaint,
+          diagnosis: c.diagnosis,
+          veterinarianNotes: c.veterinarianNotes,
         });
       }
     });
@@ -337,6 +396,8 @@ export function NewConsultationDialog() {
           detail: t.detail,
           badge: t.badge,
           status: t.status,
+          treatment: t.detail,
+          medication: "Municipal Clinic Record",
         });
       }
     });
@@ -362,16 +423,6 @@ export function NewConsultationDialog() {
 
   const handleOwnerSelect = (ownerId: string) => {
     setSelectedOwnerId(ownerId);
-    if (ownerId === "walk-in") {
-      setShowManualDetails(true);
-      setSelectedPetId("");
-      setOwnerName("");
-      setOwnerContact("");
-      setOwnerBarangay("Carmen");
-      setPetName("");
-      return;
-    }
-
     setShowManualDetails(false);
     const owner = allOwners.find((o) => o.id === ownerId);
     if (owner) {
@@ -398,13 +449,6 @@ export function NewConsultationDialog() {
 
   const handlePetSelect = (petId: string) => {
     setSelectedPetId(petId);
-    if (petId === "walk-in-pet") {
-      setShowManualDetails(true);
-      setPetName("");
-      setBreed("Aspin (Mixed)");
-      setSpecies("Dog");
-      return;
-    }
     const pet = availablePetsForSelectedOwner.find((p) => p.id === petId);
     if (pet) {
       setPetName(pet.name);
@@ -541,6 +585,12 @@ export function NewConsultationDialog() {
         setServices({ healthy: false, vitamins: false, deworming: false, farmManagement: false, consultation: true });
         break;
       case "vaccine":
+        const vaxStock = (inventory || []).filter((i: any) => i.category === "Vaccines" && i.stock > 0).reduce((sum: number, i: any) => sum + i.stock, 0);
+        if (vaxStock <= 0) {
+          toast.warning("Cold-chain Vaccine Alert: Out of Stock", {
+            description: "There are currently 0 doses of anti-rabies vaccine in cold-chain inventory. Please restock in Vaccine Inventory.",
+          });
+        }
         setChiefComplaint("Routine annual wellness and rabies immunization");
         setDiagnosis("Healthy animal cleared for anti-rabies vaccination");
         setTreatment("Anti-rabies vaccine 1ml SQ (Rabisin)");
@@ -564,11 +614,21 @@ export function NewConsultationDialog() {
     }
   };
 
+  const isSaveDisabled = useMemo(() => {
+    return (
+      !selectedOwnerId ||
+      !selectedPetId ||
+      !petName?.trim() ||
+      !ownerName?.trim() ||
+      !diagnosis?.trim()
+    );
+  }, [selectedOwnerId, selectedPetId, petName, ownerName, diagnosis]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ownerName || !petName || !diagnosis) {
-      if (!ownerName) toast.error("Please select a registered pet owner or enter their details");
-      else if (!petName) toast.error("Please select a patient / pet");
+    if (isSaveDisabled) {
+      if (!selectedOwnerId) toast.error("Please select a registered pet owner");
+      else if (!selectedPetId || !petName) toast.error("Please select a registered patient pet");
       else if (!diagnosis) toast.error("Please enter a clinical diagnosis");
       return;
     }
@@ -620,6 +680,60 @@ export function NewConsultationDialog() {
         followUp,
       });
 
+      // If vaccination was administered during this EMR consultation, automatically mirror to vaccination_records
+      const isVaxAdministered =
+        treatment.toLowerCase().includes("vaccin") ||
+        diagnosis.toLowerCase().includes("vaccin") ||
+        (treatment.toLowerCase().includes("rabies") && !treatment.toLowerCase().includes("non-rabid"));
+
+      if (isVaxAdministered) {
+        void (async () => {
+          try {
+            const supabase = getPublicSupabaseClient();
+            const todayIso = new Date().toISOString().split("T")[0];
+            const nextYearIso = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            const vaxRecordNo = `VAX-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+            await supabase.from("vaccination_records").insert({
+              record_no: vaxRecordNo,
+              pet_name: petName || "Pet",
+              pet_id: selectedPetId || null,
+              species: species || "Dog",
+              breed: breed || "Aspin (Mixed)",
+              owner_name: ownerName || "Pet Owner",
+              owner_contact: ownerContact || null,
+              barangay: ownerBarangay || "Carmen",
+              vaccine_name: treatment.toLowerCase().includes("rabisin")
+                ? "Rabisin Anti-Rabies Vaccine (1.0 mL SC)"
+                : "Anti-Rabies Prophylaxis (1.0 mL SC)",
+              batch_number: "AR-2026-EMR",
+              administered_date: todayIso,
+              next_due_date: nextYearIso,
+              veterinarian: vetName || "Dr. Elena Santos, DVM",
+              status: "complete",
+            });
+
+            if (selectedPetId) {
+              await supabase
+                .from("pets")
+                .update({
+                  is_vaccinated: true,
+                  rabies_vaccinated: true,
+                  last_vaccination_date: todayIso,
+                  next_vaccination_date: nextYearIso,
+                })
+                .eq("id", selectedPetId);
+            }
+
+            queryClient.invalidateQueries({ queryKey: ["vaccination_records"] });
+            queryClient.invalidateQueries({ queryKey: ["queue-pets"] });
+            queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+          } catch (err) {
+            console.warn("Auto-log consultation vaccination error", err);
+          }
+        })();
+      }
+
       setLoading(false);
       setOpen(false);
       toast.success("Encounter Encoded Successfully", {
@@ -657,16 +771,61 @@ export function NewConsultationDialog() {
           <Plus className="size-3.5" /> Encode Consultation
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-[96vw] sm:max-w-5xl lg:max-w-6xl xl:max-w-7xl h-[90vh] sm:h-[92vh] max-h-[95vh] p-0 overflow-hidden flex flex-col gap-0 border border-border/80 shadow-2xl rounded-2xl">
+      <DialogContent showCloseButton={false} className="w-[96vw] sm:max-w-5xl lg:max-w-6xl xl:max-w-7xl h-[90vh] sm:h-[92vh] max-h-[95vh] p-0 overflow-hidden flex flex-col gap-0 border border-border/80 shadow-2xl rounded-2xl">
         <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 min-w-0">
-          <DialogHeader className="p-4 sm:p-5 pr-12 border-b border-border/80 shrink-0 bg-card/60 space-y-1">
-            <div className="flex items-center gap-2 text-primary">
-              <Stethoscope className="size-5 shrink-0" />
-              <DialogTitle className="text-lg font-bold">New Clinical Encounter (EMR)</DialogTitle>
+          <DialogHeader className="p-4 sm:p-5 pr-4 border-b border-border/80 shrink-0 bg-card/60">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-2 text-primary">
+                  <Stethoscope className="size-5 shrink-0" />
+                  <DialogTitle className="text-lg font-bold truncate">New Clinical Encounter (EMR)</DialogTitle>
+                </div>
+                <DialogDescription className="text-xs text-muted-foreground truncate">
+                  Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
+                </DialogDescription>
+              </div>
+
+              {/* Action Buttons: Save Record and X close button perfectly aligned side-by-side */}
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={loading || isSaveDisabled}
+                  className={cn(
+                    "h-8 px-3.5 text-xs font-bold rounded-xl transition-all shadow-xs gap-1.5",
+                    isSaveDisabled
+                      ? "opacity-45 cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted"
+                      : "cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground"
+                  )}
+                  title={isSaveDisabled ? "Select a registered pet owner, pet patient, and enter a diagnosis to save" : "Save Clinical Record"}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="size-3.5" />
+                      <span>Save Record</span>
+                    </>
+                  )}
+                </Button>
+
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                    title="Close"
+                  >
+                    <X className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </Button>
+                </DialogClose>
+              </div>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
-            </DialogDescription>
           </DialogHeader>
 
           {/* Scrollable Form Body */}
@@ -755,8 +914,6 @@ export function NewConsultationDialog() {
                                 ({selectedOwner.barangay})
                               </span>
                             </>
-                          ) : selectedOwnerId === "walk-in" ? (
-                            <span className="font-semibold text-primary truncate">+ Walk-In Citizen</span>
                           ) : (
                             <span className="text-muted-foreground truncate">Choose a registered pet owner...</span>
                           )}
@@ -784,9 +941,6 @@ export function NewConsultationDialog() {
                             </div>
                           </SelectItem>
                         ))}
-                        <SelectItem value="walk-in" className="text-xs cursor-pointer py-2 font-semibold text-primary border-t border-border/50">
-                          + Walk-In / Unregistered Citizen
-                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -796,7 +950,7 @@ export function NewConsultationDialog() {
                     <Label className="text-[11px] font-bold text-foreground flex items-center gap-1">
                       <PawPrint className="size-3 text-primary" /> Select Patient / Pet
                     </Label>
-                    {selectedOwnerId && selectedOwnerId !== "walk-in" ? (
+                    {selectedOwnerId ? (
                       <Select value={selectedPetId} onValueChange={handlePetSelect}>
                         <SelectTrigger className="h-9 text-xs rounded-xl bg-background border-border/80 w-full min-w-0">
                           <div className="flex items-center gap-2 min-w-0 truncate">
@@ -810,11 +964,9 @@ export function NewConsultationDialog() {
                                   ({selectedPet.species} • {selectedPet.breed})
                                 </span>
                               </>
-                            ) : selectedPetId === "walk-in-pet" ? (
-                              <span className="font-semibold text-primary truncate">+ New / Unregistered Pet</span>
                             ) : (
                               <span className="text-muted-foreground truncate">
-                                {availablePetsForSelectedOwner.length > 0 ? "Select patient pet..." : "No registered pets for this owner"}
+                                {availablePetsForSelectedOwner.length > 0 ? "Select patient pet..." : "No registered pets found for this owner"}
                               </span>
                             )}
                           </div>
@@ -835,15 +987,8 @@ export function NewConsultationDialog() {
                               </div>
                             </SelectItem>
                           ))}
-                          <SelectItem value="walk-in-pet" className="text-xs cursor-pointer py-2 font-semibold text-primary border-t border-border/50">
-                            + New / Unregistered Pet for this Owner
-                          </SelectItem>
                         </SelectContent>
                       </Select>
-                    ) : selectedOwnerId === "walk-in" ? (
-                      <div className="h-9 rounded-xl border border-primary/30 bg-primary/5 px-3 flex items-center text-xs text-primary font-medium">
-                        Manual Walk-in Intake Active
-                      </div>
                     ) : (
                       <div className="h-9 rounded-xl border border-dashed border-border/70 bg-background/50 px-3 flex items-center text-xs text-muted-foreground truncate">
                         Select a pet owner first to choose their pets
@@ -852,8 +997,8 @@ export function NewConsultationDialog() {
                   </div>
                 </div>
 
-                {/* Selected Patient & Owner Summary Banner (Clean, replaces redundant manual encoding) */}
-                {selectedOwner && (selectedPet || petName) && selectedOwnerId !== "walk-in" ? (
+                {/* Selected Patient & Owner Summary Banner */}
+                {selectedOwner && (selectedPet || petName) ? (
                   <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
@@ -889,24 +1034,22 @@ export function NewConsultationDialog() {
                   </div>
                 ) : null}
 
-                {/* Manual details form (only shown when toggled or for walk-in/unregistered patients) */}
-                {(showManualDetails || selectedOwnerId === "walk-in" || selectedPetId === "walk-in-pet") && (
+                {/* Edit details form (only shown when toggled) */}
+                {showManualDetails && (
                   <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-3 animate-in fade-in-50 duration-200">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                        {selectedOwnerId === "walk-in" ? "Walk-In Citizen Intake" : "Edit Patient & Owner Details"}
+                        Edit Patient & Owner Details
                       </p>
-                      {selectedOwnerId !== "walk-in" && selectedPetId !== "walk-in-pet" && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowManualDetails(false)}
-                          className="text-[10px] h-5 px-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                        >
-                          Hide
-                        </Button>
-                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowManualDetails(false)}
+                        className="text-[10px] h-5 px-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        Hide
+                      </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                       <div className="space-y-1">
@@ -1290,19 +1433,24 @@ export function NewConsultationDialog() {
                     {patientHistory.map((item) => (
                       <div
                         key={item.id}
-                        className="p-2.5 rounded-xl bg-background border border-border/70 space-y-1.5 shadow-2xs hover:border-primary/40 transition-colors"
+                        onClick={() => setSelectedHistoryItem(item)}
+                        className="p-2.5 rounded-xl bg-background border border-border/70 space-y-1.5 shadow-2xs hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all group"
+                        title="Click to view full record details"
                       >
-                        <div className="flex items-start justify-between gap-1.5">
+                        <div className="flex items-start justify-between gap-1.5 flex-wrap">
                           <span className="font-mono text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">
                             {formatSafeDate(item.date)}
                           </span>
-                          <Badge variant="outline" className="text-[9px] py-0 px-1 font-bold shrink-0">
-                            {item.badge}
-                          </Badge>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {getHistoryStatusBadge(item.status)}
+                            <Badge variant="outline" className="text-[9px] py-0 px-1 font-bold shrink-0">
+                              {item.badge}
+                            </Badge>
+                          </div>
                         </div>
 
-                        <p className="font-bold text-xs text-foreground leading-tight break-words">{item.title}</p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed break-words">{item.detail}</p>
+                        <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight break-words">{item.title}</p>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed break-words line-clamp-2">{item.detail}</p>
 
                         {item.vet && (
                           <p className="text-[10px] text-primary font-medium flex items-center gap-1 pt-1 border-t border-border/40">
@@ -1326,29 +1474,91 @@ export function NewConsultationDialog() {
             </div>
           </div>
         </div>
+      </form>
 
-          {/* Fixed Modal Action Footer */}
-          <DialogFooter className="p-3 sm:px-6 border-t border-border/80 bg-card shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 shadow-xs">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(false)}
-              className="h-9 px-4 text-xs font-semibold rounded-xl cursor-pointer w-full sm:w-auto"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={loading} className="h-9 px-5 text-xs font-bold rounded-xl cursor-pointer w-full sm:w-auto">
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 size-3.5 animate-spin" /> Saving...
-                </>
-              ) : (
-                "Save Clinical Record"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+        {/* Patient History Item Detail Modal */}
+        <Dialog open={!!selectedHistoryItem} onOpenChange={(open) => !open && setSelectedHistoryItem(null)}>
+          <DialogContent className="sm:max-w-[480px] p-5 space-y-4 rounded-2xl z-[100]">
+            {selectedHistoryItem && (
+              <>
+                <DialogHeader className="p-0 text-left space-y-1.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pr-8">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">
+                        {formatSafeDate(selectedHistoryItem.date)}
+                      </span>
+                      {getHistoryStatusBadge(selectedHistoryItem.status)}
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-bold">
+                      {selectedHistoryItem.badge}
+                    </Badge>
+                  </div>
+                  <DialogTitle className="text-base font-bold text-foreground">
+                    {selectedHistoryItem.title}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Verified CVO municipal record for {petName || selectedPet?.name || "Patient"}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3 text-xs">
+                  {/* Patient & Owner summary */}
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/60 space-y-1">
+                    <p className="font-semibold text-foreground flex items-center gap-1.5">
+                      <PawPrint className="size-3.5 text-primary" />
+                      <span>{petName || selectedPet?.name} ({species} • {breed})</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Owner: <strong className="text-foreground">{ownerName || selectedOwner?.name}</strong> • Brgy. {ownerBarangay}
+                    </p>
+                  </div>
+
+                  {/* Record Details */}
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Encounter / Booking Status</Label>
+                      <div className="mt-1 flex items-center gap-2">
+                        {getHistoryStatusBadge(selectedHistoryItem.status)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Clinical Detail / Action</Label>
+                      <p className="mt-1 p-2.5 rounded-lg bg-background border border-border/70 text-foreground leading-relaxed">
+                        {selectedHistoryItem.detail}
+                      </p>
+                    </div>
+
+                    {selectedHistoryItem.treatment && (
+                      <div>
+                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Treatment Administered</Label>
+                        <p className="mt-1 p-2.5 rounded-lg bg-background border border-border/70 text-foreground">
+                          {selectedHistoryItem.treatment}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedHistoryItem.medication && (
+                      <div>
+                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Prescriptions</Label>
+                        <p className="mt-1 p-2.5 rounded-lg bg-background border border-border/70 text-foreground">
+                          {selectedHistoryItem.medication}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedHistoryItem.vet && (
+                      <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-2 text-primary font-medium">
+                        <Stethoscope className="size-4 shrink-0" />
+                        <span>Attending: {selectedHistoryItem.vet}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

@@ -1,20 +1,16 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
   Package,
   AlertTriangle,
   TrendingDown,
   ShieldCheck,
-  Search,
-  ArrowDownToLine,
   ArrowUpDown,
-  Filter,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -37,29 +33,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { AddBatchDialog } from "@/components/dashboard/add-batch-dialog";
 import { useCVO } from "@/lib/cvo-context";
+import type { CVOInventoryItem } from "@/data/cvo-store";
 
 export default function VaccineInventoryPage() {
   const { inventory } = useCVO();
-  const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const effectiveInventory = inventory;
+
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fefoSort, setFefoSort] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedBatch, setSelectedBatch] = useState<CVOInventoryItem | null>(null);
 
-  const totalDoses = useMemo(() => inventory.reduce((sum, i) => sum + i.stock, 0), [inventory]);
-  const adequateCount = useMemo(() => inventory.filter((i) => i.status === "in-stock").length, [inventory]);
-  const lowStockCount = useMemo(() => inventory.filter((i) => i.status === "low-stock").length, [inventory]);
+  const totalDoses = useMemo(() => effectiveInventory.reduce((sum, i) => sum + i.stock, 0), [effectiveInventory]);
+  const adequateCount = useMemo(() => effectiveInventory.filter((i) => i.status === "in-stock").length, [effectiveInventory]);
+  const lowStockCount = useMemo(() => effectiveInventory.filter((i) => i.status === "low-stock").length, [effectiveInventory]);
   const nearExpiryCount = useMemo(
-    () => inventory.filter((i) => i.status === "expiring-soon" || i.status === "expired").length,
-    [inventory]
+    () => effectiveInventory.filter((i) => i.status === "expiring-soon" || i.daysToExpiry <= 180).length,
+    [effectiveInventory]
   );
 
   const metrics: PageMetric[] = useMemo(() => [
@@ -79,8 +83,8 @@ export default function VaccineInventoryPage() {
       icon: ShieldCheck,
       gradient: "from-emerald-500/5",
       iconClass: "text-emerald-400",
-      badge: "Sufficient",
-      badgeClass: "text-emerald-400 bg-emerald-400/10",
+      badge: totalDoses === 0 ? "No Batches" : "Sufficient",
+      badgeClass: totalDoses === 0 ? "text-muted-foreground bg-muted/20" : "text-emerald-400 bg-emerald-400/10",
       sub: "Batches above reorder threshold",
     },
     {
@@ -89,9 +93,9 @@ export default function VaccineInventoryPage() {
       icon: TrendingDown,
       gradient: "from-amber-500/5",
       iconClass: "text-amber-400",
-      badge: lowStockCount > 0 ? "Reorder Soon" : "Levels Healthy",
-      badgeClass: lowStockCount > 0 ? "text-amber-400 bg-amber-400/10" : "text-emerald-400 bg-emerald-400/10",
-      sub: "Below minimum stock",
+      badge: totalDoses === 0 ? "No Batches" : lowStockCount > 0 ? "Reorder Soon" : "Levels Healthy",
+      badgeClass: totalDoses === 0 ? "text-muted-foreground bg-muted/20" : lowStockCount > 0 ? "text-amber-400 bg-amber-400/10" : "text-emerald-400 bg-emerald-400/10",
+      sub: "Below minimum alert level",
     },
     {
       title: "FEFO Near Expiry",
@@ -99,19 +103,18 @@ export default function VaccineInventoryPage() {
       icon: AlertTriangle,
       gradient: "from-red-500/5",
       iconClass: "text-red-400",
-      badge: nearExpiryCount > 0 ? "Prioritize First" : "Zero Expired",
-      badgeClass: nearExpiryCount > 0 ? "text-red-400 bg-red-400/10" : "text-emerald-400 bg-emerald-400/10",
+      badge: totalDoses === 0 ? "No Batches" : nearExpiryCount > 0 ? "Prioritize First" : "Zero Expired",
+      badgeClass: totalDoses === 0 ? "text-muted-foreground bg-muted/20" : nearExpiryCount > 0 ? "text-red-400 bg-red-400/10" : "text-emerald-400 bg-emerald-400/10",
       sub: "First-Expired, First-Out queue",
     },
   ], [totalDoses, adequateCount, lowStockCount, nearExpiryCount]);
-
 
   const columns = [
     { id: "batch", label: "Batch No." },
     { id: "name", label: "Item / Vaccine Name", required: true },
     { id: "category", label: "Category" },
     { id: "stock", label: "In Stock" },
-    { id: "min", label: "Min Stock" },
+    { id: "min", label: "Low Stock Alert" },
     { id: "expiry", label: "Expiry Date" },
     { id: "storage", label: "Storage Location" },
     { id: "status", label: "FEFO Status" },
@@ -126,21 +129,24 @@ export default function VaccineInventoryPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = [...inventory];
+    let list = [...effectiveInventory];
 
-    if (categoryFilter !== "all") {
-      list = list.filter((i) => i.category.toLowerCase() === categoryFilter.toLowerCase());
-    }
-
-    const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (i) =>
-          i.name.toLowerCase().includes(q) ||
-          i.batchNumber.toLowerCase().includes(q) ||
-          i.storageLocation.toLowerCase().includes(q) ||
-          i.category.toLowerCase().includes(q)
-      );
+    if (statusFilter !== "all") {
+      list = list.filter((i) => {
+        if (statusFilter === "expiring-soon") {
+          return i.status === "expiring-soon" || i.daysToExpiry <= 30;
+        }
+        if (statusFilter === "low-stock") {
+          return i.status === "low-stock" || (i.stock > 0 && i.stock <= i.minimumStock);
+        }
+        if (statusFilter === "in-stock") {
+          return i.status === "in-stock" && i.daysToExpiry > 30 && i.stock > i.minimumStock;
+        }
+        if (statusFilter === "expired") {
+          return i.status === "expired" || i.daysToExpiry <= 0;
+        }
+        return i.status === statusFilter;
+      });
     }
 
     if (fefoSort) {
@@ -148,43 +154,29 @@ export default function VaccineInventoryPage() {
     }
 
     return list;
-  }, [inventory, query, categoryFilter, fefoSort]);
+  }, [effectiveInventory, statusFilter, fefoSort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    toast.promise(new Promise((resolve) => setTimeout(resolve, 1500)), {
-      loading: `Ingesting municipal stock manifest: ${file.name}...`,
-      success: () => {
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        return "Stock manifest ingested into CVO central storage.";
-      },
-      error: "Error processing manifest.",
-    });
-  };
-
   const getStatusBadge = (status: string, daysToExpiry: number) => {
     if (daysToExpiry <= 30) {
       return (
-        <Badge className="bg-red-500/15 text-red-500 hover:bg-red-500/25 text-[10px]">
+        <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25 text-[10px] font-medium border-0 py-0.5 px-2 shrink-0 whitespace-nowrap">
           <AlertTriangle className="mr-1 size-3" /> Expiring ({daysToExpiry}d)
         </Badge>
       );
     }
     if (status === "low-stock") {
       return (
-        <Badge className="bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 text-[10px]">
+        <Badge className="bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 text-[10px] font-medium border-0 py-0.5 px-2 shrink-0 whitespace-nowrap">
           <TrendingDown className="mr-1 size-3" /> Low Stock
         </Badge>
       );
     }
     return (
-      <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 text-[10px]">
+      <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 text-[10px] font-medium border-0 py-0.5 px-2 shrink-0 whitespace-nowrap">
         Adequate
       </Badge>
     );
@@ -192,13 +184,6 @@ export default function VaccineInventoryPage() {
 
   return (
     <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        className="hidden"
-        accept=".csv,.xlsx,.pdf"
-      />
       <PageHeader
         supertitle="Resource Planning & Logistics"
         title="Vaccine & Medicine Inventory"
@@ -207,74 +192,58 @@ export default function VaccineInventoryPage() {
             Government cold-chain management with <span className="text-foreground">FEFO (First-Expire, First-Out)</span> prioritization, batch traceability, and automated reorder triggers.
           </>
         }
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 text-xs cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <ArrowDownToLine className="size-3.5" /> Receive Stock Manifest
-            </Button>
-            <AddBatchDialog />
-          </>
-        }
+        actions={<AddBatchDialog />}
       />
 
       <PageMetricCards metrics={metrics} />
 
       <Card>
-        <CardHeader className="px-6 py-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-lg font-bold">Government Stock Ledger</CardTitle>
-                <Badge
-                  variant="outline"
-                  onClick={() => setFefoSort(!fefoSort)}
-                  className={cn(
-                    "cursor-pointer text-[10px] gap-1 transition-colors",
-                    fefoSort
-                      ? "border-primary text-primary bg-primary/10"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  <ArrowUpDown className="size-3" />
-                  FEFO Priority: {fefoSort ? "Active (Nearest Expiry)" : "Standard"}
-                </Badge>
-              </div>
-              <CardDescription className="text-[11px] text-muted-foreground/80">
-                All vaccine batches, medical supplies, and anesthetics across CVO central cold-chain storage and satellite barangay refrigerators
+        <CardHeader className="px-6 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1 min-w-0">
+              <CardTitle className="text-base font-bold text-foreground">
+                Government Stock Ledger
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                All vaccine batches, medical supplies, and anesthetics across CVO central cold-chain storage. Click any row to view full batch details.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 sm:flex-none">
-                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search item, lot, or storage..."
-                  className="h-8 w-full sm:w-60 pl-8 text-xs bg-muted/20"
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-
-              {/* Category Filter */}
-              <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-                <SelectTrigger className="h-8 w-36 text-xs bg-muted/20">
-                  <SelectValue placeholder="All Categories" />
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                <SelectTrigger className="h-8 w-36 text-xs bg-muted/20 shrink-0">
+                  <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="Vaccines">Vaccines</SelectItem>
-                  <SelectItem value="Medicines">Medicines</SelectItem>
-                  <SelectItem value="Surgical Supplies">Surgical Supplies</SelectItem>
-                  <SelectItem value="Medical Supplies">Medical Supplies</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="in-stock">Adequate Stock</SelectItem>
+                  <SelectItem value="low-stock">Low Stock</SelectItem>
+                  <SelectItem value="expiring-soon">Near Expiry</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* FEFO Priority Sort Toggle */}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setFefoSort(!fefoSort)}
+                className={cn(
+                  "size-8 shrink-0 cursor-pointer transition-colors",
+                  fefoSort
+                    ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 shadow-xs"
+                    : "bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+                title={
+                  fefoSort
+                    ? "FEFO Priority Active: Sorting by earliest expiry first (Click to toggle)"
+                    : "Sort by FEFO: First-Expire, First-Out (Click to activate)"
+                }
+                aria-label="Toggle FEFO Priority Sort"
+              >
+                <ArrowUpDown className="size-3.5" />
+              </Button>
 
               <TableColumnFilter
                 columns={columns}
@@ -285,46 +254,57 @@ export default function VaccineInventoryPage() {
           </div>
         </CardHeader>
         <CardContent className="px-0">
-          <Table>
+          <Table className="min-w-[960px]">
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 {visibleColumns.includes("batch") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider pl-6 whitespace-nowrap w-[140px]">
                     Batch / Lot No.
                   </TableHead>
                 )}
                 {visibleColumns.includes("name") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider min-w-[260px] w-[280px]">
                     Item Name
                   </TableHead>
                 )}
                 {visibleColumns.includes("category") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap w-[110px]">
                     Category
                   </TableHead>
                 )}
                 {visibleColumns.includes("stock") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap w-[110px]">
                     In Stock
                   </TableHead>
                 )}
                 {visibleColumns.includes("min") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
-                    Minimum Buffer
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap w-[120px]">
+                    Low Stock Alert
                   </TableHead>
                 )}
                 {visibleColumns.includes("expiry") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
-                    Expiry (FEFO)
+                  <TableHead
+                    onClick={() => setFefoSort(!fefoSort)}
+                    className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap w-[130px] cursor-pointer hover:text-foreground select-none transition-colors"
+                    title={
+                      fefoSort
+                        ? "Sorted by FEFO (Earliest Expiring First). Click to toggle."
+                        : "Click to sort by FEFO (Earliest Expiring First)"
+                    }
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Expiry (FEFO)</span>
+                      <ArrowUpDown className={cn("size-2.5 transition-colors", fefoSort ? "text-primary" : "text-muted-foreground/40")} />
+                    </div>
                   </TableHead>
                 )}
                 {visibleColumns.includes("storage") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">
-                    Cold-Chain Storage Location
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider min-w-[180px]">
+                    Storage Location
                   </TableHead>
                 )}
                 {visibleColumns.includes("status") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider text-right pr-6 whitespace-nowrap w-[110px]">
                     Status
                   </TableHead>
                 )}
@@ -332,60 +312,95 @@ export default function VaccineInventoryPage() {
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow>
+                <TableRow className="hover:bg-transparent">
                   <TableCell
                     colSpan={visibleColumns.length}
-                    className="py-8 text-center text-muted-foreground"
+                    className="py-16 text-center"
                   >
-                    No inventory records match your query.
+                    {effectiveInventory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center space-y-3">
+                        <div className="size-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs">
+                          <Package className="size-6 text-primary" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-foreground">No Vaccine or Medicine Batches Yet</h4>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Your clinic inventory ledger is currently empty. Start logging cold-chain vaccines and medical supplies to enable FEFO stock tracking.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center max-w-sm mx-auto py-8 text-center space-y-2">
+                        <p className="text-xs text-muted-foreground">No batches match the selected status filter.</p>
+                        <button
+                          type="button"
+                          onClick={() => { setStatusFilter("all"); }}
+                          className="text-xs text-primary hover:underline font-semibold cursor-pointer"
+                        >
+                          Reset status filter
+                        </button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((item, idx) => (
-                  <TableRow key={`${item.id}-${idx}`} className="hover:bg-muted/50">
+                  <TableRow
+                    key={`${item.id}-${idx}`}
+                    onClick={() => setSelectedBatch(item)}
+                    className="hover:bg-muted/40 cursor-pointer transition-colors"
+                  >
                     {visibleColumns.includes("batch") && (
-                      <TableCell className="font-mono text-xs text-muted-foreground pl-6">
-                        {item.batchNumber}
+                      <TableCell className="font-mono text-xs pl-6 py-3 whitespace-nowrap w-[140px]">
+                        <span className="font-semibold text-foreground/90">{item.batchNumber}</span>
                       </TableCell>
                     )}
                     {visibleColumns.includes("name") && (
-                      <TableCell>
-                        <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.manufacturer}</p>
+                      <TableCell className="py-3 min-w-[260px] max-w-[320px]">
+                        <p className="text-xs font-semibold text-foreground leading-snug">
+                          {item.name}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {item.manufacturer}
+                        </p>
                       </TableCell>
                     )}
                     {visibleColumns.includes("category") && (
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
+                      <TableCell className="py-3 whitespace-nowrap w-[110px]">
+                        <Badge variant="outline" className="text-[10px] font-medium py-0.5 px-2">
                           {item.category}
                         </Badge>
                       </TableCell>
                     )}
                     {visibleColumns.includes("stock") && (
-                      <TableCell className="font-bold text-sm text-foreground">
-                        {item.stock} <span className="text-xs font-normal text-muted-foreground">{item.unit}</span>
+                      <TableCell className="py-3 whitespace-nowrap w-[110px]">
+                        <span className="font-bold text-xs text-foreground font-mono">{item.stock}</span>{" "}
+                        <span className="text-[11px] text-muted-foreground">{item.unit}</span>
                       </TableCell>
                     )}
                     {visibleColumns.includes("min") && (
-                      <TableCell className="text-xs text-muted-foreground">
-                        {item.minimumStock} {item.unit}
+                      <TableCell className="py-3 whitespace-nowrap text-xs text-muted-foreground w-[120px]">
+                        <span className="font-mono font-medium">{item.minimumStock}</span>{" "}
+                        <span className="text-[11px]">{item.unit}</span>
                       </TableCell>
                     )}
                     {visibleColumns.includes("expiry") && (
-                      <TableCell className="text-xs">
-                        <span className="font-semibold text-foreground">{item.expirationDate}</span>
-                        <p className="text-[10px] text-muted-foreground">
+                      <TableCell className="py-3 whitespace-nowrap text-xs w-[130px]">
+                        <span className="font-semibold text-foreground font-mono block text-xs">
+                          {item.expirationDate}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground block mt-0.5">
                           {item.daysToExpiry > 0 ? `${item.daysToExpiry} days remaining` : "Expired"}
-                        </p>
+                        </span>
                       </TableCell>
                     )}
                     {visibleColumns.includes("storage") && (
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="py-3 text-xs text-muted-foreground min-w-[180px] leading-tight">
                         {item.storageLocation}
                       </TableCell>
                     )}
                     {visibleColumns.includes("status") && (
-                      <TableCell className="text-right pr-6">
+                      <TableCell className="text-right pr-6 py-3 whitespace-nowrap w-[110px]">
                         {getStatusBadge(item.status, item.daysToExpiry)}
                       </TableCell>
                     )}
@@ -409,6 +424,83 @@ export default function VaccineInventoryPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Batch Full Details Dialog */}
+      <Dialog open={!!selectedBatch} onOpenChange={(open) => !open && setSelectedBatch(null)}>
+        <DialogContent className="sm:max-w-[460px] p-6 bg-background rounded-2xl">
+          {selectedBatch && (
+            <>
+              <DialogHeader className="pb-3 border-b border-border/60">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
+                    {selectedBatch.batchNumber}
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">
+                    {selectedBatch.category}
+                  </Badge>
+                </div>
+                <DialogTitle className="text-base font-bold text-foreground mt-2">
+                  {selectedBatch.name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  {selectedBatch.manufacturer || "Department of Agriculture / CVO CDO"}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-3 py-3 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-muted/20 rounded-xl border border-border/60">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-1">
+                      Current Stock
+                    </span>
+                    <p className="text-2xl font-mono font-bold text-foreground">
+                      {selectedBatch.stock}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">{selectedBatch.unit}</span>
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-muted/20 rounded-xl border border-border/60">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-1">
+                      Low Stock Alert
+                    </span>
+                    <p className="text-2xl font-mono font-bold text-foreground">
+                      {selectedBatch.minimumStock}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">{selectedBatch.unit}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-muted/20 rounded-xl border border-border/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                      Expiration Date (FEFO)
+                    </span>
+                    <span className="font-mono font-bold text-foreground">{selectedBatch.expirationDate}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Shelf Life:</span>
+                    <span className="font-medium">
+                      {selectedBatch.daysToExpiry > 0 ? `${selectedBatch.daysToExpiry} days remaining` : "Expired"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-muted/20 rounded-xl border border-border/60 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+                    Storage Location
+                  </span>
+                  <p className="text-xs font-medium text-foreground">{selectedBatch.storageLocation}</p>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-muted-foreground">Ledger Status:</span>
+                  {getStatusBadge(selectedBatch.status, selectedBatch.daysToExpiry)}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

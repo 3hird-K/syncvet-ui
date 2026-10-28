@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,34 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
+function isPetsView(path: string): boolean {
+  return (
+    path.startsWith("/pet-owner") ||
+    path.startsWith("/pet-registry") ||
+    path.startsWith("/pets")
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => isPetsView(pathname));
   const [open, setOpen] = useState(false);
+  const prevPathRef = useRef(pathname);
+
+  // Default sidebar to shrink on pets view, expand on non-pets view, while letting user toggle manually
+  useEffect(() => {
+    if (prevPathRef.current !== pathname) {
+      const wasPets = isPetsView(prevPathRef.current);
+      const isNowPets = isPetsView(pathname);
+
+      if (isNowPets && !wasPets) {
+        setCollapsed(true);
+      } else if (!isNowPets && wasPets) {
+        setCollapsed(false);
+      }
+      prevPathRef.current = pathname;
+    }
+  }, [pathname]);
   const { user } = useUser();
 
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
@@ -71,6 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setCollapsed((c) => !c)}
               aria-expanded={!collapsed}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               <PanelLeft className="size-4" />
             </Button>
@@ -86,9 +111,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </div>
 
-          {/* ── Top Bar Action Controls: Realtime Operational Notifications & Theme Toggle ── */}
+          {/* ── Top Bar Action Controls: Realtime Operational Notifications (Admin & Vet only) & Theme Toggle ── */}
           <div className="flex items-center gap-1">
-            <OperationalNotifications />
+            {isStaff && !pathname.startsWith("/pet-owner") && (
+              <OperationalNotifications />
+            )}
             <ThemeToggle />
           </div>
         </header>

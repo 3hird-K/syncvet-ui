@@ -767,6 +767,10 @@ function MessagesContent() {
     const list: any[] = [];
     const seenUserIds = new Set<string>();
 
+    const currentUserId = user?.id;
+    const currentUserEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+    const currentFullName = (user?.fullName || "").toLowerCase();
+
     // 1. Include active chat threads from Supabase matching the current activeDesk
     const relevantDbChats = dbChatThreads.filter((chat: any) => {
       if (activeDesk === "admin") {
@@ -784,6 +788,20 @@ function MessagesContent() {
 
     for (const chat of relevantDbChats) {
       const ownerId = chat.owner_id || chat.id;
+
+      // PREVENT SELF-CHAT BUG: Staff (Admin / Vet) cannot chat with themselves!
+      if (currentUserId && (chat.owner_id === currentUserId || chat.id === currentUserId)) {
+        continue;
+      }
+      const chatEmail = (chat.users?.email || "").toLowerCase();
+      if (currentUserEmail && chatEmail === currentUserEmail) {
+        continue;
+      }
+      const chatName = (chat.users?.full_name || "").toLowerCase();
+      if (currentFullName && chatName === currentFullName) {
+        continue;
+      }
+
       if (ownerId) seenUserIds.add(ownerId);
 
       const userRecord = dbRegisteredUsers.find((u: any) => u.id === chat.owner_id);
@@ -817,6 +835,13 @@ function MessagesContent() {
 
     // 2. Include registered pet owners from users table
     for (const u of dbRegisteredUsers) {
+      // PREVENT SELF-CHAT BUG: Never include the logged in admin/vet themselves
+      if (currentUserId && u.id === currentUserId) continue;
+      const uEmail = (u.email || "").toLowerCase();
+      if (currentUserEmail && uEmail === currentUserEmail) continue;
+      const uName = (u.full_name || "").toLowerCase();
+      if (currentFullName && uName === currentFullName) continue;
+
       const role = normalizeSyncVetRole(u.role);
       const isOwnerRole = role === "Pet Owner" || (u.role && u.role.toLowerCase().includes("owner"));
       if (!isOwnerRole) continue;
@@ -852,7 +877,7 @@ function MessagesContent() {
     }
 
     return list;
-  }, [dbChatThreads, dbRegisteredUsers, allRegisteredPets, activeDesk]);
+  }, [dbChatThreads, dbRegisteredUsers, allRegisteredPets, activeDesk, user]);
 
   // Handle URL query parameters for explicit desk / chat selection
   useEffect(() => {

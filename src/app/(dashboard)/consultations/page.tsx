@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Stethoscope,
   Clock,
@@ -8,22 +8,33 @@ import {
   AlertCircle,
   Search,
   Filter,
-  Eye,
+  ChevronRight,
   FileText,
   User,
   MapPin,
   Calendar,
   Pill,
   ClipboardCheck,
+  PawPrint,
+  Syringe,
+  Scissors,
+  AlertTriangle,
+  CalendarCheck,
+  Lock,
 } from "lucide-react";
+import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { NewConsultationDialog } from "@/components/dashboard/new-consultation-dialog";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
 import { ClinicalExaminationDialog } from "@/components/dashboard/clinical-examination-dialog";
+import { AdministerVaccinationDialog } from "@/components/dashboard/administer-vaccination-dialog";
+import { CompleteSurgeryDialog } from "@/components/dashboard/complete-surgery-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOConsultation } from "@/data/cvo-store";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,19 +68,56 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, isTodayDate } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
+
+export type QueueCategory = "consultation" | "vaccination" | "spay-neuter";
+
+export interface QueueEncounter extends CVOConsultation {
+  category: QueueCategory;
+  isOverdue: boolean;
+  ownerAvatarUrl?: string;
+  vetAvatarUrl?: string;
+}
 
 export default function ConsultationsPage() {
-  const { consultations: allConsultations, updateConsultationStatus, activeRoleView } = useCVO();
+  const { consultations: allConsultations, updateConsultationStatus, activeRoleView, inventory } = useCVO();
   const { user } = useUser();
+
+  const availableVaccineStock = useMemo(() => {
+    return (inventory || []).filter((i: any) => i.category === "Vaccines" && i.stock > 0).reduce((sum: number, i: any) => sum + i.stock, 0);
+  }, [inventory]);
+  const isVaccineOutOfStock = availableVaccineStock <= 0;
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedConsultation, setSelectedConsultation] = useState<CVOConsultation | null>(null);
+  const [selectedConsultation, setSelectedConsultation] = useState<QueueEncounter | null>(null);
   const [officialFormOpen, setOfficialFormOpen] = useState(false);
   const [examDialogOpen, setExamDialogOpen] = useState(false);
+  const [vaxDialogOpen, setVaxDialogOpen] = useState(false);
+  const [surgeryDialogOpen, setSurgeryDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const columns = [
+    { id: "transaction", label: "Transaction ID & Type", required: true },
+    { id: "date", label: "Schedule Date" },
+    { id: "animal", label: "Animal" },
+    { id: "owner", label: "Owner / Area" },
+    { id: "service", label: "Service & Diagnosis" },
+    { id: "vet", label: "Attending Vet" },
+    { id: "status", label: "Status" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map((c) => c.id));
+  const toggleColumn = (id: string) => {
+    setVisibleColumns((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
 
   const isPetOwner =
     activeRoleView === "Pet Owner" ||
@@ -77,76 +125,510 @@ export default function ConsultationsPage() {
     (user?.unsafeMetadata as any)?.accountType === "pet_owner" ||
     user?.primaryEmailAddress?.emailAddress === "itcgeek03@gmail.com";
 
-  const consultations = useMemo(() => {
-    if (!isPetOwner) return allConsultations;
+  // Check if an encounter schedule has passed without completion
+  const isItemOverdue = (dateStr?: string, status?: string) => {
+    if (!dateStr) return false;
+    if (status === "completed" || status === "cancelled") return false;
+    try {
+      const parsed = parseISO(dateStr);
+      if (!isValid(parsed)) return false;
+      const todayStart = startOfDay(new Date());
+      return isBefore(startOfDay(parsed), todayStart);
+    } catch {
+      return false;
+    }
+  };
+
+  // 24-Hour Clinical Finalization Rule:
+  // Completed procedures and immunization records can only be updated within 24 hours of administration/completion.
+  const get24HourUpdateStatus = (encounter?: QueueEncounter | null) => {
+    if (!encounter || encounter.status !== "completed") {
+      return { isLockedPast24Hours: false, hoursRemaining: 24, hoursElapsed: 0 };
+    }
+
+    let completionTime: number | null = null;
+
+    if (typeof window !== "undefined") {
+      try {
+        const map = JSON.parse(localStorage.getItem("syncvet_completed_timestamps") || "{}");
+        const rawId = encounter.id.replace("proc-", "");
+        if (map[rawId]) completionTime = new Date(map[rawId]).getTime();
+        else if (map[encounter.id]) completionTime = new Date(map[encounter.id]).getTime();
+        else if (map[encounter.encounterNo]) completionTime = new Date(map[encounter.encounterNo]).getTime();
+      } catch {}
+    }
+
+    if (!completionTime && encounter.date) {
+      try {
+        const datePart = encounter.date.split("T")[0];
+        const timePart = encounter.time || "09:00 AM";
+        const parsed = new Date(`${datePart} ${timePart}`);
+        if (!isNaN(parsed.getTime())) completionTime = parsed.getTime();
+      } catch {}
+    }
+
+    if (!completionTime) {
+      return { isLockedPast24Hours: false, hoursRemaining: 24, hoursElapsed: 0 };
+    }
+
+    const now = Date.now();
+    const diffMs = now - completionTime;
+    const hoursElapsed = Math.max(0, diffMs / (1000 * 60 * 60));
+    const hoursRemaining = Math.max(0, Math.ceil(24 - hoursElapsed));
+    const isLockedPast24Hours = hoursElapsed >= 24;
+
+    return { isLockedPast24Hours, hoursRemaining, hoursElapsed };
+  };
+
+  // Fetch procedure appointments (Vaccination and Spay & Neuter)
+  const { data: dbAppointments = [] } = useQuery({
+    queryKey: ["procedure-appointments-queue"],
+    queryFn: async () => {
+      const supabase = getPublicSupabaseClient();
+      const list: any[] = [];
+      const seen = new Set<string>();
+
+      // 1. appointments table
+      try {
+        const { data } = await supabase
+          .from("appointments")
+          .select("*")
+          .order("date", { ascending: false });
+
+        if (data) {
+          data.forEach((d) => {
+            if (!seen.has(d.id)) {
+              seen.add(d.id);
+              list.push(d);
+            }
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      // 2. service_transactions
+      try {
+        const { data: txData } = await supabase
+          .from("service_transactions")
+          .select("*")
+          .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
+          .order("date", { ascending: false });
+
+        if (txData) {
+          txData.forEach((tx: any) => {
+            const refId = tx.reference_id || tx.id;
+            if (!seen.has(refId)) {
+              seen.add(refId);
+              list.push({
+                id: refId,
+                owner_id: tx.owner_id,
+                pet_name: tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet",
+                service_id: tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter",
+                date: tx.date ? tx.date.split("T")[0] : "",
+                status: tx.status || "confirmed",
+                notes: tx.detail || "",
+              });
+            }
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      // 3. localStorage cache
+      try {
+        if (typeof window !== "undefined") {
+          const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          local.forEach((l: any) => {
+            if (!seen.has(l.id)) {
+              seen.add(l.id);
+              list.push(l);
+            }
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      return list;
+    },
+    refetchInterval: 30000,
+  });
+
+  const queryClient = useQueryClient();
+
+  // Supabase Realtime subscription for live appointments and procedure queue
+  useEffect(() => {
+    const supabase = getPublicSupabaseClient();
+    const channel = supabase
+      .channel("realtime-consultations-appointments")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["procedure-appointments-queue"] });
+          queryClient.invalidateQueries({ queryKey: ["consultations-list"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  // Fetch pets and users for metadata enrichment
+  const { data: dbPets = [] } = useQuery({
+    queryKey: ["queue-pets"],
+    queryFn: async () => {
+      try {
+        const supabase = getPublicSupabaseClient();
+        const { data } = await supabase.from("pets").select("id, name, species, breed, owner_id");
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
+  });
+
+  const { data: dbUsers = [] } = useQuery({
+    queryKey: ["queue-users"],
+    queryFn: async () => {
+      try {
+        const supabase = getPublicSupabaseClient();
+        const { data } = await supabase.from("users").select("id, full_name, phone_number, address, email, avatar_url, role");
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
+  });
+
+  // Query completed vaccination records to accurately link administering vet
+  const { data: dbVaccinations = [] } = useQuery({
+    queryKey: ["vaccination_records"],
+    queryFn: async () => {
+      try {
+        const supabase = getPublicSupabaseClient();
+        const { data } = await supabase
+          .from("vaccination_records")
+          .select("id, pet_id, pet_name, veterinarian, administered_date, created_at")
+          .order("created_at", { ascending: false });
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
+  });
+
+  // Consolidate consultations into QueueEncounter[]
+  const consultationItems = useMemo<QueueEncounter[]>(() => {
+    return allConsultations.map((c) => {
+      const matchedUser = dbUsers.find(
+        (u: any) =>
+          (u.full_name && c.ownerName && u.full_name.trim().toLowerCase() === c.ownerName.trim().toLowerCase()) ||
+          u.id === c.ownerContact
+      );
+      const matchedVet = dbUsers.find((u: any) => {
+        if (!c.vetName) return false;
+        const uName = (u.full_name || "").toLowerCase().trim();
+        const vName = c.vetName.toLowerCase().trim();
+        return uName === vName || vName.includes(uName) || uName.includes(vName);
+      });
+
+      return {
+        ...c,
+        category: "consultation" as const,
+        isOverdue: isItemOverdue(c.date, c.status),
+        ownerAvatarUrl: matchedUser?.avatar_url,
+        vetAvatarUrl: matchedVet?.avatar_url,
+      };
+    });
+  }, [allConsultations, dbUsers]);
+
+  // Consolidate procedure appointments into QueueEncounter[]
+  const appointmentItems = useMemo<QueueEncounter[]>(() => {
+    // Read cached assigned vets from localStorage
+    let assignedVetsMap: Record<string, string> = {};
+    if (typeof window !== "undefined") {
+      try {
+        assignedVetsMap = JSON.parse(localStorage.getItem("syncvet_assigned_vets") || "{}");
+      } catch {}
+    }
+
+    return dbAppointments
+      .filter((apt: any) => apt.status !== "cancelled")
+      .map((apt: any) => {
+        const matchedPet = dbPets.find(
+          (p: any) =>
+            p.id === apt.pet_id ||
+            (p.name && apt.pet_name && p.name.trim().toLowerCase() === apt.pet_name.trim().toLowerCase())
+        );
+        const ownerId = apt.owner_id || matchedPet?.owner_id;
+        const matchedUser = dbUsers.find(
+          (u: any) =>
+            u.id === ownerId ||
+            (apt.owner_name && u.full_name && u.full_name.trim().toLowerCase() === apt.owner_name.trim().toLowerCase())
+        );
+
+        const isVax =
+          apt.service_id === "vaccination" ||
+          apt.service_id?.includes("vax") ||
+          (apt.notes && apt.notes.toLowerCase().includes("vax"));
+        const category: QueueCategory = isVax ? "vaccination" : "spay-neuter";
+        const statusMap = apt.status === "completed" ? "completed" : "waiting";
+
+        const petName = apt.pet_name || matchedPet?.name || "Pet";
+        const species = (matchedPet?.species as any) || "Dog";
+        const breed = matchedPet?.breed || (species === "Cat" ? "Puspin" : "Aspin");
+        const ownerName = matchedUser?.full_name || apt.owner_name || "Pet Owner";
+        const ownerContact = matchedUser?.phone_number || apt.owner_contact || "N/A";
+        const ownerBarangay = matchedUser?.address || apt.owner_barangay || "Carmen";
+
+        const timeStr = apt.time_slot === "afternoon" ? "01:30 PM" : (apt.time || "09:00 AM");
+        const encounterNo = apt.appointment_no || `PROC-${String(apt.id).slice(-5).toUpperCase()}`;
+
+        // Determine real attending/administering veterinarian
+        const rawId = String(apt.id).replace("proc-", "");
+        let resolvedVet = apt.veterinarian || apt.assigned_vet || "";
+
+        // 1. Check local assigned vets map from vaccine/surgery administration
+        if (!resolvedVet && assignedVetsMap) {
+          resolvedVet =
+            assignedVetsMap[rawId] ||
+            assignedVetsMap[apt.id] ||
+            assignedVetsMap[encounterNo] ||
+            (matchedPet?.id ? assignedVetsMap[matchedPet.id] : "") ||
+            "";
+        }
+
+        // 2. Extract from clinical appointment notes
+        if (!resolvedVet && apt.notes) {
+          const match = apt.notes.match(
+            /(?:Attending|Operating Surgeon|Veterinarian|Administered by):\s*([^.\n\r]+)/i
+          );
+          if (match && match[1]) {
+            resolvedVet = match[1].trim();
+          }
+        }
+
+        // 3. For vaccination appointments, check completed vaccination_records table
+        if (!resolvedVet && isVax && dbVaccinations.length > 0) {
+          const vax = dbVaccinations.find(
+            (v: any) =>
+              (apt.pet_id && v.pet_id === apt.pet_id) ||
+              (matchedPet?.id && v.pet_id === matchedPet.id) ||
+              (v.pet_name && petName && v.pet_name.trim().toLowerCase() === petName.trim().toLowerCase())
+          );
+          if (vax?.veterinarian) {
+            resolvedVet = vax.veterinarian;
+          }
+        }
+
+        // 4. Default fallback
+        if (!resolvedVet) {
+          resolvedVet = "Attending CVO Vet";
+        }
+
+        // Match vet user to fetch their profile picture/avatar
+        const matchedVetUser = dbUsers.find((u: any) => {
+          if (!resolvedVet || resolvedVet === "Attending CVO Vet") return false;
+          const uName = (u.full_name || "").toLowerCase().trim();
+          const vName = resolvedVet.toLowerCase().trim();
+          return uName === vName || vName.includes(uName) || uName.includes(vName);
+        });
+
+        return {
+          id: `proc-${apt.id}`,
+          encounterNo,
+          petId: apt.pet_id || matchedPet?.id || "",
+          petName,
+          species,
+          breed,
+          ownerName,
+          ownerContact,
+          ownerBarangay,
+          ownerAvatarUrl: matchedUser?.avatar_url,
+          vetName: resolvedVet,
+          vetAvatarUrl: matchedVetUser?.avatar_url,
+          date: apt.date || "",
+          time: timeStr,
+          chiefComplaint:
+            category === "vaccination"
+              ? "Scheduled Anti-Rabies Vaccination"
+              : "Scheduled Spay/Neuter (Kapon)",
+          symptoms: [],
+          vitals: { weightKg: 0, temperatureC: 0 },
+          diagnosis:
+            category === "vaccination"
+              ? "Anti-Rabies Prophylaxis Protocol"
+              : "Elective Gonadectomy / Kapon",
+          treatment:
+            category === "vaccination"
+              ? "Rabies Inactivated Vaccine (1.0 mL SC)"
+              : "Pre-anesthetic evaluation & Kapon procedure",
+          medication:
+            category === "vaccination"
+              ? "Rabies Vaccine (Annual Booster)"
+              : "Post-op analgesia & antiseptic spray",
+          dosageInstructions:
+            category === "vaccination"
+              ? "Annual municipal booster schedule recommended"
+              : "Keep surgical area clean and dry for 7-10 days",
+          status: statusMap,
+          category,
+          isOverdue: isItemOverdue(apt.date, apt.status),
+          serviceType: "Field Treatment/Consultation" as const,
+          veterinarianNotes:
+            apt.notes ||
+            (category === "vaccination"
+              ? "Municipal Rabies Eradication Program"
+              : "CVO Pet Population Management Campaign"),
+        };
+      });
+  }, [dbAppointments, dbPets, dbUsers, dbVaccinations]);
+
+  // Unified list of all queue items
+  const allUnifiedQueue = useMemo(() => {
+    return [...consultationItems, ...appointmentItems].sort((a, b) => {
+      return (b.date || "").localeCompare(a.date || "");
+    });
+  }, [consultationItems, appointmentItems]);
+
+  // Pet Owner role filtering
+  const userFilteredQueue = useMemo(() => {
+    if (!isPetOwner) return allUnifiedQueue;
     const userFullName = (user?.fullName || "").toLowerCase();
     const userEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
 
-    return allConsultations.filter((c) => {
+    return allUnifiedQueue.filter((c) => {
       const owner = c.ownerName.toLowerCase();
       if (userFullName && owner.includes(userFullName)) return true;
       if (userEmail === "itcgeek03@gmail.com" && (owner.includes("urgentrouse") || owner.includes("kyle"))) return true;
-      // Also match by pet names if Kyle Urgentrouse
-      if (userEmail === "itcgeek03@gmail.com" && ["kay", "hello", "jazy", "lex"].includes(c.petName.toLowerCase())) return true;
+      if (userEmail === "itcgeek03@gmail.com" && ["kay", "hello", "jazy", "lex", "branny", "tirsodog"].includes(c.petName.toLowerCase())) return true;
       return false;
     });
-  }, [allConsultations, isPetOwner, user]);
+  }, [allUnifiedQueue, isPetOwner, user]);
 
-  const [dateFilter, setDateFilter] = useState<"all" | "today">("all");
+  // Helpers to clean and shorten verbose text for compact responsive layout
+  const formatEncounterDate = (dateStr?: string) => {
+    if (!dateStr) return "N/A";
+    try {
+      const parsed = parseISO(dateStr);
+      if (isValid(parsed)) return format(parsed, "MMM d, yyyy");
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
+  };
 
-  const todaysConsultations = useMemo(
-    () => consultations.filter((c) => isTodayDate(c.date)),
-    [consultations]
+  const cleanBreed = (breed?: string) => {
+    if (!breed) return "";
+    return breed.replace(/\s*\([^)]*\)/g, "").trim();
+  };
+
+  const cleanBarangay = (b?: string) => {
+    if (!b) return "CDO Central";
+    const trimmed = b
+      .replace(/Cagayan de Oro City/i, "")
+      .replace(/^Barangay\s+/i, "Brgy. ")
+      .replace(/^,\s*|,\s*$/g, "")
+      .trim();
+    return trimmed || "CDO Central";
+  };
+
+  const cleanVetName = (name?: string) => {
+    if (!name) return "CVO Duty Vet";
+    if (name.includes("Attending CVO Veterinarian")) return "Attending CVO Vet";
+    return name.split(",")[0].trim();
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name || !name.trim()) return "U";
+    return name
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  };
+
+  // 24-Hour status for currently selected consultation
+  const { isLockedPast24Hours, hoursRemaining } = useMemo(
+    () => get24HourUpdateStatus(selectedConsultation),
+    [selectedConsultation]
   );
-  const todaysWaitingCount = todaysConsultations.filter((c) => c.status === "waiting").length;
-  const todaysActiveCount = todaysConsultations.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
-  const todaysCompletedCount = todaysConsultations.filter((c) => c.status === "completed").length;
+
+  // Metrics
+  const todaysItems = useMemo(
+    () => userFilteredQueue.filter((c) => isTodayDate(c.date)),
+    [userFilteredQueue]
+  );
+  const overdueCount = useMemo(
+    () => userFilteredQueue.filter((c) => c.isOverdue).length,
+    [userFilteredQueue]
+  );
+  const todaysWaitingCount = todaysItems.filter((c) => c.status === "waiting" && !c.isOverdue).length;
+  const todaysActiveCount = todaysItems.filter((c) => c.status === "in-consultation" || c.status === "treatment").length;
+  const todaysCompletedCount = todaysItems.filter((c) => c.status === "completed").length;
+
+  // Category counts
+  const consultationCount = useMemo(() => userFilteredQueue.filter((q) => q.category === "consultation").length, [userFilteredQueue]);
+  const vaccinationCount = useMemo(() => userFilteredQueue.filter((q) => q.category === "vaccination").length, [userFilteredQueue]);
+  const spayNeuterCount = useMemo(() => userFilteredQueue.filter((q) => q.category === "spay-neuter").length, [userFilteredQueue]);
 
   const metrics: PageMetric[] = [
     {
-      title: "Today's Consultations",
-      value: `${todaysConsultations.length}`,
-      icon: Stethoscope,
-      gradient: "from-blue-500/5",
-      iconClass: "text-blue-500",
-      badge: todaysWaitingCount > 0 ? `${todaysWaitingCount} Waiting` : "Queue Clear",
-      badgeClass: todaysWaitingCount > 0 ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10",
-      sub: "Walk-ins recorded today",
-    },
-    {
-      title: "Waiting in Queue",
-      value: `${todaysWaitingCount}`,
-      icon: Clock,
+      title: "Today's Patient Intake",
+      value: `${todaysItems.length}`,
+      icon: CalendarCheck,
       gradient: "from-amber-500/5",
       iconClass: "text-amber-500",
-      badge: todaysWaitingCount > 0 ? "In Triage" : "Floor Clear",
-      badgeClass: todaysWaitingCount > 0 ? "text-amber-500 bg-amber-500/10" : "text-muted-foreground bg-muted/20",
-      sub: "Next for vitals/exam today",
+      badge: overdueCount > 0 ? `${overdueCount} Past Due` : (todaysItems.length > 0 ? "Active Floor" : "Queue Clear"),
+      badgeClass: overdueCount > 0 ? "text-rose-600 bg-rose-500/15" : "text-emerald-500 bg-emerald-500/10",
+      sub: "Scheduled appointments today",
     },
     {
-      title: "In Consultation / Tx",
-      value: `${todaysActiveCount}`,
-      icon: AlertCircle,
+      title: "Anti-Rabies Caseload",
+      value: `${vaccinationCount}`,
+      icon: Syringe,
+      gradient: "from-blue-500/5",
+      iconClass: "text-blue-500",
+      badge: "RA 9482 Mandate",
+      badgeClass: "text-blue-600 bg-blue-500/10",
+      sub: "Canine & feline rabies immunizations",
+    },
+    {
+      title: "Spay & Neuter (Kapon)",
+      value: `${spayNeuterCount}`,
+      icon: Scissors,
       gradient: "from-purple-500/5",
       iconClass: "text-purple-500",
-      badge: todaysActiveCount > 0 ? "Active Encounters" : "None Active",
-      badgeClass: todaysActiveCount > 0 ? "text-purple-500 bg-purple-500/10" : "text-muted-foreground bg-muted/20",
-      sub: "Exam & treatment rooms today",
+      badge: "Sterilization Program",
+      badgeClass: "text-purple-600 bg-purple-500/10",
+      sub: "Municipal population control surgeries",
     },
     {
-      title: "Completed Today",
-      value: `${todaysCompletedCount}`,
-      icon: CheckCircle2,
+      title: "Clinical Consultations (EMR)",
+      value: `${consultationCount}`,
+      icon: Stethoscope,
       gradient: "from-emerald-500/5",
       iconClass: "text-emerald-500",
-      badge: todaysCompletedCount > 0 ? "Resolved" : "0 Today",
-      badgeClass: todaysCompletedCount > 0 ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground bg-muted/20",
-      sub: "Discharged with RX today",
+      badge: "General Medicine",
+      badgeClass: "text-emerald-600 bg-emerald-500/10",
+      sub: "Outpatient exams, diagnosis & Rx",
     },
   ];
 
+  // Filtering
   const filtered = useMemo(() => {
-    return consultations.filter((c) => {
+    return userFilteredQueue.filter((c) => {
       const q = query.trim().toLowerCase();
       const matchesQuery =
         !q ||
@@ -156,37 +638,139 @@ export default function ConsultationsPage() {
         c.ownerBarangay.toLowerCase().includes(q) ||
         c.diagnosis.toLowerCase().includes(q);
 
-      const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchesDate = dateFilter === "all" || (dateFilter === "today" && isTodayDate(c.date));
-      return matchesQuery && matchesStatus && matchesDate;
+      const matchesCategory = categoryFilter === "all" || c.category === categoryFilter;
+
+      let matchesStatus = true;
+      if (statusFilter === "overdue") {
+        matchesStatus = c.isOverdue;
+      } else if (statusFilter === "all") {
+        matchesStatus = true;
+      } else if (statusFilter === "waiting") {
+        matchesStatus = (c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment") && !c.isOverdue;
+      } else {
+        matchesStatus = c.status === statusFilter;
+      }
+
+      return matchesQuery && matchesCategory && matchesStatus;
     });
-  }, [consultations, query, statusFilter, dateFilter]);
+  }, [userFilteredQueue, query, categoryFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const getStatusBadge = (status: CVOConsultation["status"]) => {
+  const getCategoryBadge = (category: QueueCategory) => {
+    switch (category) {
+      case "vaccination":
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+            <Syringe className="size-2.5 shrink-0" /> Anti-Rabies
+          </span>
+        );
+      case "spay-neuter":
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
+            <Scissors className="size-2.5 shrink-0" /> Kapon
+          </span>
+        );
+      case "consultation":
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+            <Stethoscope className="size-2.5 shrink-0" /> EMR Consult
+          </span>
+        );
+    }
+  };
+
+  const getStatusBadge = (status: CVOConsultation["status"], isOverdue?: boolean) => {
+    if (isOverdue) {
+      return (
+        <Badge className="text-[10px] bg-rose-500/15 text-rose-600 hover:bg-rose-500/25 border-rose-500/30 whitespace-nowrap">
+          Overdue
+        </Badge>
+      );
+    }
     switch (status) {
       case "in-consultation":
-        return <Badge className="text-[10px] bg-blue-500/15 text-blue-500 hover:bg-blue-500/25">In Consultation</Badge>;
+        return <Badge className="text-[10px] bg-blue-500/15 text-blue-500 hover:bg-blue-500/25 whitespace-nowrap">In Consultation</Badge>;
       case "treatment":
-        return <Badge className="text-[10px] bg-purple-500/15 text-purple-500 hover:bg-purple-500/25">Treatment</Badge>;
+        return <Badge className="text-[10px] bg-purple-500/15 text-purple-500 hover:bg-purple-500/25 whitespace-nowrap">Treatment</Badge>;
       case "completed":
-        return <Badge className="text-[10px] bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25">Completed</Badge>;
+        return <Badge className="text-[10px] bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 whitespace-nowrap">Completed</Badge>;
       case "waiting":
       default:
-        return <Badge className="text-[10px] bg-amber-500/15 text-amber-500 hover:bg-amber-500/25">Waiting</Badge>;
+        return <Badge className="text-[10px] bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 whitespace-nowrap">Waiting</Badge>;
     }
+  };
+
+  // Handle status update (for consultations or procedure appointments)
+  const handleUpdateStatus = (item: QueueEncounter, newStatus: CVOConsultation["status"]) => {
+    if (item.isOverdue) return;
+
+    // Practical Clinical Intercept: Vaccination requires recording batch, dose, & tag
+    if (newStatus === "completed" && item.category === "vaccination" && item.status !== "completed") {
+      if (isVaccineOutOfStock) {
+        toast.error("Vaccination Restricted: Vaccine Out of Stock", {
+          description: "There are currently 0 doses of anti-rabies vaccine in cold-chain inventory. Please add or receive stock in Vaccine Inventory before completing this encounter.",
+        });
+        return;
+      }
+      setVaxDialogOpen(true);
+      return;
+    }
+
+    // Practical Clinical Intercept: Kapon requires confirming pre-op fasting, anesthesia, & recovery
+    if (newStatus === "completed" && item.category === "spay-neuter" && item.status !== "completed") {
+      setSurgeryDialogOpen(true);
+      return;
+    }
+
+    if (item.status === "completed" && newStatus !== "completed") {
+      const { isLockedPast24Hours: locked } = get24HourUpdateStatus(item);
+      if (locked) {
+        toast.error("Record Finalized", {
+          description: "You cannot update this clinical encounter after 24 hours of completion.",
+        });
+        return;
+      }
+    }
+
+    if (newStatus === "completed") {
+      const nowIso = new Date().toISOString();
+      try {
+        const compMap = JSON.parse(localStorage.getItem("syncvet_completed_timestamps") || "{}");
+        compMap[item.id] = nowIso;
+        if (item.id.startsWith("proc-")) {
+          compMap[item.id.replace("proc-", "")] = nowIso;
+        }
+        if (item.encounterNo) compMap[item.encounterNo] = nowIso;
+        localStorage.setItem("syncvet_completed_timestamps", JSON.stringify(compMap));
+      } catch {}
+    }
+
+    if (item.id.startsWith("proc-")) {
+      const rawId = item.id.replace("proc-", "");
+      const supabase = getPublicSupabaseClient();
+      supabase.from("appointments").update({ status: newStatus }).eq("id", rawId).then();
+      try {
+        const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+        const updated = local.map((l: any) => (l.id === rawId ? { ...l, status: newStatus } : l));
+        localStorage.setItem("syncvet_local_appointments", JSON.stringify(updated));
+      } catch {}
+    } else {
+      updateConsultationStatus(item.id, newStatus);
+    }
+    setSelectedConsultation({ ...item, status: newStatus });
   };
 
   return (
     <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
       {/* ── Page Header ── */}
       <PageHeader
-        supertitle="Clinical Operations"
-        title="Consultations & EMR"
-        subtitle={<>Free municipal veterinary consultations, clinical diagnosis, <span className="text-foreground">electronic medical records (EMR)</span>, and treatment encounters for Cagayan de Oro pet owners.</>}
+        supertitle="Clinical & Preventive Operations"
+        title="Clinical Queue & Procedures"
+        subtitle={<>Municipal veterinary consultations, clinical diagnosis, <span className="text-foreground">electronic medical records (EMR)</span>, rabies vaccinations, and spay/neuter encounters for Cagayan de Oro pet owners.</>}
         actions={<NewConsultationDialog />}
       />
 
@@ -198,9 +782,9 @@ export default function ConsultationsPage() {
         <CardHeader className="px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-lg font-bold">Clinical Encounters Queue</CardTitle>
+              <CardTitle className="text-lg font-bold">Clinical Encounters & Procedures Queue</CardTitle>
               <CardDescription className="text-[11px] text-muted-foreground/80">
-                Live patient queue at the CVO Central Clinic with encounter lifecycle status
+                Live patient queue at the CVO Central Clinic with categorized encounter and procedure lifecycle
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +792,7 @@ export default function ConsultationsPage() {
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search pet, owner, diagnosis, or encounter #..."
-                  className="h-8 w-full sm:w-64 pl-8 text-xs bg-muted/20"
+                  className="h-8 w-full sm:w-56 pl-8 text-xs bg-muted/20"
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
@@ -217,30 +801,38 @@ export default function ConsultationsPage() {
                 />
               </div>
 
-              {/* Date Filter */}
-              <Select value={dateFilter} onValueChange={(v: "all" | "today") => { setDateFilter(v); setPage(1); }}>
+              {/* Category Filter */}
+              <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
                 <SelectTrigger className="h-8 w-36 text-xs bg-muted/20">
-                  <SelectValue placeholder="All Dates" />
+                  <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Dates ({consultations.length})</SelectItem>
-                  <SelectItem value="today">Today Only ({todaysConsultations.length})</SelectItem>
+                <SelectContent className="text-xs">
+                  <SelectItem value="all" className="text-xs py-1 cursor-pointer">All Categories</SelectItem>
+                  <SelectItem value="consultation" className="text-xs py-1 cursor-pointer">EMR Consult</SelectItem>
+                  <SelectItem value="vaccination" className="text-xs py-1 cursor-pointer">Vaccination</SelectItem>
+                  <SelectItem value="spay-neuter" className="text-xs py-1 cursor-pointer">Spay / Neuter</SelectItem>
                 </SelectContent>
               </Select>
 
               {/* Status Filter */}
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-                <SelectTrigger className="h-8 w-36 text-xs bg-muted/20">
+                <SelectTrigger className="h-8 w-32 text-xs bg-muted/20">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="waiting">Waiting</SelectItem>
-                  <SelectItem value="in-consultation">In Consultation</SelectItem>
-                  <SelectItem value="treatment">Treatment</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
+                <SelectContent className="text-xs">
+                  <SelectItem value="all" className="text-xs py-1 cursor-pointer">All Statuses</SelectItem>
+                  <SelectItem value="waiting" className="text-xs py-1 cursor-pointer">Waiting</SelectItem>
+                  <SelectItem value="overdue" className="text-xs py-1 cursor-pointer">Overdue</SelectItem>
+                  <SelectItem value="completed" className="text-xs py-1 cursor-pointer">Completed</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Table Column Filter Icon Button */}
+              <TableColumnFilter
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -248,91 +840,166 @@ export default function ConsultationsPage() {
         <CardContent className="px-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Encounter & Date</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner / Barangay</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Complaint & Diagnosis</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Vitals</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Attending Vet</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Action</TableHead>
+              <TableRow className="hover:bg-transparent">
+                {visibleColumns.includes("transaction") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Transaction ID & Type</TableHead>
+                )}
+                {visibleColumns.includes("date") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Schedule Date</TableHead>
+                )}
+                {visibleColumns.includes("animal") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal</TableHead>
+                )}
+                {visibleColumns.includes("owner") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner / Area</TableHead>
+                )}
+                {visibleColumns.includes("service") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Service & Diagnosis</TableHead>
+                )}
+                {visibleColumns.includes("vet") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Attending Vet</TableHead>
+                )}
+                {visibleColumns.includes("status") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Status</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                    {dateFilter === "today" 
-                      ? "No clinical encounters recorded today." 
-                      : "No clinical encounters match the filter."}
+                  <TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground text-xs">
+                    No clinical encounters or procedure appointments match the selected filter.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((c, idx) => (
-                  <TableRow key={`${c.id}-${idx}`} className="hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs text-muted-foreground pl-6">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-foreground">{c.encounterNo}</span>
-                        {isTodayDate(c.date) ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/20">
-                            Today
+                  <TableRow
+                    key={`${c.id}-${idx}`}
+                    onClick={() => setSelectedConsultation(c)}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                    title={`Click to view details for ${c.petName} (${c.encounterNo})`}
+                  >
+                    {/* 1. Transaction ID & Type */}
+                    {visibleColumns.includes("transaction") && (
+                      <TableCell className="pl-6 py-3.5 align-middle whitespace-nowrap">
+                        <div className="space-y-1">
+                          <span className="font-mono text-xs font-bold text-foreground group-hover:text-primary transition-colors tracking-tight block">
+                            {c.encounterNo}
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-muted text-muted-foreground">
-                            {c.date || "Past"}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground/60">{c.time}</p>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-bold text-sm text-foreground">{c.petName}</span>
-                      <p className="text-xs text-muted-foreground">{c.species} • {c.breed}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs font-medium text-foreground">{c.ownerName}</p>
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                        <MapPin className="size-3 text-primary/60" /> {c.ownerBarangay}
-                      </p>
-                    </TableCell>
-                    <TableCell className="max-w-[220px]">
-                      <p className="text-xs font-semibold text-foreground truncate">{c.diagnosis}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{c.chiefComplaint}</p>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {c.vitals.weightKg} kg • {c.vitals.temperatureC} °C
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {c.vetName}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(c.status)}
-                    </TableCell>
-                    <TableCell className="text-right pr-6">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {!isPetOwner && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedConsultation(c);
-                              setExamDialogOpen(true);
-                            }}
-                            className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-2xs font-semibold px-2.5"
+                          <div>
+                            {getCategoryBadge(c.category)}
+                          </div>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 2. Schedule Date & Time */}
+                    {visibleColumns.includes("date") && (
+                      <TableCell className="py-3.5 align-middle whitespace-nowrap">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
+                            <Calendar className="size-3 text-muted-foreground/60 shrink-0" />
+                            <span>{formatEncounterDate(c.date)}</span>
+                            {isTodayDate(c.date) && !c.isOverdue && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/25">
+                                Today
+                              </span>
+                            )}
+                          </div>
+                          {c.time && (
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <Clock className="size-3 text-muted-foreground/50 shrink-0" />
+                              <span className="font-mono text-[10px] text-muted-foreground/80">{c.time}</span>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 3. Patient / Animal */}
+                    {visibleColumns.includes("animal") && (
+                      <TableCell className="py-3 align-middle">
+                        <div className="flex items-center gap-2 max-w-[150px]">
+                          <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                            <PawPrint className="size-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight truncate">
+                              {c.petName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5" title={`${c.species} • ${c.breed}`}>
+                              {c.species} <span className="text-muted-foreground/40">•</span> {cleanBreed(c.breed)}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 4. Owner & Barangay */}
+                    {visibleColumns.includes("owner") && (
+                      <TableCell className="py-3 align-middle">
+                        <div className="flex items-center gap-2.5 max-w-[160px]">
+                          <Avatar className="size-8 shrink-0 border border-border/80 shadow-2xs">
+                            {c.ownerAvatarUrl && (
+                              <AvatarImage src={c.ownerAvatarUrl} alt={c.ownerName} className="object-cover" />
+                            )}
+                            <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">
+                              {getInitials(c.ownerName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <p className="text-xs font-semibold text-foreground truncate" title={c.ownerName}>
+                              {c.ownerName}
+                            </p>
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground truncate" title={c.ownerBarangay}>
+                              <MapPin className="size-3 text-primary/60 shrink-0" />
+                              <span className="truncate">{cleanBarangay(c.ownerBarangay)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 5. Complaint & Diagnosis */}
+                    {visibleColumns.includes("service") && (
+                      <TableCell className="max-w-[170px] py-3 align-middle">
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-semibold text-foreground truncate" title={c.diagnosis}>
+                            {c.diagnosis}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate italic" title={c.chiefComplaint}>
+                            {c.chiefComplaint || "Routine examination"}
+                          </p>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 6. Attending Veterinarian */}
+                    {visibleColumns.includes("vet") && (
+                      <TableCell className="py-3 align-middle">
+                        <div className="flex items-center gap-2 text-xs max-w-[160px]">
+                          <div
+                            className="size-6 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/25 shadow-2xs"
+                            title={cleanVetName(c.vetName)}
                           >
-                            <Stethoscope className="size-3.5" /> Examine
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedConsultation(c)}
-                          className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
-                        >
-                          <Eye className="size-3.5" /> Details
-                        </Button>
-                      </div>
-                    </TableCell>
+                            <Stethoscope className="size-3" />
+                          </div>
+                          <span className="font-medium text-foreground truncate" title={c.vetName}>
+                            {cleanVetName(c.vetName)}
+                          </span>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 7. Status & Arrow */}
+                    {visibleColumns.includes("status") && (
+                      <TableCell className="text-right pr-6 py-3 align-middle whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          {getStatusBadge(c.status, c.isOverdue)}
+                          <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
@@ -354,7 +1021,7 @@ export default function ConsultationsPage() {
         </CardContent>
       </Card>
 
-      {/* ── Consultation EMR Detail Drawer ── */}
+      {/* ── Consultation & Procedure Detail Drawer ── */}
       <Sheet
         open={!!selectedConsultation && !examDialogOpen && !officialFormOpen}
         onOpenChange={(open) => {
@@ -368,111 +1035,415 @@ export default function ConsultationsPage() {
             <div className="space-y-5">
               <SheetHeader className="p-0 text-left">
                 <div className="flex items-center justify-between pr-8">
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    {selectedConsultation.encounterNo}
-                  </Badge>
-                  {getStatusBadge(selectedConsultation.status)}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {selectedConsultation.encounterNo}
+                    </Badge>
+                    {getCategoryBadge(selectedConsultation.category)}
+                  </div>
+                  {getStatusBadge(selectedConsultation.status, selectedConsultation.isOverdue)}
                 </div>
                 <SheetTitle className="text-xl font-bold flex items-center gap-2">
-                  <Stethoscope className="size-5 text-primary" />
+                  {selectedConsultation.category === "vaccination" ? (
+                    <Syringe className="size-5 text-blue-500" />
+                  ) : selectedConsultation.category === "spay-neuter" ? (
+                    <Scissors className="size-5 text-purple-500" />
+                  ) : (
+                    <Stethoscope className="size-5 text-primary" />
+                  )}
                   {selectedConsultation.petName} ({selectedConsultation.species})
                 </SheetTitle>
                 <SheetDescription className="text-xs">
-                  Encounter on {selectedConsultation.date} at {selectedConsultation.time}
+                  {selectedConsultation.category === "vaccination"
+                    ? "Anti-Rabies Vaccination Appointment"
+                    : selectedConsultation.category === "spay-neuter"
+                    ? "Spay / Neuter (Kapon) Procedure"
+                    : "Clinical Consultation & EMR Encounter"}{" "}
+                  on {formatEncounterDate(selectedConsultation.date)} at {selectedConsultation.time}
                 </SheetDescription>
               </SheetHeader>
 
-              {/* Status Update Quick Bar */}
-              <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Update Encounter Lifecycle
-                </Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(["waiting", "in-consultation", "treatment", "completed"] as const).map((st) => (
-                    <Button
-                      key={st}
-                      variant={selectedConsultation.status === st ? "default" : "outline"}
-                      size="sm"
-                      className="h-7 text-[11px] capitalize cursor-pointer"
-                      onClick={() => {
-                        updateConsultationStatus(selectedConsultation.id, st);
-                        setSelectedConsultation({ ...selectedConsultation, status: st });
-                      }}
-                    >
-                      {st.replace("-", " ")}
-                    </Button>
-                  ))}
+              {/* Overdue Warning Banner */}
+              {selectedConsultation.isOverdue && (
+                <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 dark:bg-rose-950/30 space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-xs">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>Schedule Overdue — Archived (View Only)</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    This scheduled encounter was not processed on its appointed date ({formatEncounterDate(selectedConsultation.date)}). It has been automatically archived in view-only mode to preserve official clinic audit integrity. Editing is disabled.
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Veterinary Examination Action Banner */}
-              {!isPetOwner && (
-                <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/30 space-y-2">
+              {/* Status Update Quick Bar (only for clinical consultations) */}
+              {!isPetOwner && selectedConsultation.category === "consultation" && (
+                <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Update Encounter Lifecycle
+                    </Label>
+                    {selectedConsultation.isOverdue && (
+                      <span className="text-[10px] text-rose-500 font-medium">Locked (Overdue)</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["waiting", "in-consultation", "treatment", "completed"] as const).map((st) => (
+                      <Button
+                        key={st}
+                        disabled={selectedConsultation.isOverdue}
+                        variant={selectedConsultation.status === st ? "default" : "outline"}
+                        size="sm"
+                        className={cn(
+                          "h-7 text-[11px] capitalize",
+                          selectedConsultation.isOverdue ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                        )}
+                        onClick={() => handleUpdateStatus(selectedConsultation, st)}
+                      >
+                        {st.replace("-", " ")}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Veterinary Examination Action Banner (only for clinical consultations) */}
+              {!isPetOwner && selectedConsultation.category === "consultation" && (
+                <div className={cn(
+                  "p-3.5 rounded-xl border space-y-2",
+                  selectedConsultation.isOverdue
+                    ? "border-muted bg-muted/20 opacity-60"
+                    : "border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/30"
+                )}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Stethoscope className="size-4 text-blue-600 dark:text-blue-400" />
                       Veterinarian Clinical Chart
                     </span>
-                    {selectedConsultation.diagnosis.toLowerCase().includes("pending") && (
+                    {selectedConsultation.isOverdue ? (
+                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
+                        Locked
+                      </Badge>
+                    ) : selectedConsultation.diagnosis.toLowerCase().includes("pending") && (
                       <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
                         Exam Pending
                       </Badge>
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-snug">
-                    Record vitals, perform the 12-system examination, input medical diagnosis, treatment administered, prescriptions, and follow-up care.
+                    {selectedConsultation.isOverdue
+                      ? "Cannot record examination findings for an expired schedule."
+                      : "Record vitals, perform the 12-system examination, input medical diagnosis, treatment administered, prescriptions, and follow-up care."}
                   </p>
                   <Button
                     size="sm"
-                    className="w-full gap-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs"
-                    onClick={() => setExamDialogOpen(true)}
+                    disabled={selectedConsultation.isOverdue}
+                    className={cn(
+                      "w-full gap-2 text-xs font-bold",
+                      selectedConsultation.isOverdue
+                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
+                        : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs"
+                    )}
+                    onClick={() => !selectedConsultation.isOverdue && setExamDialogOpen(true)}
                   >
                     <ClipboardCheck className="size-3.5" />
-                    <span>Fill Up Clinical Examination & Findings</span>
+                    <span>{selectedConsultation.isOverdue ? "Examination Locked (Schedule Due)" : "Fill Up Clinical Examination & Findings"}</span>
+                  </Button>
+                </div>
+              )}
+
+              {/* Anti-Rabies Vaccination Administration Banner */}
+              {!isPetOwner && selectedConsultation.category === "vaccination" && (
+                <div className={cn(
+                  "p-3.5 rounded-xl border space-y-2",
+                  selectedConsultation.isOverdue
+                    ? "border-muted bg-muted/20 opacity-60"
+                    : selectedConsultation.status === "completed"
+                    ? (isLockedPast24Hours
+                        ? "border-border/80 bg-muted/25"
+                        : "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25")
+                    : isVaccineOutOfStock
+                    ? "border-rose-500/30 bg-rose-500/10 dark:bg-rose-950/25"
+                    : "border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/30"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Syringe className={cn(
+                        "size-4",
+                        selectedConsultation.status === "completed"
+                          ? (isLockedPast24Hours ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400")
+                          : isVaccineOutOfStock
+                          ? "text-rose-600 dark:text-rose-400"
+                          : "text-blue-600 dark:text-blue-400"
+                      )} />
+                      Anti-Rabies Prophylaxis Protocol
+                    </span>
+                    {selectedConsultation.isOverdue ? (
+                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
+                        Locked
+                      </Badge>
+                    ) : selectedConsultation.status === "completed" ? (
+                      isLockedPast24Hours ? (
+                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border/80 font-bold flex items-center gap-1">
+                          <Lock className="size-3" /> Locked (Past 24h)
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="size-3" /> Dose Administered
+                        </Badge>
+                      )
+                    ) : isVaccineOutOfStock ? (
+                      <Badge variant="outline" className="text-[10px] bg-rose-500/15 text-rose-600 border-rose-500/30 font-bold flex items-center gap-1">
+                        <AlertTriangle className="size-3" /> Out of Stock
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold">
+                        RA 9482 Ready
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {selectedConsultation.isOverdue
+                      ? "Vaccination schedule expired. Rebooking required for cold-chain allocation."
+                      : selectedConsultation.status === "completed"
+                      ? isLockedPast24Hours
+                        ? "Rabies vaccine dose successfully administered. This record has been finalized and cannot be updated after 24 hours pursuant to CVO regulatory audit standards."
+                        : "Rabies vaccine dose successfully administered and verified in CVO Immunization Ledger. Pet is protected."
+                      : isVaccineOutOfStock
+                      ? "Vaccine doses currently unavailable in cold-chain inventory (0 stock). You cannot administer this vaccination until new stock is received or logged in Vaccine Inventory."
+                      : "Conduct pre-vaccination clinical triage, verify body temperature & weight, inject 1.0 mL SC dose, issue municipal rabies tag, and schedule annual booster."}
+                  </p>
+
+                  {/* 24-Hour Policy Notice Bar when completed */}
+                  {selectedConsultation.status === "completed" && !selectedConsultation.isOverdue && (
+                    <div className={cn(
+                      "flex items-center gap-2 p-2 rounded-lg text-[11px] font-medium border",
+                      isLockedPast24Hours
+                        ? "bg-muted/40 border-border/70 text-muted-foreground"
+                        : "bg-amber-500/10 border-amber-500/25 text-amber-800 dark:text-amber-300"
+                    )}>
+                      {isLockedPast24Hours ? (
+                        <>
+                          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+                          <span><strong>Locked:</strong> You cannot update after 24 hours of administration.</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span><strong>Notice:</strong> You can review or update this dose record within 24 hours only (<strong>{hoursRemaining}h remaining</strong>). You cannot update after 24 hours.</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    size="sm"
+                    disabled={selectedConsultation.isOverdue || isLockedPast24Hours || (isVaccineOutOfStock && selectedConsultation.status !== "completed")}
+                    className={cn(
+                      "w-full gap-2 text-xs font-bold",
+                      selectedConsultation.isOverdue || isLockedPast24Hours || (isVaccineOutOfStock && selectedConsultation.status !== "completed")
+                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
+                        : selectedConsultation.status === "completed"
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
+                        : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs"
+                    )}
+                    onClick={() => {
+                      if (selectedConsultation.isOverdue) return;
+                      if (isLockedPast24Hours) {
+                        toast.error("Record Finalized", {
+                          description: "You cannot update this vaccination record after 24 hours of administration.",
+                        });
+                        return;
+                      }
+                      if (isVaccineOutOfStock && selectedConsultation.status !== "completed") {
+                        toast.error("Vaccine Out of Stock", {
+                          description: "Cannot administer dose. Please receive or log inventory stock in Vaccine Inventory first.",
+                        });
+                        return;
+                      }
+                      setVaxDialogOpen(true);
+                    }}
+                  >
+                    {isLockedPast24Hours ? (
+                      <Lock className="size-3.5" />
+                    ) : (
+                      <Syringe className="size-3.5" />
+                    )}
+                    <span>
+                      {selectedConsultation.isOverdue
+                        ? "Vaccination Locked"
+                        : selectedConsultation.status === "completed"
+                        ? isLockedPast24Hours
+                          ? "Locked — Cannot Update After 24 Hours"
+                          : "Review / Update Vaccine Dose Record"
+                        : isVaccineOutOfStock
+                        ? "Cannot Administer (Out of Stock)"
+                        : "Administer Vaccine & Record Batch / Dose"}
+                    </span>
+                  </Button>
+                </div>
+              )}
+
+              {/* Spay & Neuter (Kapon) Surgical Protocol Banner */}
+              {!isPetOwner && selectedConsultation.category === "spay-neuter" && (
+                <div className={cn(
+                  "p-3.5 rounded-xl border space-y-2",
+                  selectedConsultation.isOverdue
+                    ? "border-muted bg-muted/20 opacity-60"
+                    : selectedConsultation.status === "completed"
+                    ? (isLockedPast24Hours
+                        ? "border-border/80 bg-muted/25"
+                        : "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25")
+                    : "border-primary/30 bg-primary/5 dark:bg-primary/10"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Scissors className={cn(
+                        "size-4",
+                        selectedConsultation.status === "completed"
+                          ? (isLockedPast24Hours ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400")
+                          : "text-primary"
+                      )} />
+                      Spay & Neuter (Kapon) Surgical Protocol
+                    </span>
+                    {selectedConsultation.isOverdue ? (
+                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
+                        Locked
+                      </Badge>
+                    ) : selectedConsultation.status === "completed" ? (
+                      isLockedPast24Hours ? (
+                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border/80 font-bold flex items-center gap-1">
+                          <Lock className="size-3" /> Locked (Past 24h)
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold">
+                          Sterilization Complete
+                        </Badge>
+                      )
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/25 font-bold">
+                        Pre-Op Ready
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {selectedConsultation.isOverdue
+                      ? "Surgical schedule expired. Pet owner must be contacted to reschedule surgery."
+                      : selectedConsultation.status === "completed"
+                      ? isLockedPast24Hours
+                        ? "Gonadectomy procedure completed. Record is finalized and cannot be updated after 24 hours pursuant to CVO regulatory audit standards."
+                        : "Gonadectomy procedure completed under general anesthesia. Pet is officially recorded as sterilized."
+                      : "Pre-anesthetic evaluation, gonadectomy surgical procedure, and post-op analgesia protocol."}
+                  </p>
+
+                  {/* 24-Hour Policy Notice Bar for Completed Surgery */}
+                  {selectedConsultation.status === "completed" && !selectedConsultation.isOverdue && (
+                    <div className={cn(
+                      "flex items-center gap-2 p-2 rounded-lg text-[11px] font-medium border",
+                      isLockedPast24Hours
+                        ? "bg-muted/40 border-border/70 text-muted-foreground"
+                        : "bg-amber-500/10 border-amber-500/25 text-amber-800 dark:text-amber-300"
+                    )}>
+                      {isLockedPast24Hours ? (
+                        <>
+                          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+                          <span><strong>Locked:</strong> You cannot update after 24 hours of surgery completion.</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                          <span><strong>Notice:</strong> Updates allowed within 24 hours only (<strong>{hoursRemaining}h remaining</strong>). You cannot update after 24 hours.</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    size="sm"
+                    disabled={selectedConsultation.isOverdue || isLockedPast24Hours}
+                    className={cn(
+                      "w-full gap-2 text-xs font-bold",
+                      selectedConsultation.isOverdue || isLockedPast24Hours
+                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
+                        : selectedConsultation.status === "completed"
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
+                        : "bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs"
+                    )}
+                    onClick={() => {
+                      if (selectedConsultation.isOverdue) return;
+                      if (isLockedPast24Hours) {
+                        toast.error("Record Finalized", {
+                          description: "You cannot update this surgical record after 24 hours of completion.",
+                        });
+                        return;
+                      }
+                      setSurgeryDialogOpen(true);
+                    }}
+                  >
+                    {isLockedPast24Hours ? (
+                      <Lock className="size-3.5" />
+                    ) : (
+                      <Scissors className="size-3.5" />
+                    )}
+                    <span>
+                      {selectedConsultation.isOverdue
+                        ? "Surgery Locked"
+                        : selectedConsultation.status === "completed"
+                        ? isLockedPast24Hours
+                          ? "Locked — Cannot Update After 24 Hours"
+                          : "Review / Update Surgical Clearance Record"
+                        : "Execute Surgery & Complete Kapon"}
+                    </span>
                   </Button>
                 </div>
               )}
 
               {/* Owner Info */}
-              <div className="p-3 rounded-lg border border-border/60 bg-muted/15 space-y-1 text-xs">
-                <p className="font-bold text-foreground flex items-center gap-1.5">
-                  <User className="size-3.5 text-primary" /> Owner Information
-                </p>
-                <p className="text-muted-foreground">Name: <strong className="text-foreground">{selectedConsultation.ownerName}</strong></p>
-                <p className="text-muted-foreground">Contact: {selectedConsultation.ownerContact}</p>
-                <p className="text-muted-foreground">Barangay: Barangay {selectedConsultation.ownerBarangay}, Cagayan de Oro City</p>
+              <div className="p-3.5 rounded-lg border border-border/60 bg-muted/15 text-xs">
+                <div className="flex items-start gap-3">
+                  <Avatar className="size-10 shrink-0 border border-border/80 shadow-2xs mt-0.5">
+                    {selectedConsultation.ownerAvatarUrl && (
+                      <AvatarImage src={selectedConsultation.ownerAvatarUrl} alt={selectedConsultation.ownerName} className="object-cover" />
+                    )}
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                      {getInitials(selectedConsultation.ownerName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="font-bold text-foreground flex items-center gap-1.5">
+                      <User className="size-3.5 text-primary" /> Owner Information
+                    </p>
+                    <p className="text-muted-foreground truncate">Name: <strong className="text-foreground">{selectedConsultation.ownerName}</strong></p>
+                    <p className="text-muted-foreground truncate">Contact: {selectedConsultation.ownerContact}</p>
+                    <p className="text-muted-foreground truncate">Barangay: {cleanBarangay(selectedConsultation.ownerBarangay)}, Cagayan de Oro City</p>
+                  </div>
+                </div>
               </div>
 
-              {/* Clinical Vitals */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 rounded-lg border border-border/60 bg-muted/15">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground">Body Weight</span>
-                  <p className="text-sm font-extrabold text-foreground mt-0.5">{selectedConsultation.vitals.weightKg} kg</p>
-                </div>
-                <div className="p-2.5 rounded-lg border border-border/60 bg-muted/15">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground">Temperature</span>
-                  <p className="text-sm font-extrabold text-foreground mt-0.5">{selectedConsultation.vitals.temperatureC} °C</p>
-                </div>
-              </div>
-
-              {/* Findings */}
+              {/* Findings & Medical Summary */}
               <div className="space-y-3 text-xs">
                 <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Chief Complaint</Label>
+                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {selectedConsultation.category === "consultation" ? "Chief Complaint" : "Procedure Title"}
+                  </Label>
                   <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground font-medium">
                     {selectedConsultation.chiefComplaint}
                   </p>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Diagnosis</Label>
+                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {selectedConsultation.category === "consultation" ? "Diagnosis" : "Protocol / Service Category"}
+                  </Label>
                   <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground font-semibold">
                     {selectedConsultation.diagnosis}
                   </p>
                 </div>
 
                 <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Treatment Administered</Label>
+                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {selectedConsultation.category === "consultation" ? "Treatment Administered" : "Clinical Action"}
+                  </Label>
                   <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground">
                     {selectedConsultation.treatment || "Standard supportive care."}
                   </p>
@@ -480,7 +1451,7 @@ export default function ConsultationsPage() {
 
                 <div>
                   <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                    <Pill className="size-3 text-primary" /> Prescriptions & Instructions
+                    <Pill className="size-3 text-primary" /> {selectedConsultation.category === "consultation" ? "Prescriptions & Instructions" : "Post-Care Guidelines"}
                   </Label>
                   <div className="mt-0.5 p-2.5 rounded-md bg-primary/5 border border-primary/20 space-y-1">
                     <p className="font-semibold text-foreground">{selectedConsultation.medication}</p>
@@ -490,7 +1461,7 @@ export default function ConsultationsPage() {
 
                 {selectedConsultation.veterinarianNotes && (
                   <div>
-                    <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Veterinarian Notes</Label>
+                    <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Veterinarian / Procedure Notes</Label>
                     <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-muted-foreground italic">
                       {selectedConsultation.veterinarianNotes}
                     </p>
@@ -498,19 +1469,26 @@ export default function ConsultationsPage() {
                 )}
               </div>
 
-              <div className="pt-2">
-                <Button
-                  className="w-full gap-2 text-xs font-bold bg-primary text-primary-foreground cursor-pointer shadow-xs"
-                  onClick={() => setOfficialFormOpen(true)}
-                >
-                  <FileText className="size-3.5" />
-                  <span>View Official CVO Field Treatment Form</span>
-                </Button>
-              </div>
+              {selectedConsultation.category === "consultation" && (
+                <div className="pt-2">
+                  <Button
+                    className="w-full gap-2 text-xs font-bold bg-primary text-primary-foreground cursor-pointer shadow-xs"
+                    onClick={() => setOfficialFormOpen(true)}
+                  >
+                    <FileText className="size-3.5" />
+                    <span>View Official CVO Field Treatment Form</span>
+                  </Button>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between">
-                <span>Attending: <strong>{selectedConsultation.vetName}</strong></span>
-                <span>City Veterinary Office — CDO</span>
+                <span className="flex items-center gap-1.5 truncate">
+                  <div className="size-5 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/20 shadow-2xs">
+                    <Stethoscope className="size-2.5" />
+                  </div>
+                  Attending: <strong className="text-foreground ml-0.5">{cleanVetName(selectedConsultation.vetName)}</strong>
+                </span>
+                <span className="shrink-0 text-[11px]">City Veterinary Office — CDO</span>
               </div>
             </div>
           )}
@@ -527,8 +1505,23 @@ export default function ConsultationsPage() {
         consultation={selectedConsultation}
         open={examDialogOpen}
         onOpenChange={setExamDialogOpen}
-        onSaved={(updated) => setSelectedConsultation(updated)}
+        onSaved={(updated) => setSelectedConsultation({ ...updated, category: "consultation", isOverdue: isItemOverdue(updated.date, updated.status) })}
+      />
+
+      <AdministerVaccinationDialog
+        consultation={selectedConsultation}
+        open={vaxDialogOpen}
+        onOpenChange={setVaxDialogOpen}
+        onCompleted={(updated) => setSelectedConsultation(updated)}
+      />
+
+      <CompleteSurgeryDialog
+        consultation={selectedConsultation}
+        open={surgeryDialogOpen}
+        onOpenChange={setSurgeryDialogOpen}
+        onCompleted={(updated) => setSelectedConsultation(updated)}
       />
     </div>
   );
 }
+

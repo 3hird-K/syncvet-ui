@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format, isBefore, startOfDay, getDay } from "date-fns";
+import { format, isBefore, startOfDay, getDay, parseISO, isValid } from "date-fns";
 import { Calendar as CalendarIcon, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,9 @@ interface ProcedureDatePickerProps {
   setDate: (date: Date | undefined) => void;
   service: ProcedureServiceType;
   bookedAppointments?: Array<{ date: string; service_id: string; status: string }>;
+  conflictDate?: string;
+  conflictServiceTitle?: string;
+  conflictPetName?: string;
   className?: string;
   placeholder?: string;
 }
@@ -33,11 +36,25 @@ export function ProcedureDatePicker({
   setDate,
   service,
   bookedAppointments = [],
+  conflictDate,
+  conflictServiceTitle,
+  conflictPetName,
   className,
   placeholder = "Select an available appointment date",
 }: ProcedureDatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const config = React.useMemo(() => getSlotConfiguration(), []);
+
+  const conflictDateFormatted = React.useMemo(() => {
+    if (!conflictDate) return "";
+    try {
+      const parsed = parseISO(conflictDate);
+      if (isValid(parsed)) return format(parsed, "EEEE, MMMM do");
+      return conflictDate;
+    } catch {
+      return conflictDate;
+    }
+  }, [conflictDate]);
 
   // Calculate status for currently selected date
   const selectedDateStatus: DaySlotStatus | null = React.useMemo(() => {
@@ -63,6 +80,14 @@ export function ProcedureDatePicker({
       // Disable weekends (Saturday = 6, Sunday = 0)
       if (dayOfWeek === 0 || dayOfWeek === 6) return true;
 
+      // Disable same-day conflict with another procedure for the same pet
+      if (conflictDate) {
+        const checkDateStr = format(checkDate, "yyyy-MM-dd");
+        if (checkDateStr === conflictDate) {
+          return true;
+        }
+      }
+
       // Disable fully booked dates
       const status = calculateSlotStatus({
         date: checkDate,
@@ -73,7 +98,7 @@ export function ProcedureDatePicker({
 
       return !status.isAvailable;
     },
-    [service, bookedAppointments, config]
+    [service, bookedAppointments, config, conflictDate]
   );
 
   return (
@@ -176,9 +201,18 @@ export function ProcedureDatePicker({
             </span>
             <span className="flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-muted-foreground/30 inline-block" />
-              Disabled (Weekend / Fully Booked)
+              Disabled (Weekend / Booked)
             </span>
           </div>
+
+          {conflictDate && (
+            <div className="p-2.5 bg-amber-500/10 border-t border-amber-500/25 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
+              <AlertCircle className="size-3.5 shrink-0 text-amber-600 mt-0.5" />
+              <span>
+                <strong>{conflictDateFormatted}</strong> is blocked by veterinary rule ({conflictPetName || "This pet"} already has a {conflictServiceTitle || "procedure"} scheduled).
+              </span>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
 

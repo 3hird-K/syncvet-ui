@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
+import { format, parseISO, isValid, isBefore, startOfDay, differenceInCalendarDays } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
@@ -289,6 +289,26 @@ export function ScheduleProcedureDialog({
     refetchInterval: open ? 15000 : false, // Poll every 15s while modal is open
   });
 
+  // Realtime subscription for live appointments & procedure slots
+  useEffect(() => {
+    if (!open) return;
+    const channel = supabase
+      .channel("realtime-procedure-slots")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+          queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [open, supabase, queryClient]);
+
   // Selected pet object
   const currentPet = useMemo(() => {
     return pets.find((p) => p.id === selectedPetId) || initialPet || pets[0];
@@ -383,6 +403,53 @@ export function ScheduleProcedureDialog({
       return existingSpayNeuterAppointment.date;
     }
   }, [existingSpayNeuterAppointment]);
+
+  // Opposite procedure conflict check (Same-day surgery & vaccination safety rule)
+  const conflictingOtherAppointment = useMemo(() => {
+    if (service === "vaccination") {
+      return existingSpayNeuterAppointment;
+    } else {
+      return existingVaccinationAppointment;
+    }
+  }, [service, existingSpayNeuterAppointment, existingVaccinationAppointment]);
+
+  const conflictingServiceTitle = service === "vaccination" ? "Spay & Neuter" : "Vaccination";
+
+  const conflictingDateStr = useMemo(() => {
+    if (!conflictingOtherAppointment?.date) return "";
+    return conflictingOtherAppointment.date.split("T")[0];
+  }, [conflictingOtherAppointment]);
+
+  const conflictingDateFormatted = useMemo(() => {
+    if (!conflictingOtherAppointment?.date) return "";
+    try {
+      const parsed = parseISO(conflictingOtherAppointment.date);
+      if (isValid(parsed)) return format(parsed, "EEEE, MMMM d, yyyy");
+      return conflictingOtherAppointment.date;
+    } catch {
+      return conflictingOtherAppointment.date;
+    }
+  }, [conflictingOtherAppointment]);
+
+  // Check if selected appointmentDate matches the conflicting date (STRICT BLOCK)
+  const isSameDayConflict = useMemo(() => {
+    if (!appointmentDate || !conflictingDateStr) return false;
+    const pickedStr = format(appointmentDate, "yyyy-MM-dd");
+    return pickedStr === conflictingDateStr;
+  }, [appointmentDate, conflictingDateStr]);
+
+  // Check if selected appointmentDate is within 7 days of the other procedure (CLINICAL ADVISORY)
+  const isWithinRecoveryWindow = useMemo(() => {
+    if (!appointmentDate || !conflictingDateStr || isSameDayConflict) return false;
+    try {
+      const otherDate = parseISO(conflictingDateStr);
+      if (!isValid(otherDate)) return false;
+      const diffDays = Math.abs(differenceInCalendarDays(appointmentDate, otherDate));
+      return diffDays > 0 && diffDays < 7;
+    } catch {
+      return false;
+    }
+  }, [appointmentDate, conflictingDateStr, isSameDayConflict]);
 
   // Auto-switch active service to spay-neuter if vaccination is already scheduled
   useEffect(() => {
@@ -538,6 +605,13 @@ export function ScheduleProcedureDialog({
       return;
     }
 
+    if (isSameDayConflict) {
+      toast.error("Same-Day Procedure Conflict Blocked", {
+        description: `${currentPet.name} already has a ${conflictingServiceTitle} scheduled on ${conflictingDateFormatted}. In veterinary clinical safety guidelines, general anesthesia surgery and vaccination cannot be performed on the same day.`,
+      });
+      return;
+    }
+
     if (!appointmentDate) {
       toast.error("Please pick an available Monday–Friday date");
       return;
@@ -566,48 +640,90 @@ export function ScheduleProcedureDialog({
         return;
       }
 
-      // Fetch user's database ID
+      // Fetch or ensure user's database ID
       let ownerDbId = user.id;
+      const userEmail = user.primaryEmailAddress?.emailAddress || "";
       const { data: dbUser } = await supabase
         .from("users")
         .select("id")
-        .eq("email", user.primaryEmailAddress?.emailAddress || "")
+        .eq("email", userEmail)
         .maybeSingle();
 
       if (dbUser?.id) {
         ownerDbId = dbUser.id;
+      } else if (userEmail) {
+        // Ensure user exists in users table so foreign key won't fail
+        const { data: newUser } = await supabase
+          .from("users")
+          .upsert({
+            id: user.id,
+            email: userEmail,
+            full_name: user.fullName || "Citizen Pet Owner",
+            role: "Citizen",
+          })
+          .select("id")
+          .maybeSingle();
+        if (newUser?.id) {
+          ownerDbId = newUser.id;
+        }
       }
 
-      const generatedApptId = `appt-${Date.now()}`;
+      // Verify pet_id exists in Supabase pets table to prevent foreign key errors
+      let validPetId: string | null = null;
+      if (currentPet.id) {
+        const { data: dbPet } = await supabase
+          .from("pets")
+          .select("id")
+          .eq("id", currentPet.id)
+          .maybeSingle();
+        if (dbPet?.id) {
+          validPetId = dbPet.id;
+        } else {
+          // Check if pet exists by owner and name
+          const { data: matchedPet } = await supabase
+            .from("pets")
+            .select("id")
+            .eq("owner_id", ownerDbId)
+            .ilike("name", currentPet.name.trim())
+            .maybeSingle();
+          if (matchedPet?.id) {
+            validPetId = matchedPet.id;
+          }
+        }
+      }
+
+      const generatedApptId = `apt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       let createdAppointmentId = generatedApptId;
 
-      // 1. Insert into appointments table (with resilient error catching so RLS does not crash the form)
-      try {
-        const { data: newAppointment, error: apptError } = await supabase
-          .from("appointments")
-          .insert({
-            owner_id: ownerDbId,
-            pet_id: currentPet.id || null,
-            pet_name: currentPet.name,
-            service_id: service,
-            date: formattedDate,
-            time_slot: "morning",
-            status: "confirmed",
-            location: "City Veterinary Office - Carmen Central Clinic",
-            notes: notes
-              ? `${notes} (Contact: ${ownerContact || "N/A"})`
-              : `Contact: ${ownerContact || "N/A"}`,
-          })
-          .select()
-          .maybeSingle();
+      // 1. Insert directly into Supabase appointments table in real-time
+      const { data: newAppointment, error: apptError } = await supabase
+        .from("appointments")
+        .insert({
+          id: generatedApptId,
+          owner_id: ownerDbId,
+          pet_id: validPetId,
+          pet_name: currentPet.name,
+          service_id: service,
+          date: formattedDate,
+          time_slot: "morning",
+          status: "confirmed",
+          location: "City Veterinary Office - Carmen Central Clinic",
+          notes: notes
+            ? `${notes} (Contact: ${ownerContact || "N/A"})`
+            : `Contact: ${ownerContact || "N/A"}`,
+        })
+        .select()
+        .maybeSingle();
 
-        if (apptError) {
-          console.warn("Appointments table insert note (will use service_transactions):", apptError.message);
-        } else if (newAppointment?.id) {
-          createdAppointmentId = newAppointment.id;
-        }
-      } catch (insertErr) {
-        console.warn("Non-fatal appointments insert exception:", insertErr);
+      if (apptError) {
+        console.error("Appointments table insert error:", apptError);
+        toast.error(`Appointment booking failed: ${apptError.message}`);
+        setSubmitting(false);
+        return;
+      }
+
+      if (newAppointment?.id) {
+        createdAppointmentId = newAppointment.id;
       }
 
       // 2. Insert into service_transactions for verified municipal records
@@ -902,16 +1018,16 @@ export function ScheduleProcedureDialog({
               </div>
             ) : (
               <Select value={selectedPetId} onValueChange={setSelectedPetId}>
-                <SelectTrigger className="h-11 rounded-xl bg-background border-input/80 text-xs sm:text-sm font-semibold">
+                <SelectTrigger className="h-9 rounded-lg bg-background border-input/80 text-xs font-medium">
                   <SelectValue placeholder="Choose a registered pet" />
                 </SelectTrigger>
-                <SelectContent className="z-[90] rounded-xl">
+                <SelectContent className="z-[90] rounded-lg text-xs">
                   {pets.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-xs sm:text-sm cursor-pointer py-2">
-                      <div className="flex items-center gap-2">
-                        <PawPrint className="size-3.5 text-primary" />
-                        <span className="font-semibold">{p.name}</span>
-                        <span className="text-muted-foreground">
+                    <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
+                      <div className="flex items-center gap-2 text-xs">
+                        <PawPrint className="size-3.5 text-primary shrink-0" />
+                        <span className="font-semibold text-xs">{p.name}</span>
+                        <span className="text-muted-foreground text-[11px]">
                           ({p.species} • {p.breed} • {p.weightKg || p.weight_kg || "?"} kg)
                         </span>
                       </div>
@@ -1027,8 +1143,46 @@ export function ScheduleProcedureDialog({
               setDate={setAppointmentDate}
               service={service}
               bookedAppointments={bookedAppointments}
+              conflictDate={conflictingDateStr}
+              conflictServiceTitle={conflictingServiceTitle}
+              conflictPetName={currentPet?.name}
               placeholder={`Pick an available weekday for ${serviceConfig.shortTitle}`}
             />
+
+            {/* Same-day procedure conflict warning (Veterinary Safety Rule) */}
+            {isSameDayConflict && (
+              <div className="p-3.5 rounded-xl border border-destructive/50 bg-destructive/10 text-xs text-destructive space-y-1.5 animate-in fade-in-0 shadow-2xs">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <ShieldAlert className="size-4 shrink-0 text-destructive" />
+                  <span>Same-Day Procedure Conflict (Clinical Safety Rule)</span>
+                </div>
+                <p className="leading-relaxed">
+                  <strong>{currentPet?.name}</strong> already has an active <strong>{conflictingServiceTitle}</strong> scheduled on{" "}
+                  <strong className="underline">{conflictingDateFormatted}</strong>.
+                </p>
+                <p className="leading-relaxed text-[11px] opacity-90">
+                  In veterinary clinical medicine, general anesthesia surgery and routine vaccinations must <strong>never occur on the same day</strong>. Surgery temporarily suppresses immune response, and administering vaccines simultaneously creates severe diagnostic confusion between surgical/anesthetic complications and adverse vaccine reactions.
+                </p>
+                <p className="font-semibold text-[11px]">
+                  Please pick an alternate weekday separated from {conflictingDateFormatted}.
+                </p>
+              </div>
+            )}
+
+            {/* 7-day separation clinical advisory */}
+            {isWithinRecoveryWindow && (
+              <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5 animate-in fade-in-0">
+                <Info className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-foreground">
+                    Clinical Advisory: 7–14 Day Separation Recommended
+                  </p>
+                  <p className="leading-relaxed text-muted-foreground text-[11px]">
+                    {currentPet?.name}&apos;s scheduled {conflictingServiceTitle} is on {conflictingDateFormatted}. While permitted, veterinarians recommend allowing at least 1 to 2 weeks between surgery and vaccination for optimal immune recovery.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── SECTION 4: Pre-procedure Guidelines & Mandatory Check ── */}
@@ -1108,7 +1262,8 @@ export function ScheduleProcedureDialog({
                   !appointmentDate ||
                   pets.length === 0 ||
                   isVaccinationBlocked ||
-                  isAlreadyScheduled
+                  isAlreadyScheduled ||
+                  isSameDayConflict
                 }
                 className="w-full sm:w-auto text-xs font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -1116,6 +1271,11 @@ export function ScheduleProcedureDialog({
                   <>
                     <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                     <span>Booking Slot...</span>
+                  </>
+                ) : isSameDayConflict ? (
+                  <>
+                    <ShieldAlert className="size-3.5" />
+                    <span>Blocked: Same-Day {conflictingServiceTitle} Conflict</span>
                   </>
                 ) : isAlreadyScheduled ? (
                   <>

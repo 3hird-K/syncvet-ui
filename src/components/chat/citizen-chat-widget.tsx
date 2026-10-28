@@ -40,9 +40,13 @@ import {
   ChevronDown,
   Loader2,
   Undo2,
+  Building2,
+  Stethoscope,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessengerIcon } from "@/components/icons/messenger-icon";
 import {
@@ -241,8 +245,39 @@ export function CitizenChatWidget() {
   );
 
   const userRecord = dbUsers.find((u) => u.id === user?.id);
-  const isVet = activeRoleView === "Veterinarian" || userRecord?.role === "Veterinarian";
+  const roleFromMeta = (user?.publicMetadata?.role as string) || (user?.unsafeMetadata?.role as string);
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || "";
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
+  const isAdmin =
+    isAdminEmail ||
+    activeRoleView === "Administrator" ||
+    userRecord?.role === "Administrator" ||
+    roleFromMeta?.toLowerCase()?.includes("admin");
+  const isVet =
+    !isAdmin &&
+    (activeRoleView === "Veterinarian" ||
+      userRecord?.role === "Veterinarian" ||
+      roleFromMeta?.toLowerCase()?.includes("vet"));
   const isStaff = activeRoleView !== "Pet Owner" && userRecord?.role !== "Pet Owner";
+
+  const [adminChatDesk, setAdminChatDesk] = useState<"vet" | "admin">("admin");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("syncvet_admin_chat_desk");
+      if (saved === "vet" || saved === "admin") {
+        setAdminChatDesk(saved);
+      }
+    } catch {}
+  }, []);
+
+  const handleSetAdminChatDesk = (desk: "vet" | "admin") => {
+    setAdminChatDesk(desk);
+    try {
+      localStorage.setItem("syncvet_admin_chat_desk", desk);
+    } catch {}
+  };
 
   const dynamicContacts = useMemo<ChatContact[]>(() => {
     const baseContacts: ChatContact[] = [
@@ -272,7 +307,16 @@ export function CitizenChatWidget() {
       },
     ];
 
+    const currentUserId = user?.id;
+    const currentUserEmail = (user?.primaryEmailAddress?.emailAddress || "").toLowerCase();
+    const currentFullName = (user?.fullName || "").toLowerCase();
+
     const petOwnerUsers = dbUsers.filter((u) => {
+      // Exclude current logged in user so they cannot chat with themselves!
+      if (currentUserId && u.id === currentUserId) return false;
+      if (currentUserEmail && u.email?.toLowerCase() === currentUserEmail) return false;
+      if (currentFullName && u.full_name?.toLowerCase() === currentFullName) return false;
+
       const role = u.role?.toLowerCase() || "";
       return (
         role.includes("owner") ||
@@ -308,21 +352,27 @@ export function CitizenChatWidget() {
       (c) => c.id === "citizen" || c.ownerId === "user_3Jh5rWy35KtlFbJMi1wroOXOYot"
     );
     if (!hasCitizen) {
-      const kylePresence = presenceMap["user_3Jh5rWy35KtlFbJMi1wroOXOYot"];
-      citizenContacts.unshift({
-        id: "citizen",
-        desk: "vet",
-        name: "Kyle Urgentrouse",
-        shortName: "Kyle Urgentrouse",
-        roleDescription: "Citizen Consultation • Pet: Dog (Mixed)",
-        avatar:
-          "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zSmg1cllNOG9kNGF3QWRESUZ3UVE4OE4zM3UifQ",
-        fallback: "KU",
-        badge: "Pet Owner",
-        theme: "purple",
-        isOnline: kylePresence?.isActive ?? false,
-        ownerId: "user_3Jh5rWy35KtlFbJMi1wroOXOYot",
-      });
+      const isCurrentUserKyle =
+        currentUserId === "user_3Jh5rWy35KtlFbJMi1wroOXOYot" ||
+        currentUserEmail === "itcgeek03@gmail.com";
+
+      if (!isCurrentUserKyle) {
+        const kylePresence = presenceMap["user_3Jh5rWy35KtlFbJMi1wroOXOYot"];
+        citizenContacts.unshift({
+          id: "citizen",
+          desk: "vet",
+          name: "Kyle Urgentrouse",
+          shortName: "Kyle Urgentrouse",
+          roleDescription: "Citizen Consultation • Pet: Dog (Mixed)",
+          avatar:
+            "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zSmg1cllNOG9kNGF3QWRESUZ3UVE4OE4zM3UifQ",
+          fallback: "KU",
+          badge: "Pet Owner",
+          theme: "purple",
+          isOnline: kylePresence?.isActive ?? false,
+          ownerId: "user_3Jh5rWy35KtlFbJMi1wroOXOYot",
+        });
+      }
     }
 
     return [...baseContacts, ...citizenContacts];
@@ -330,16 +380,24 @@ export function CitizenChatWidget() {
 
   const findContact = useCallback(
     (contactId: string): ChatContact | undefined => {
-      return (
+      const found =
         dynamicContacts.find(
           (c) =>
             c.id === contactId ||
             c.ownerId === contactId ||
             (contactId === "citizen" && c.ownerId === "user_3Jh5rWy35KtlFbJMi1wroOXOYot")
-        ) || CONTACTS.find((c) => c.id === contactId)
-      );
+        ) || CONTACTS.find((c) => c.id === contactId);
+
+      if (found && isStaff) {
+        const effectiveDesk = isAdmin ? adminChatDesk : isVet ? "vet" : found.desk;
+        return {
+          ...found,
+          desk: effectiveDesk,
+        };
+      }
+      return found;
     },
-    [dynamicContacts]
+    [dynamicContacts, isStaff, isAdmin, isVet, adminChatDesk]
   );
 
   // List of chat IDs currently expanded (at most 2 side-by-side like Facebook Messenger)
@@ -354,6 +412,14 @@ export function CitizenChatWidget() {
   // Unread message count per contact ID
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [pawReactions, setPawReactions] = useState<Record<string, string>>({});
+
+  // Strict guard: staff (Admin and Vet) must never have 'admin' or 'vet' desks opened as chat heads
+  useEffect(() => {
+    if (isStaff) {
+      setOpenChatIds((prev) => prev.filter((id) => id !== "admin" && id !== "vet"));
+      setActiveChatHeadIds((prev) => prev.filter((id) => id !== "admin" && id !== "vet"));
+    }
+  }, [isStaff]);
 
   // Helper to determine if a specific contact is typing
   const isContactTyping = (contact: ChatContact) => {
@@ -658,6 +724,9 @@ export function CitizenChatWidget() {
               key={contact.id}
               contact={contact}
               isStaff={isStaff}
+              isAdmin={isAdmin}
+              activeDesk={isAdmin ? adminChatDesk : (isVet ? "vet" : contact.desk)}
+              onChangeDesk={isAdmin ? handleSetAdminChatDesk : undefined}
               user={user}
               isLoaded={isLoaded}
               pawReactions={pawReactions}
@@ -702,19 +771,88 @@ export function CitizenChatWidget() {
                 New Message
               </h4>
               <p className="text-[10px] text-muted-foreground font-medium">
-                Select an official CVO channel to connect
+                {isStaff ? "Select a citizen to message" : "Select an official CVO channel to connect"}
               </p>
+
+              {/* Admin Account Switcher: ONLY for Admin accounts; NEVER for Vet accounts */}
+              {isAdmin && (
+                <div className="mt-2.5 p-1.5 rounded-xl bg-muted/60 border border-border/50">
+                  <div className="flex items-center justify-between text-[10px] font-semibold text-muted-foreground px-1 mb-1">
+                    <span>Chat identity:</span>
+                    <span className="text-primary font-bold">
+                      {adminChatDesk === "admin" ? "CVO Admin Desk" : "Dr. Helen (Veterinarian)"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 bg-background/80 p-0.5 rounded-lg border border-border/40">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSetAdminChatDesk("admin");
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                        adminChatDesk === "admin"
+                          ? "bg-primary text-primary-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      )}
+                    >
+                      <Building2 className="size-3 shrink-0" />
+                      <span>Admin Desk</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSetAdminChatDesk("vet");
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                        adminChatDesk === "vet"
+                          ? "bg-primary text-primary-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                      )}
+                    >
+                      <Stethoscope className="size-3 shrink-0" />
+                      <span>Veterinarian</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {/* Search pet owners (Shown for staff) */}
+            {isStaff && (
+              <div className="px-2 pt-1 pb-1.5">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search pet owners..."
+                    className="h-8 pl-8 text-xs bg-muted/30 border-border/60 rounded-xl"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Contacts list */}
-            <div className="space-y-1 py-0.5">
+            <div className="space-y-1 py-0.5 max-h-[280px] overflow-y-auto pr-0.5">
               {dynamicContacts
                 .filter((c) => {
                   if (isStaff) {
-                    // Veterinarian should strictly NOT see or open CVO Admin chats, only Pet Owners
-                    if (isVet) return c.id !== "vet" && c.id !== "admin";
-                    return c.id !== "vet";
+                    // Both Admin and Veterinarians should strictly NOT see staff desks (CVO Admin or Vet Desk)
+                    // and should never see their own user account (prevents chatting with self)
+                    if (c.id === "vet" || c.id === "admin") return false;
+                    if (user?.id && (c.id === user.id || c.ownerId === user.id)) return false;
+                    if (searchQuery.trim()) {
+                      const q = searchQuery.toLowerCase().trim();
+                      return c.name.toLowerCase().includes(q) || c.roleDescription.toLowerCase().includes(q);
+                    }
+                    return true;
                   }
+                  // Pet Owners only see official CVO channels (Vet or Admin)
                   return c.id === "vet" || c.id === "admin";
                 })
                 .map((c) => {
@@ -931,6 +1069,9 @@ export function CitizenChatWidget() {
 function FacebookMessengerWindow({
   contact,
   isStaff,
+  isAdmin,
+  activeDesk,
+  onChangeDesk,
   user,
   isLoaded,
   pawReactions,
@@ -943,6 +1084,9 @@ function FacebookMessengerWindow({
 }: {
   contact: ChatContact;
   isStaff: boolean;
+  isAdmin?: boolean;
+  activeDesk?: "vet" | "admin";
+  onChangeDesk?: (desk: "vet" | "admin") => void;
   user: any;
   isLoaded: boolean;
   pawReactions: Record<string, string>;
@@ -956,6 +1100,8 @@ function FacebookMessengerWindow({
   const { selectedPet, setSelectedPet, sendTypingStatus, isOtherTyping, typingInfo, reactions, toggleReaction, unsendMessage, removeMessageForMe } =
     useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
+
+  const effectiveDesk = isAdmin ? (activeDesk || "admin") : isStaff ? "vet" : contact.desk;
 
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [inputText, setInputText] = useState("");
@@ -1017,24 +1163,21 @@ function FacebookMessengerWindow({
   };
 
   const mapRowToMessageItem = useCallback((m: any): ChatMessageItem => {
-    const isAdmin =
-      m.sender_role === "Admin" ||
-      m.sender_role === "Administrator" ||
-      m.sender_name?.includes("Admin");
     const isStaffMsg = m.sender_role !== "Pet Owner";
+    const msgIsAdmin = m.sender_role === "Admin" || (isStaffMsg && effectiveDesk === "admin");
     const meta = parseAttachmentMeta(m.attachment_url);
     const isUnsent = m.message_text === "__UNSENT__" || meta.isUnsent === true;
     return {
       id: m.id,
       chatId: m.chat_id,
       senderId: m.sender_id,
-      senderRole: isAdmin ? "Admin" : isStaffMsg ? "Veterinarian" : "Pet Owner",
-      senderName: isAdmin
-        ? "CVO Inquiry & Admin Desk"
-        : isStaffMsg
-        ? UNIFIED_VET_NAME
+      senderRole: isStaffMsg ? (msgIsAdmin ? "Admin" : "Veterinarian") : "Pet Owner",
+      senderName: isStaffMsg
+        ? msgIsAdmin
+          ? "CVO Inquiry & Admin Desk"
+          : UNIFIED_VET_NAME
         : m.sender_name,
-      badge: isAdmin ? "CVO Admin Desk" : isStaffMsg ? UNIFIED_VET_BADGE : undefined,
+      badge: isStaffMsg ? (msgIsAdmin ? "CVO Admin Desk" : UNIFIED_VET_BADGE) : undefined,
       text: isUnsent ? "" : m.message_text,
       isUnsent,
       timestamp: new Intl.DateTimeFormat("en-PH", {
@@ -1047,7 +1190,7 @@ function FacebookMessengerWindow({
       replyTo: isUnsent ? undefined : meta.replyTo,
       isRead: true,
     };
-  }, []);
+  }, [effectiveDesk]);
 
   const loadOlderMessages = async () => {
     if (!activeChatDbId || !hasMoreOlder || isFetchingOlder || messages.length === 0) return;
@@ -1207,6 +1350,14 @@ function FacebookMessengerWindow({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Reset chat state when effectiveDesk changes (e.g. Admin toggling between Admin Desk and Vet)
+  useEffect(() => {
+    activeChatDbIdRef.current = null;
+    setActiveChatDbId(null);
+    setMessages([]);
+    initialScrollDoneRef.current = false;
+  }, [effectiveDesk]);
+
   // Load chat messages specifically for this contact & desk
   const loadMessages = useCallback(async () => {
     if (!isLoaded || !user?.id) return;
@@ -1214,7 +1365,7 @@ function FacebookMessengerWindow({
       setIsLoading(true);
       let chatId = activeChatDbIdRef.current;
       const targetVetName =
-        contact.desk === "admin" ? "CVO Inquiry & Admin Desk" : UNIFIED_VET_NAME;
+        effectiveDesk === "admin" ? "CVO Inquiry & Admin Desk" : UNIFIED_VET_NAME;
 
       if (!chatId) {
         const query = supabase
@@ -1290,7 +1441,7 @@ function FacebookMessengerWindow({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoaded, user?.id, user?.primaryEmailAddress?.emailAddress, contact.desk, contact.id, contact.ownerId, supabase, mapRowToMessageItem, scrollToBottom]);
+  }, [isLoaded, user?.id, user?.primaryEmailAddress?.emailAddress, effectiveDesk, contact.id, contact.ownerId, supabase, mapRowToMessageItem, scrollToBottom]);
 
   useEffect(() => {
     loadMessages();
@@ -1426,25 +1577,25 @@ function FacebookMessengerWindow({
     const val = e.target.value;
     setInputText(val);
     const senderRole = isStaff
-      ? contact.desk === "admin"
+      ? effectiveDesk === "admin"
         ? "Admin"
         : "Veterinarian"
       : "Pet Owner";
     if (val.trim()) {
       sendTypingStatus(true, senderRole, {
-        desk: contact.desk,
+        desk: effectiveDesk,
         avatarUrl: isStaff
-          ? contact.desk === "admin"
+          ? effectiveDesk === "admin"
             ? "/partners/cdo-seal.png"
             : "/dr-helen-tacandong.jpg"
           : user?.imageUrl || null,
         senderName: isStaff
-          ? contact.desk === "admin"
+          ? effectiveDesk === "admin"
             ? "CVO Inquiry & Admin Desk"
             : UNIFIED_VET_NAME
           : user?.fullName || "Pet Owner",
         initials: isStaff
-          ? contact.desk === "admin"
+          ? effectiveDesk === "admin"
             ? "AD"
             : "HT"
           : undefined,
@@ -1452,7 +1603,7 @@ function FacebookMessengerWindow({
       });
     } else {
       sendTypingStatus(false, senderRole, {
-        desk: contact.desk,
+        desk: effectiveDesk,
         chatId: activeChatDbId || (contact.ownerId ? `thread-${contact.ownerId}` : null),
       });
     }
@@ -1474,12 +1625,12 @@ function FacebookMessengerWindow({
       setReplyingTo(null);
 
       const senderRole = isStaff
-        ? contact.desk === "admin"
+        ? effectiveDesk === "admin"
           ? "Admin"
           : "Veterinarian"
         : "Pet Owner";
       sendTypingStatus(false, senderRole, {
-        desk: contact.desk,
+        desk: effectiveDesk,
         chatId: activeChatDbId || (contact.ownerId ? `thread-${contact.ownerId}` : null),
       });
 
@@ -1491,7 +1642,7 @@ function FacebookMessengerWindow({
         id: `msg-${Date.now()}`,
         senderRole: senderRole as any,
         senderName: isStaff
-          ? contact.desk === "admin"
+          ? effectiveDesk === "admin"
             ? "CVO Inquiry & Admin Desk"
             : UNIFIED_VET_NAME
           : user?.fullName || "Pet Owner",
@@ -1509,7 +1660,7 @@ function FacebookMessengerWindow({
 
       let chatId = activeChatDbIdRef.current || activeChatDbId || messages.find((m) => m.chatId)?.chatId || null;
       const targetVetName =
-        contact.desk === "admin" ? "CVO Inquiry & Admin Desk" : UNIFIED_VET_NAME;
+        effectiveDesk === "admin" ? "CVO Inquiry & Admin Desk" : UNIFIED_VET_NAME;
 
       if (!chatId) {
         const { data: existingChat } = await supabase
@@ -1531,7 +1682,7 @@ function FacebookMessengerWindow({
               pet_id: selectedPet?.id || null,
               pet_name: selectedPet?.name || null,
               subject:
-                contact.desk === "admin"
+                effectiveDesk === "admin"
                   ? "CVO Public Admin Desk"
                   : "Veterinary Telemedicine Consultation",
               assigned_vet_name: targetVetName,
@@ -1558,7 +1709,7 @@ function FacebookMessengerWindow({
           sender_id: user?.id,
           sender_role: senderRole,
           sender_name: isStaff
-            ? contact.desk === "admin"
+            ? effectiveDesk === "admin"
               ? "CVO Inquiry & Admin Desk"
               : UNIFIED_VET_NAME
             : user?.fullName || "Pet Owner",
@@ -1677,6 +1828,40 @@ function FacebookMessengerWindow({
             </p>
           </div>
         </div>
+
+        {/* Admin Account Switcher: ONLY for Admin accounts; NEVER for Vet accounts */}
+        {isAdmin && onChangeDesk && (
+          <div className="flex items-center bg-muted/80 p-0.5 rounded-lg border border-border/60 text-[10px] font-semibold shrink-0">
+            <button
+              type="button"
+              onClick={() => onChangeDesk("admin")}
+              title="Chat as CVO Admin Desk"
+              className={cn(
+                "px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer",
+                effectiveDesk === "admin"
+                  ? "bg-primary text-primary-foreground shadow-2xs font-bold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              )}
+            >
+              <Building2 className="size-3" />
+              <span>Admin</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeDesk("vet")}
+              title="Chat as Veterinarian (Dr. Helen)"
+              className={cn(
+                "px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer",
+                effectiveDesk === "vet"
+                  ? "bg-primary text-primary-foreground shadow-2xs font-bold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              )}
+            >
+              <Stethoscope className="size-3" />
+              <span>Vet</span>
+            </button>
+          </div>
+        )}
 
         {/* Action Controls: Minimize (_), Maximize, Close (X) ── Strictly NO call icons ── */}
         <div className="flex items-center gap-0.5 text-muted-foreground shrink-0 ml-1">

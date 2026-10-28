@@ -18,6 +18,7 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { type SupabaseUser } from "@/data/syncvet-users";
@@ -76,6 +77,24 @@ export default function OwnersPage() {
   const [selectedOwner, setSelectedOwner] = useState<OwnerProfile | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const columns = [
+    { id: "id", label: "Owner ID", required: true },
+    { id: "name", label: "Full Legal Name" },
+    { id: "contact", label: "Contact Number" },
+    { id: "barangay", label: "Barangay" },
+    { id: "status", label: "Residency Status" },
+    { id: "animals", label: "Animals Registered" },
+    { id: "date", label: "Joined Date" },
+    { id: "action", label: "Action" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map((c) => c.id));
+  const toggleColumn = (id: string) => {
+    setVisibleColumns((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
 
   // TanStack Query to integrate with Supabase `users` and `pets` table
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
@@ -259,6 +278,13 @@ export default function OwnersPage() {
                   }}
                 />
               </div>
+
+              {/* Table Column Filter Icon Button */}
+              <TableColumnFilter
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -267,69 +293,101 @@ export default function OwnersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Owner ID</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Full Legal Name</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Contact Number</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Residency Status</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animals Registered</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Joined Date</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Action</TableHead>
+                {visibleColumns.includes("id") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Owner ID</TableHead>
+                )}
+                {visibleColumns.includes("name") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Full Legal Name</TableHead>
+                )}
+                {visibleColumns.includes("contact") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Contact Number</TableHead>
+                )}
+                {visibleColumns.includes("barangay") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay</TableHead>
+                )}
+                {visibleColumns.includes("status") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Residency Status</TableHead>
+                )}
+                {visibleColumns.includes("animals") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animals Registered</TableHead>
+                )}
+                {visibleColumns.includes("date") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Joined Date</TableHead>
+                )}
+                {visibleColumns.includes("action") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Action</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground">
                     No owners found matching your query.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((owner, idx) => (
                   <TableRow key={`${owner.id}-${idx}`} className="hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs text-muted-foreground pl-6">
-                      {owner.id}
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-bold text-sm text-foreground">{owner.name}</span>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground font-mono">
-                      {owner.contact}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <span className="flex items-center gap-1 text-foreground">
-                        <MapPin className="size-3 text-primary/70" /> Barangay {owner.barangay}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {owner.residencyVerified ? (
-                        <Badge className="text-[9px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                          CDO Resident Verified
+                    {visibleColumns.includes("id") && (
+                      <TableCell className="font-mono text-xs text-muted-foreground pl-6">
+                        {owner.id}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("name") && (
+                      <TableCell>
+                        <span className="font-bold text-sm text-foreground">{owner.name}</span>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("contact") && (
+                      <TableCell className="text-xs text-muted-foreground font-mono">
+                        {owner.contact}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("barangay") && (
+                      <TableCell className="text-xs">
+                        <span className="flex items-center gap-1 text-foreground">
+                          <MapPin className="size-3 text-primary/70" /> Barangay {owner.barangay}
+                        </span>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("status") && (
+                      <TableCell>
+                        {owner.residencyVerified ? (
+                          <Badge className="text-[9px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                            CDO Resident Verified
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] text-amber-500 border-amber-500/20">
+                            Pending Verification
+                          </Badge>
+                        )}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("animals") && (
+                      <TableCell>
+                        <Badge variant="secondary" className="text-[10px] font-bold">
+                          {owner.animals.length} {owner.animals.length === 1 ? "Animal" : "Animals"}
                         </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[9px] text-amber-500 border-amber-500/20">
-                          Pending Verification
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-[10px] font-bold">
-                        {owner.animals.length} {owner.animals.length === 1 ? "Animal" : "Animals"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {owner.registeredDate}
-                    </TableCell>
-                    <TableCell className="text-right pr-6">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedOwner(owner)}
-                        className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
-                      >
-                        <Eye className="size-3.5" /> View Profile
-                      </Button>
-                    </TableCell>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("date") && (
+                      <TableCell className="text-xs text-muted-foreground">
+                        {owner.registeredDate}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("action") && (
+                      <TableCell className="text-right pr-6">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedOwner(owner)}
+                          className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
+                        >
+                          <Eye className="size-3.5" /> View Profile
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

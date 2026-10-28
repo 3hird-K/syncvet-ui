@@ -320,7 +320,7 @@ export function OfficialConsultationSheetDialog({
             <div className="md:col-span-3 flex items-baseline gap-1.5">
               <span className="font-extrabold uppercase text-[10px] shrink-0">WEIGHT:</span>
               <span className="border-b border-black flex-1 font-semibold text-slate-800 pl-1 pb-0.5">
-                {consultation.vitals.weightKg ? `${consultation.vitals.weightKg} kg` : "12.4 kg"}
+                {consultation.vitals.weightKg ? `${consultation.vitals.weightKg} kg` : "N/A"}
               </span>
             </div>
             <div className="md:col-span-3 flex items-baseline gap-1.5">

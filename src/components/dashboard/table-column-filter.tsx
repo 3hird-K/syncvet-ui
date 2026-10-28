@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Settings2 } from "lucide-react";
+import { Check, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,8 +31,14 @@ export function TableColumnFilter({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs flex-1 sm:flex-none">
-          <Settings2 className="size-3" /> Filter
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer bg-muted/20 hover:bg-muted/40"
+          title="Filter / Toggle Columns"
+          aria-label="Filter columns"
+        >
+          <SlidersHorizontal className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[180px] border-border/50 bg-popover">

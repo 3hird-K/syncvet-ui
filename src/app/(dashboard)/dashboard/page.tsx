@@ -5,7 +5,6 @@ import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { TodaysOperationsCard } from "@/components/dashboard/todays-operations-card";
 import { PublicHealthOverview } from "@/components/dashboard/public-health-overview";
-import { InventoryFEFOCard } from "@/components/dashboard/inventory-fefo-card";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,7 +18,6 @@ import {
   Stethoscope,
   PawPrint,
   MapPin,
-  Package,
   ArrowRight,
   ShieldCheck,
   Calendar,
@@ -222,69 +220,11 @@ export default function DashboardHomePage() {
         </div>
       </div>
 
-      {/* ── 5. Row 2: Public Health Rabies Surveillance & FEFO Cold-Chain Logistics ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
-        <div className="lg:col-span-7 min-w-0 flex flex-col">
-          <PublicHealthOverview />
-        </div>
-        <div className="lg:col-span-5 min-w-0 flex flex-col">
-          <InventoryFEFOCard />
-        </div>
-      </div>
+      {/* ── 5. Row 2: Public Health & Disease Surveillance Metric Dashboard ── */}
+      <PublicHealthOverview />
 
-      {/* ── 6. Row 3: Office Activity Timeline & Barangay Field Operations ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
-        <div className="lg:col-span-7 min-w-0 flex flex-col">
-          <ActivityFeed />
-        </div>
-        <div className="lg:col-span-5 min-w-0 flex flex-col">
-          <Card className="border-border bg-card flex flex-col justify-between h-full rounded-2xl shadow-2xs">
-            <CardHeader className="p-4 sm:p-5 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                  <MapPin className="size-4" />
-                </div>
-                <div>
-                  <CardTitle className="text-sm sm:text-base font-bold tracking-tight text-foreground">
-                    Barangay Vaccination Drives
-                  </CardTitle>
-                  <CardDescription className="text-[11px] text-muted-foreground/80">
-                    Active field teams & mobile deployments across 80 CDO barangays
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-5 pt-0 space-y-3 flex-1 flex flex-col justify-between text-xs">
-              <div className="space-y-2.5">
-                <p className="text-muted-foreground leading-relaxed">
-                  Deploy veterinary teams to Carmen, Lapasan, Bulua, Nazareth, and peripheral barangays for anti-rabies vaccination caravans, microchipping, and bite surveillance.
-                </p>
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/60">
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Jurisdiction</p>
-                    <p className="text-xs font-bold text-foreground mt-0.5">80 Barangays</p>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/60">
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Target</p>
-                    <p className="text-xs font-bold text-emerald-600 mt-0.5">70% Herd Immunity</p>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-3 border-t border-border/50 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                  Active Field Units
-                </span>
-                <Link href="/field-operations">
-                  <Button size="sm" className="h-8 text-xs gap-1.5 cursor-pointer font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl shadow-xs">
-                    <span>Field Schedule</span>
-                    <ArrowRight className="size-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* ── 6. Row 3: Real-Time Office Activity Timeline ── */}
+      <ActivityFeed />
     </div>
   );
 }

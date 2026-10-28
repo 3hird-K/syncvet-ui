@@ -58,12 +58,12 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         items: [
           { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
           { label: "Citizen Inquiries & Chat", icon: MessengerIcon, href: "/messages" },
-          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records", section: "City Veterinary Services" },
-          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
-          { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations" },
-          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
+          { label: "Manage Users", icon: Users, href: "/users" },
+          { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "City Veterinary Services" },
+          { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
           { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
-          { label: "Manage Users", icon: Users, href: "/users", section: "Administration" },
+          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+          { label: "Field Operations", icon: MapPin, href: "/field-operations" },
         ],
       };
     case "Veterinarian":
@@ -74,9 +74,9 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
           { label: "Telemedicine & Chat", icon: MessengerIcon, href: "/messages" },
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "Clinical Procedures" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
+          { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
           { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
           { label: "Field Operations", icon: MapPin, href: "/field-operations" },
-          { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
         ],
       };
     case "Pet Owner":

@@ -17,6 +17,7 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { NewAnimalControlDialog } from "@/components/dashboard/new-animal-control-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOAnimalControlCase } from "@/data/cvo-store";
@@ -62,6 +63,24 @@ export default function AnimalControlPage() {
   const [selectedCase, setSelectedCase] = useState<CVOAnimalControlCase | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const columns = [
+    { id: "caseId", label: "Case ID", required: true },
+    { id: "animal", label: "Animal Description" },
+    { id: "location", label: "Barangay & Location" },
+    { id: "reason", label: "Reason" },
+    { id: "holding", label: "Holding Period" },
+    { id: "date", label: "Intake Date" },
+    { id: "status", label: "Status" },
+    { id: "action", label: "Action" },
+  ];
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map((c) => c.id));
+  const toggleColumn = (id: string) => {
+    setVisibleColumns((prev) =>
+      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
+    );
+  };
 
   const impoundedCount = animalControlCases.filter((c) => c.status === "impounded").length;
   const claimedCount = animalControlCases.filter((c) => c.status === "claimed").length;
@@ -221,6 +240,13 @@ export default function AnimalControlPage() {
                   <SelectItem value="released">Released</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Table Column Filter Icon Button */}
+              <TableColumnFilter
+                columns={columns}
+                visibleColumns={visibleColumns}
+                onToggleColumn={toggleColumn}
+              />
             </div>
           </div>
         </CardHeader>
@@ -229,71 +255,103 @@ export default function AnimalControlPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Case ID</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal Description</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay & Location</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Reason</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Holding Period</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Intake Date</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Action</TableHead>
+                {visibleColumns.includes("caseId") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Case ID</TableHead>
+                )}
+                {visibleColumns.includes("animal") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal Description</TableHead>
+                )}
+                {visibleColumns.includes("location") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Barangay & Location</TableHead>
+                )}
+                {visibleColumns.includes("reason") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Reason</TableHead>
+                )}
+                {visibleColumns.includes("holding") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Holding Period</TableHead>
+                )}
+                {visibleColumns.includes("date") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Intake Date</TableHead>
+                )}
+                {visibleColumns.includes("status") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Status</TableHead>
+                )}
+                {visibleColumns.includes("action") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Action</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground">
                     No animal control cases match the filter.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((c, idx) => (
                   <TableRow key={`${c.caseId}-${idx}`} className="hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs font-bold text-foreground pl-6">
-                      {c.caseId}
-                    </TableCell>
-                    <TableCell className="max-w-[200px]">
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="outline" className="text-[9px] py-0">{c.species}</Badge>
-                        <span className="text-xs font-medium text-foreground truncate">{c.breedEstimate}</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate">{c.animalDescription}</p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs font-medium text-foreground">Barangay {c.barangay}</p>
-                      <p className="text-[11px] text-muted-foreground truncate max-w-[160px]">{c.specificLocation}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${
-                          c.reason.includes("Bite")
-                            ? "border-red-500/30 text-red-500 bg-red-500/10"
-                            : "border-border"
-                        }`}
-                      >
-                        {c.reason}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      <span className="font-bold text-foreground">Day {c.holdingDaysElapsed}</span> of {c.maxHoldingDays}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {c.dateCaptured}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(c.status)}
-                    </TableCell>
-                    <TableCell className="text-right pr-6">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedCase(c)}
-                        className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
-                      >
-                        <Eye className="size-3.5" /> Case Details
-                      </Button>
-                    </TableCell>
+                    {visibleColumns.includes("caseId") && (
+                      <TableCell className="font-mono text-xs font-bold text-foreground pl-6">
+                        {c.caseId}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("animal") && (
+                      <TableCell className="max-w-[200px]">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[9px] py-0">{c.species}</Badge>
+                          <span className="text-xs font-medium text-foreground truncate">{c.breedEstimate}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground truncate">{c.animalDescription}</p>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("location") && (
+                      <TableCell>
+                        <p className="text-xs font-medium text-foreground">Barangay {c.barangay}</p>
+                        <p className="text-[11px] text-muted-foreground truncate max-w-[160px]">{c.specificLocation}</p>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("reason") && (
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            c.reason.includes("Bite")
+                              ? "border-red-500/30 text-red-500 bg-red-500/10"
+                              : "border-border"
+                          }`}
+                        >
+                          {c.reason}
+                        </Badge>
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("holding") && (
+                      <TableCell className="text-xs text-muted-foreground">
+                        <span className="font-bold text-foreground">Day {c.holdingDaysElapsed}</span> of {c.maxHoldingDays}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("date") && (
+                      <TableCell className="text-xs text-muted-foreground">
+                        {c.dateCaptured}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("status") && (
+                      <TableCell>
+                        {getStatusBadge(c.status)}
+                      </TableCell>
+                    )}
+                    {visibleColumns.includes("action") && (
+                      <TableCell className="text-right pr-6">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedCase(c)}
+                          className="h-7 text-xs gap-1 text-primary hover:text-primary cursor-pointer"
+                        >
+                          <Eye className="size-3.5" /> Case Details
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
