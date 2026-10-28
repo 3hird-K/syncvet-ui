@@ -19,6 +19,7 @@ export interface DaySlotStatus {
   isAvailable: boolean;
   isWeekend: boolean;
   isPast: boolean;
+  isClosedToday?: boolean;
   statusLabel: string;
 }
 
@@ -111,13 +112,38 @@ export function calculateSlotStatus({
     return {
       date: dateStr,
       service,
-      totalCapacity: 0,
+      totalCapacity,
       bookedCount: 0,
       remainingSlots: 0,
       isAvailable: false,
       isWeekend: true,
       isPast: false,
       statusLabel: "Weekend (Closed)",
+    };
+  }
+
+  // Same-day operating hours check: Same-day booking is open 8:00 AM – 5:00 PM (Monday – Friday).
+  // If user wants to book for today, but current time is before 8:00 AM or at/after 5:00 PM (17:00),
+  // clinic hours have ended/not opened yet, so same-day booking is disabled.
+  const isToday = checkDay.getTime() === today.getTime();
+  const now = new Date();
+  const currentHour = now.getHours();
+  const isSameDayClosed = isToday && (currentHour < 8 || currentHour >= 17);
+
+  if (isSameDayClosed) {
+    return {
+      date: dateStr,
+      service,
+      totalCapacity,
+      bookedCount: 0,
+      remainingSlots: 0,
+      isAvailable: false,
+      isWeekend: false,
+      isPast: false,
+      isClosedToday: true,
+      statusLabel: currentHour >= 17
+        ? "Closed for Today (Hours Ended 5:00 PM)"
+        : "Clinic Closed (Opens 8:00 AM)",
     };
   }
 

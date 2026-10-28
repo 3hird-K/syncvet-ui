@@ -451,6 +451,17 @@ export function ScheduleProcedureDialog({
     }
   }, [appointmentDate, conflictingDateStr, isSameDayConflict]);
 
+  // Check if selected appointmentDate is currently unavailable (e.g. fully booked or same-day closed)
+  const isSelectedDateUnavailable = useMemo(() => {
+    if (!appointmentDate) return false;
+    const status = calculateSlotStatus({
+      date: appointmentDate,
+      service,
+      bookedAppointments,
+    });
+    return !status.isAvailable;
+  }, [appointmentDate, service, bookedAppointments]);
+
   // Auto-switch active service to spay-neuter if vaccination is already scheduled
   useEffect(() => {
     if (isVaccinationScheduled && service === "vaccination") {
@@ -635,7 +646,11 @@ export function ScheduleProcedureDialog({
       });
 
       if (!status.isAvailable) {
-        toast.error("Sorry! This date just became fully booked. Please choose another date.");
+        toast.error(
+          status.isClosedToday
+            ? "Same-day booking is open from 8:00 AM to 5:00 PM (Monday – Friday). Operating hours have ended for today."
+            : "Sorry! This date is not available. Please choose another date."
+        );
         setSubmitting(false);
         return;
       }
@@ -1260,6 +1275,7 @@ export function ScheduleProcedureDialog({
                   submitting ||
                   !checklistConfirmed ||
                   !appointmentDate ||
+                  isSelectedDateUnavailable ||
                   pets.length === 0 ||
                   isVaccinationBlocked ||
                   isAlreadyScheduled ||
@@ -1271,6 +1287,11 @@ export function ScheduleProcedureDialog({
                   <>
                     <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                     <span>Booking Slot...</span>
+                  </>
+                ) : isSelectedDateUnavailable ? (
+                  <>
+                    <AlertCircle className="size-3.5" />
+                    <span>Date Closed / Unavailable</span>
                   </>
                 ) : isSameDayConflict ? (
                   <>

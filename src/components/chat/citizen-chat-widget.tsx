@@ -258,7 +258,10 @@ export function CitizenChatWidget() {
     (activeRoleView === "Veterinarian" ||
       userRecord?.role === "Veterinarian" ||
       roleFromMeta?.toLowerCase()?.includes("vet"));
-  const isStaff = activeRoleView !== "Pet Owner" && userRecord?.role !== "Pet Owner";
+  const isStaff =
+    isAdmin ||
+    isVet ||
+    (activeRoleView !== "Pet Owner" && userRecord?.role !== "Pet Owner");
 
   const [adminChatDesk, setAdminChatDesk] = useState<"vet" | "admin">("admin");
   const [searchQuery, setSearchQuery] = useState("");
@@ -377,6 +380,76 @@ export function CitizenChatWidget() {
 
     return [...baseContacts, ...citizenContacts];
   }, [dbUsers, presenceMap]);
+
+  // Fetch latest chats to sort pet owners by recency of messages
+  const { data: latestChats = [] } = useQuery({
+    queryKey: ["widget-latest-chats"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from("chats")
+          .select("id, owner_id, last_message_at, updated_at")
+          .order("last_message_at", { ascending: false, nullsFirst: false });
+        if (error) return [];
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 15,
+  });
+
+  const ownerLatestMessageMap = useMemo(() => {
+    const map = new Map<string, number>();
+    latestChats.forEach((c: any) => {
+      const tsStr = c.last_message_at || c.updated_at;
+      if (c.owner_id && tsStr) {
+        const time = new Date(tsStr).getTime();
+        const existing = map.get(c.owner_id) || 0;
+        if (time > existing) {
+          map.set(c.owner_id, time);
+        }
+      }
+    });
+    return map;
+  }, [latestChats]);
+
+  // Pet owners list for New Message: top 5 with latest messages by default, or filtered when searching (no scrolling)
+  const displayedContacts = useMemo(() => {
+    if (!isStaff) {
+      // Pet Owners only see official CVO channels (Vet or Admin)
+      return dynamicContacts.filter((c) => c.id === "vet" || c.id === "admin");
+    }
+
+    // Filter pet owners: exclude admin/vet desks and exclude current user (self)
+    const petOwners = dynamicContacts.filter((c) => {
+      if (c.id === "vet" || c.id === "admin") return false;
+      if (user?.id && (c.id === user.id || c.ownerId === user.id)) return false;
+      return true;
+    });
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      // Searchable: search across all pet owners matching query
+      return petOwners
+        .filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            c.shortName.toLowerCase().includes(q) ||
+            c.roleDescription.toLowerCase().includes(q)
+        )
+        .slice(0, 5);
+    }
+
+    // Default: exactly 5 pet owners sorted by latest message
+    return [...petOwners]
+      .sort((a, b) => {
+        const aTime = ownerLatestMessageMap.get(a.ownerId || a.id) || 0;
+        const bTime = ownerLatestMessageMap.get(b.ownerId || b.id) || 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5);
+  }, [isStaff, dynamicContacts, searchQuery, user?.id, ownerLatestMessageMap]);
 
   const findContact = useCallback(
     (contactId: string): ChatContact | undefined => {
@@ -766,57 +839,51 @@ export function CitizenChatWidget() {
             className="!z-[1050] w-72 sm:w-80 p-2 rounded-2xl bg-card/95 backdrop-blur-xl border border-border/70 shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150"
           >
             {/* Header */}
-            <div className="px-3 py-2 border-b border-border/40 mb-1">
-              <h4 className="text-xs font-extrabold text-foreground tracking-tight">
-                New Message
-              </h4>
-              <p className="text-[10px] text-muted-foreground font-medium">
-                {isStaff ? "Select a citizen to message" : "Select an official CVO channel to connect"}
-              </p>
+            <div className="px-3 py-2 border-b border-border/40 mb-1 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="text-xs font-extrabold text-foreground tracking-tight">
+                  New Message
+                </h4>
+                <p className="text-[10px] text-muted-foreground font-medium truncate">
+                  {isStaff ? "Select a citizen to message" : "Select an official CVO channel to connect"}
+                </p>
+              </div>
 
-              {/* Admin Account Switcher: ONLY for Admin accounts; NEVER for Vet accounts */}
+              {/* Admin Account Switcher: ONLY for Admin accounts; switched purely by compact icon toggle */}
               {isAdmin && (
-                <div className="mt-2.5 p-1.5 rounded-xl bg-muted/60 border border-border/50">
-                  <div className="flex items-center justify-between text-[10px] font-semibold text-muted-foreground px-1 mb-1">
-                    <span>Chat identity:</span>
-                    <span className="text-primary font-bold">
-                      {adminChatDesk === "admin" ? "CVO Admin Desk" : "Dr. Helen (Veterinarian)"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 bg-background/80 p-0.5 rounded-lg border border-border/40">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSetAdminChatDesk("admin");
-                      }}
-                      className={cn(
-                        "flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-bold transition-all cursor-pointer",
-                        adminChatDesk === "admin"
-                          ? "bg-primary text-primary-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                      )}
-                    >
-                      <Building2 className="size-3 shrink-0" />
-                      <span>Admin Desk</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSetAdminChatDesk("vet");
-                      }}
-                      className={cn(
-                        "flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-bold transition-all cursor-pointer",
-                        adminChatDesk === "vet"
-                          ? "bg-primary text-primary-foreground shadow-xs"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                      )}
-                    >
-                      <Stethoscope className="size-3 shrink-0" />
-                      <span>Veterinarian</span>
-                    </button>
-                  </div>
+                <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/80 border border-border/60 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSetAdminChatDesk("admin");
+                    }}
+                    className={cn(
+                      "size-6.5 rounded-md flex items-center justify-center transition-all cursor-pointer",
+                      adminChatDesk === "admin"
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                    title="Chat as Admin Desk"
+                  >
+                    <Building2 className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSetAdminChatDesk("vet");
+                    }}
+                    className={cn(
+                      "size-6.5 rounded-md flex items-center justify-center transition-all cursor-pointer",
+                      adminChatDesk === "vet"
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                    title="Chat as Dr. Helen (Veterinarian)"
+                  >
+                    <Stethoscope className="size-3.5" />
+                  </button>
                 </div>
               )}
             </div>
@@ -837,34 +904,23 @@ export function CitizenChatWidget() {
               </div>
             )}
 
-            {/* Contacts list */}
-            <div className="space-y-1 py-0.5 max-h-[280px] overflow-y-auto pr-0.5">
-              {dynamicContacts
-                .filter((c) => {
-                  if (isStaff) {
-                    // Both Admin and Veterinarians should strictly NOT see staff desks (CVO Admin or Vet Desk)
-                    // and should never see their own user account (prevents chatting with self)
-                    if (c.id === "vet" || c.id === "admin") return false;
-                    if (user?.id && (c.id === user.id || c.ownerId === user.id)) return false;
-                    if (searchQuery.trim()) {
-                      const q = searchQuery.toLowerCase().trim();
-                      return c.name.toLowerCase().includes(q) || c.roleDescription.toLowerCase().includes(q);
-                    }
-                    return true;
-                  }
-                  // Pet Owners only see official CVO channels (Vet or Admin)
-                  return c.id === "vet" || c.id === "admin";
-                })
-                .map((c) => {
+            {/* Contacts list: exactly 5 pet owners with latest messages by default, no scrolling */}
+            <div className="space-y-0.5 py-0.5">
+              {displayedContacts.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">
+                  No pet owners found
+                </div>
+              ) : (
+                displayedContacts.map((c) => {
                   const { isActive, statusText } = getContactPresence(c);
                   return (
                     <DropdownMenuItem
                       key={c.id}
                       onClick={() => handleOpenContact(c.id)}
-                      className="flex items-center gap-3 p-2.5 cursor-pointer rounded-xl hover:bg-muted/70 transition-all group focus:bg-muted/70"
+                      className="flex items-center gap-2.5 p-2 cursor-pointer rounded-xl hover:bg-muted/70 transition-all group focus:bg-muted/70"
                     >
                       <div className="relative shrink-0">
-                        <Avatar className="size-10 rounded-full overflow-hidden border border-border/60 shadow-xs">
+                        <Avatar className="size-9 rounded-full overflow-hidden border border-border/60 shadow-xs">
                           {c.avatar ? (
                             <AvatarImage
                               src={c.avatar}
@@ -926,7 +982,8 @@ export function CitizenChatWidget() {
                       </div>
                     </DropdownMenuItem>
                   );
-                })}
+                })
+              )}
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -943,7 +1000,7 @@ export function CitizenChatWidget() {
               <div className="absolute right-14 hidden group-hover:flex items-center px-2.5 py-1 rounded-lg bg-popover/95 backdrop-blur-md border border-border shadow-lg text-xs font-semibold text-foreground whitespace-nowrap pointer-events-none animate-in fade-in-50 zoom-in-95 duration-150 z-50">
                 <span>{contact.shortName}</span>
                 {unread > 0 ? (
-                  <span className="ml-1.5 text-[10px] text-rose-500 font-bold">
+                  <span className="ml-1.5 text-[10px] text-primary font-bold">
                     ({unread} new)
                   </span>
                 ) : isOpen ? (
@@ -951,7 +1008,7 @@ export function CitizenChatWidget() {
                     (Click to minimize)
                   </span>
                 ) : (
-                  <span className="ml-1.5 text-[10px] text-emerald-600 font-semibold">
+                  <span className="ml-1.5 text-[10px] text-primary font-semibold">
                     (Click to open)
                   </span>
                 )}
@@ -967,7 +1024,7 @@ export function CitizenChatWidget() {
                     isOpen
                       ? "border-primary ring-2 ring-primary/40 ring-offset-2 ring-offset-background"
                       : unread > 0
-                      ? "border-rose-500 ring-2 ring-rose-500/30"
+                      ? "border-primary ring-2 ring-primary/40"
                       : "border-border/80 hover:border-primary/60"
                   )}
                   title={contact.name}
@@ -1017,22 +1074,22 @@ export function CitizenChatWidget() {
                   })()}
                 </button>
 
-                {/* ── Unread Messages Red Badge (Matches Image 1 & 2: '5' and '1') ── */}
+                {/* ── Unread Messages Green Badge ── */}
                 {unread > 0 && !isOpen && (
-                  <span className="absolute -top-1 -right-1 z-20 min-w-5 h-5 px-1 rounded-full bg-rose-600 text-white font-extrabold text-[11px] flex items-center justify-center border-2 border-background shadow-md animate-in zoom-in-75">
+                  <span className="absolute -top-1 -right-1 z-20 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground font-extrabold text-[11px] flex items-center justify-center border-2 border-background shadow-md animate-in zoom-in-75">
                     {unread > 99 ? "99+" : unread}
                   </span>
                 )}
 
-                {/* ── Animated Typing Pill (Matches Image 2: dark pill with 3 bouncing dots) ── */}
+                {/* ── Messenger-Style Animated Typing Bubble on Chat Head ── */}
                 {isTyping && (
                   <div
-                    className="absolute -bottom-1 -right-2 z-20 flex items-center gap-1 bg-zinc-900 dark:bg-zinc-800 border border-white/20 shadow-lg px-2 py-1 rounded-full animate-in zoom-in-75 duration-150"
+                    className="absolute -bottom-1 -right-1 z-20 flex items-center justify-center gap-1 bg-card dark:bg-zinc-800 border border-border/80 shadow-md px-2 h-5 rounded-full ring-2 ring-background animate-in zoom-in-75 duration-150"
                     title={`${contact.shortName} is typing...`}
                   >
-                    <span className="size-1.5 rounded-full bg-zinc-200 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="size-1.5 rounded-full bg-zinc-200 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="size-1.5 rounded-full bg-zinc-200 animate-bounce" />
+                    <span className="size-1.25 rounded-full bg-zinc-600 dark:bg-zinc-300 animate-typing-dot" />
+                    <span className="size-1.25 rounded-full bg-zinc-600 dark:bg-zinc-300 animate-typing-dot [animation-delay:180ms]" />
+                    <span className="size-1.25 rounded-full bg-zinc-600 dark:bg-zinc-300 animate-typing-dot [animation-delay:360ms]" />
                   </div>
                 )}
 
@@ -1829,36 +1886,34 @@ function FacebookMessengerWindow({
           </div>
         </div>
 
-        {/* Admin Account Switcher: ONLY for Admin accounts; NEVER for Vet accounts */}
+        {/* Admin Account Switcher: ONLY for Admin accounts; switched purely by icon */}
         {isAdmin && onChangeDesk && (
-          <div className="flex items-center bg-muted/80 p-0.5 rounded-lg border border-border/60 text-[10px] font-semibold shrink-0">
+          <div className="flex items-center bg-muted/80 p-0.5 rounded-lg border border-border/60 text-[10px] font-semibold shrink-0 gap-0.5">
             <button
               type="button"
               onClick={() => onChangeDesk("admin")}
               title="Chat as CVO Admin Desk"
               className={cn(
-                "px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer",
+                "size-6 rounded-md flex items-center justify-center transition-all cursor-pointer",
                 effectiveDesk === "admin"
                   ? "bg-primary text-primary-foreground shadow-2xs font-bold"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               )}
             >
-              <Building2 className="size-3" />
-              <span>Admin</span>
+              <Building2 className="size-3.5" />
             </button>
             <button
               type="button"
               onClick={() => onChangeDesk("vet")}
               title="Chat as Veterinarian (Dr. Helen)"
               className={cn(
-                "px-2 py-0.5 rounded-md flex items-center gap-1 transition-all cursor-pointer",
+                "size-6 rounded-md flex items-center justify-center transition-all cursor-pointer",
                 effectiveDesk === "vet"
                   ? "bg-primary text-primary-foreground shadow-2xs font-bold"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               )}
             >
-              <Stethoscope className="size-3" />
-              <span>Vet</span>
+              <Stethoscope className="size-3.5" />
             </button>
           </div>
         )}
@@ -2403,11 +2458,28 @@ function FacebookMessengerWindow({
             })()}
 
             {checkContactTyping(contact, isOtherTyping, typingInfo, user?.id) && (
-              <div className="flex items-center gap-2 text-muted-foreground text-[10px] p-2 bg-muted/40 rounded-xl max-w-[85%] animate-in fade-in-50 duration-200 mt-2">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                <span className="truncate">
-                  {typingInfo?.senderName || contact.shortName} is typing...
-                </span>
+              <div className="flex items-end gap-2 animate-in fade-in-50 slide-in-from-bottom-1 duration-200 mt-2">
+                <Avatar className="size-6.5 rounded-full border border-border/60 shrink-0 overflow-hidden bg-muted">
+                  {contact.avatar ? (
+                    <AvatarImage
+                      src={contact.avatar}
+                      alt={contact.name}
+                      className={contact.avatar.includes("cdo-seal") ? "object-contain p-0.5 bg-white" : "object-cover"}
+                    />
+                  ) : null}
+                  <AvatarFallback className="text-[8px] font-bold bg-primary/20 text-primary uppercase">
+                    {contact.fallback}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl rounded-bl-xs bg-muted/70 dark:bg-muted/50 border border-border/50 shadow-2xs"
+                  title={`${typingInfo?.senderName || contact.shortName} is typing...`}
+                >
+                  <span className="size-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 animate-typing-dot" />
+                  <span className="size-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 animate-typing-dot [animation-delay:180ms]" />
+                  <span className="size-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 animate-typing-dot [animation-delay:360ms]" />
+                </div>
               </div>
             )}
           </>

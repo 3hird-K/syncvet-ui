@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   CalendarCheck,
   Lock,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -101,15 +103,16 @@ export default function ConsultationsPage() {
   const [surgeryDialogOpen, setSurgeryDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
 
   const columns = [
     { id: "transaction", label: "Transaction ID & Type", required: true },
-    { id: "date", label: "Schedule Date" },
-    { id: "animal", label: "Animal" },
     { id: "owner", label: "Owner / Area" },
+    { id: "animal", label: "Animal" },
     { id: "service", label: "Service & Diagnosis" },
     { id: "vet", label: "Attending Vet" },
     { id: "status", label: "Status" },
+    { id: "date", label: "Schedule Date" },
   ];
 
   const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map((c) => c.id));
@@ -228,6 +231,7 @@ export default function ConsultationsPage() {
                 date: tx.date ? tx.date.split("T")[0] : "",
                 status: tx.status || "confirmed",
                 notes: tx.detail || "",
+                created_at: tx.created_at,
               });
             }
           });
@@ -483,6 +487,7 @@ export default function ConsultationsPage() {
           category,
           isOverdue: isItemOverdue(apt.date, apt.status),
           serviceType: "Field Treatment/Consultation" as const,
+          createdAt: apt.created_at || apt.createdAt,
           veterinarianNotes:
             apt.notes ||
             (category === "vaccination"
@@ -492,12 +497,52 @@ export default function ConsultationsPage() {
       });
   }, [dbAppointments, dbPets, dbUsers, dbVaccinations]);
 
-  // Unified list of all queue items
+  // Unified list of all queue items strictly sorted from newest to oldest
   const allUnifiedQueue = useMemo(() => {
+    const parseTimeMinutes = (timeStr?: string) => {
+      if (!timeStr) return 0;
+      const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([APap][Mm]))?/);
+      if (!match) return 0;
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const meridiem = (match[3] || "").toUpperCase();
+      if (meridiem === "PM" && h < 12) h += 12;
+      if (meridiem === "AM" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const getCreatedMs = (item: QueueEncounter) => {
+      if (item.createdAt) {
+        const t = new Date(item.createdAt).getTime();
+        if (!isNaN(t) && t > 0) return t;
+      }
+      return 0;
+    };
+
     return [...consultationItems, ...appointmentItems].sort((a, b) => {
-      return (b.date || "").localeCompare(a.date || "");
+      // 1. Primary: Compare Schedule Date (newest date first if desc)
+      const dateDiff = (b.date || "").localeCompare(a.date || "");
+      if (dateDiff !== 0) {
+        return sortDirection === "desc" ? dateDiff : -dateDiff;
+      }
+
+      // 2. Secondary: If scheduled on the same date, compare creation/booking timestamp (newest created first)
+      const createdDiff = getCreatedMs(b) - getCreatedMs(a);
+      if (createdDiff !== 0) {
+        return sortDirection === "desc" ? createdDiff : -createdDiff;
+      }
+
+      // 3. Tertiary: Fallback to scheduled time of day descending
+      const timeDiff = parseTimeMinutes(b.time) - parseTimeMinutes(a.time);
+      if (timeDiff !== 0) {
+        return sortDirection === "desc" ? timeDiff : -timeDiff;
+      }
+
+      // 4. Quaternary: Encounter / Transaction number descending
+      const idDiff = (b.encounterNo || b.id || "").localeCompare(a.encounterNo || a.id || "");
+      return sortDirection === "desc" ? idDiff : -idDiff;
     });
-  }, [consultationItems, appointmentItems]);
+  }, [consultationItems, appointmentItems, sortDirection]);
 
   // Pet Owner role filtering
   const userFilteredQueue = useMemo(() => {
@@ -844,14 +889,11 @@ export default function ConsultationsPage() {
                 {visibleColumns.includes("transaction") && (
                   <TableHead className="text-[10px] font-bold uppercase tracking-widest pl-6">Transaction ID & Type</TableHead>
                 )}
-                {visibleColumns.includes("date") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Schedule Date</TableHead>
+                {visibleColumns.includes("owner") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner / Area</TableHead>
                 )}
                 {visibleColumns.includes("animal") && (
                   <TableHead className="text-[10px] font-bold uppercase tracking-widest">Animal</TableHead>
-                )}
-                {visibleColumns.includes("owner") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest">Owner / Area</TableHead>
                 )}
                 {visibleColumns.includes("service") && (
                   <TableHead className="text-[10px] font-bold uppercase tracking-widest">Service & Diagnosis</TableHead>
@@ -860,7 +902,24 @@ export default function ConsultationsPage() {
                   <TableHead className="text-[10px] font-bold uppercase tracking-widest">Attending Vet</TableHead>
                 )}
                 {visibleColumns.includes("status") && (
-                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">Status</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-center">Status</TableHead>
+                )}
+                {visibleColumns.includes("date") && (
+                  <TableHead className="text-[10px] font-bold uppercase tracking-widest text-right pr-6">
+                    <button
+                      type="button"
+                      onClick={() => setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))}
+                      className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer ml-auto font-bold uppercase tracking-widest group"
+                      title={sortDirection === "desc" ? "Sorted: Newest to Oldest (Click to sort Oldest to Newest)" : "Sorted: Oldest to Newest (Click to sort Newest to Oldest)"}
+                    >
+                      <span>Schedule Date</span>
+                      {sortDirection === "desc" ? (
+                        <ArrowDown className="size-3 text-primary shrink-0 transition-transform group-hover:translate-y-0.5" />
+                      ) : (
+                        <ArrowUp className="size-3 text-primary shrink-0 transition-transform group-hover:-translate-y-0.5" />
+                      )}
+                    </button>
+                  </TableHead>
                 )}
               </TableRow>
             </TableHeader>
@@ -893,49 +952,7 @@ export default function ConsultationsPage() {
                       </TableCell>
                     )}
 
-                    {/* 2. Schedule Date & Time */}
-                    {visibleColumns.includes("date") && (
-                      <TableCell className="py-3.5 align-middle whitespace-nowrap">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
-                            <Calendar className="size-3 text-muted-foreground/60 shrink-0" />
-                            <span>{formatEncounterDate(c.date)}</span>
-                            {isTodayDate(c.date) && !c.isOverdue && (
-                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/25">
-                                Today
-                              </span>
-                            )}
-                          </div>
-                          {c.time && (
-                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                              <Clock className="size-3 text-muted-foreground/50 shrink-0" />
-                              <span className="font-mono text-[10px] text-muted-foreground/80">{c.time}</span>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
-
-                    {/* 3. Patient / Animal */}
-                    {visibleColumns.includes("animal") && (
-                      <TableCell className="py-3 align-middle">
-                        <div className="flex items-center gap-2 max-w-[150px]">
-                          <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                            <PawPrint className="size-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight truncate">
-                              {c.petName}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground truncate mt-0.5" title={`${c.species} • ${c.breed}`}>
-                              {c.species} <span className="text-muted-foreground/40">•</span> {cleanBreed(c.breed)}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                    )}
-
-                    {/* 4. Owner & Barangay */}
+                    {/* 2. Owner & Barangay (Next to Transaction ID) */}
                     {visibleColumns.includes("owner") && (
                       <TableCell className="py-3 align-middle">
                         <div className="flex items-center gap-2.5 max-w-[160px]">
@@ -960,7 +977,26 @@ export default function ConsultationsPage() {
                       </TableCell>
                     )}
 
-                    {/* 5. Complaint & Diagnosis */}
+                    {/* 3. Patient / Animal */}
+                    {visibleColumns.includes("animal") && (
+                      <TableCell className="py-3 align-middle">
+                        <div className="flex items-center gap-2 max-w-[150px]">
+                          <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                            <PawPrint className="size-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight truncate">
+                              {c.petName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5" title={`${c.species} • ${c.breed}`}>
+                              {c.species} <span className="text-muted-foreground/40">•</span> {cleanBreed(c.breed)}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                    )}
+
+                    {/* 4. Complaint & Diagnosis */}
                     {visibleColumns.includes("service") && (
                       <TableCell className="max-w-[170px] py-3 align-middle">
                         <div className="space-y-0.5">
@@ -974,7 +1010,7 @@ export default function ConsultationsPage() {
                       </TableCell>
                     )}
 
-                    {/* 6. Attending Veterinarian */}
+                    {/* 5. Attending Veterinarian */}
                     {visibleColumns.includes("vet") && (
                       <TableCell className="py-3 align-middle">
                         <div className="flex items-center gap-2 text-xs max-w-[160px]">
@@ -991,12 +1027,27 @@ export default function ConsultationsPage() {
                       </TableCell>
                     )}
 
-                    {/* 7. Status & Arrow */}
+                    {/* 6. Status */}
                     {visibleColumns.includes("status") && (
-                      <TableCell className="text-right pr-6 py-3 align-middle whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          {getStatusBadge(c.status, c.isOverdue)}
-                          <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                      <TableCell className="py-3 align-middle whitespace-nowrap text-center">
+                        {getStatusBadge(c.status, c.isOverdue)}
+                      </TableCell>
+                    )}
+
+                    {/* 7. Schedule Date (Last Column, time removed) */}
+                    {visibleColumns.includes("date") && (
+                      <TableCell className="py-3.5 align-middle whitespace-nowrap text-right pr-6">
+                        <div className="flex items-center justify-end gap-2.5">
+                          <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
+                            <Calendar className="size-3.5 text-muted-foreground/60 shrink-0" />
+                            <span>{formatEncounterDate(c.date)}</span>
+                            {isTodayDate(c.date) && !c.isOverdue && (
+                              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/25">
+                                Today
+                              </span>
+                            )}
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                         </div>
                       </TableCell>
                     )}

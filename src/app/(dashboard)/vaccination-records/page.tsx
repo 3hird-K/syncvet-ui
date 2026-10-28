@@ -22,7 +22,10 @@ import {
   CheckCircle2,
   Clock,
   User,
+  Loader2,
 } from "lucide-react";
+import html2canvas from "html2canvas-pro";
+import jsPDF from "jspdf";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +88,7 @@ export default function VaccinationRecordsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedRecord, setSelectedRecord] = useState<VaccinationRecordItem | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
 
@@ -211,15 +215,15 @@ export default function VaccinationRecordsPage() {
         } catch {}
 
         return {
-          id: `VAX-${c.encounterNo || c.id.slice(0, 8)}`,
-          petName: c.petName,
+          id: `VAX-${c.encounterNo || (c.id ? c.id.slice(0, 8) : Math.random().toString(36).slice(2, 8))}`,
+          petName: c.petName || "Pet",
           petId: c.petId || "—",
           species: c.species || "Dog",
           breed: c.breed || "Mixed",
-          ownerName: c.ownerName,
-          ownerContact: c.ownerContact,
+          ownerName: c.ownerName || "Pet Owner",
+          ownerContact: c.ownerContact || "",
           barangay: c.ownerBarangay || "Carmen",
-          vaccine: c.treatment.includes("Rabisin") ? "Rabisin Inactivated Rabies Vaccine" : "Anti-Rabies Prophylaxis (1.0 mL SC)",
+          vaccine: (c.treatment || "").includes("Rabisin") ? "Rabisin Inactivated Rabies Vaccine" : "Anti-Rabies Prophylaxis (1.0 mL SC)",
           batch: "EMR-CONSULT",
           date: adminDate,
           vet: c.vetName || "Dr. Elena Santos, DVM",
@@ -235,12 +239,12 @@ export default function VaccinationRecordsPage() {
   const allRecords = useMemo(() => {
     const list: VaccinationRecordItem[] = [...dbRecords];
     const seenPetsAndDates = new Set(
-      dbRecords.map((r) => `${r.petName.toLowerCase()}-${r.date}`)
+      dbRecords.map((r) => `${(r.petName || "").toLowerCase()}-${r.date || ""}`)
     );
 
     // Merge EMR appointments
     emrAppointments.forEach((ea) => {
-      const key = `${ea.petName.toLowerCase()}-${ea.date}`;
+      const key = `${(ea.petName || "").toLowerCase()}-${ea.date || ""}`;
       if (!seenPetsAndDates.has(key)) {
         seenPetsAndDates.add(key);
         list.push(ea);
@@ -249,7 +253,7 @@ export default function VaccinationRecordsPage() {
 
     // Merge EMR consultations
     consultationVaccinations.forEach((cv) => {
-      const key = `${cv.petName.toLowerCase()}-${cv.date}`;
+      const key = `${(cv.petName || "").toLowerCase()}-${cv.date || ""}`;
       if (!seenPetsAndDates.has(key)) {
         seenPetsAndDates.add(key);
         list.push(cv);
@@ -288,13 +292,13 @@ export default function VaccinationRecordsPage() {
   // Filter records if Pet Owner
   const records = useMemo(() => {
     if (!isPetOwner) return allRecords;
-    const petNames = new Set(userPets.map((p: any) => p.name.toLowerCase()));
-    const petIds = new Set(userPets.map((p: any) => p.id.toLowerCase()));
+    const petNames = new Set(userPets.map((p: any) => (p.name || "").toLowerCase()).filter(Boolean));
+    const petIds = new Set(userPets.map((p: any) => String(p.id || "").toLowerCase()).filter(Boolean));
 
     const matching = allRecords.filter(
       (r) =>
-        petIds.has(r.petId.toLowerCase()) ||
-        petNames.has(r.petName.toLowerCase())
+        (r.petId && petIds.has(r.petId.toLowerCase())) ||
+        (r.petName && petNames.has(r.petName.toLowerCase()))
     );
 
     if (matching.length > 0) return matching;
@@ -369,7 +373,7 @@ export default function VaccinationRecordsPage() {
     }
   };
 
-  const rabiesCount = records.filter((r) => r.vaccine.toLowerCase().includes("rabies") || r.vaccine.toLowerCase().includes("rabisin")).length;
+  const rabiesCount = records.filter((r) => (r.vaccine || "").toLowerCase().includes("rabies") || (r.vaccine || "").toLowerCase().includes("rabisin")).length;
   const overdueCount = records.filter((r) => r.status === "overdue" || isOverdue(r.nextDue)).length;
   const dueSoonCount = records.filter((r) => isDueSoon(r.nextDue)).length;
 
@@ -440,13 +444,13 @@ export default function VaccinationRecordsPage() {
     if (!q) return records;
     return records.filter(
       (r) =>
-        r.petName.toLowerCase().includes(q) ||
-        r.ownerName.toLowerCase().includes(q) ||
-        r.barangay.toLowerCase().includes(q) ||
-        r.vaccine.toLowerCase().includes(q) ||
-        r.vet.toLowerCase().includes(q) ||
-        r.batch.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q)
+        (r.petName || "").toLowerCase().includes(q) ||
+        (r.ownerName || "").toLowerCase().includes(q) ||
+        (r.barangay || "").toLowerCase().includes(q) ||
+        (r.vaccine || "").toLowerCase().includes(q) ||
+        (r.vet || "").toLowerCase().includes(q) ||
+        (r.batch || "").toLowerCase().includes(q) ||
+        (r.id || "").toLowerCase().includes(q)
     );
   }, [records, query]);
 
@@ -501,55 +505,85 @@ export default function VaccinationRecordsPage() {
       return;
     }
 
+    const styles = Array.from(document.querySelectorAll("link[rel='stylesheet'], style"))
+      .map((s) => s.outerHTML)
+      .join("\n");
+
     doc.open();
     doc.write(`
       <!DOCTYPE html>
       <html>
         <head>
           <title>CVO Vaccination Certificate - ${selectedRecord?.id || "Record"}</title>
+          ${styles}
           <style>
             @page {
               size: portrait;
-              margin: 12mm 14mm;
+              margin: 10mm 12mm;
+            }
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              box-sizing: border-box !important;
             }
             html, body {
               margin: 0 !important;
               padding: 0 !important;
               background: #ffffff !important;
-              color: #000000 !important;
-              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
+              color: #0f172a !important;
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+              width: 100% !important;
+            }
+            .print-document-wrap {
+              width: 100% !important;
+              max-width: 650px !important;
+              margin: 0 auto !important;
+              padding: 6px !important;
             }
             #cvo-vaccination-certificate {
-              border: 2px solid #000000 !important;
+              border: 1.5px solid #059669 !important;
               border-radius: 12px !important;
               padding: 20px 24px !important;
-              max-width: 580px !important;
-              margin: 0 auto !important;
               background: #ffffff !important;
-              color: #000000 !important;
-              box-sizing: border-box !important;
+              color: #0f172a !important;
+              box-shadow: none !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              width: 100% !important;
+              max-width: 100% !important;
             }
-            #cvo-vaccination-certificate * {
-              color: #000000 !important;
-              border-color: #333333 !important;
+            /* Explicit fallback layouts */
+            .grid.grid-cols-2 {
+              display: grid !important;
+              grid-template-columns: 1fr 1fr !important;
+              gap: 12px !important;
             }
-            .print-logo {
-              filter: grayscale(100%) contrast(160%) brightness(0.9) !important;
-              -webkit-filter: grayscale(100%) contrast(160%) brightness(0.9) !important;
+            .flex {
+              display: flex !important;
             }
-            .bg-muted\\/20, .bg-card {
+            .items-center {
+              align-items: center !important;
+            }
+            .justify-between {
+              justify-content: space-between !important;
+            }
+            .bg-muted\\/20, .bg-card, .bg-muted\\/30 {
               background-color: #f8fafc !important;
-              border: 1px solid #cbd5e1 !important;
+              border: 1px solid #e2e8f0 !important;
+            }
+            .border-border\\/60, .border-border\\/70, .border-border\\/50 {
+              border-color: #e2e8f0 !important;
             }
             .print\\:hidden {
               display: none !important;
             }
+            .print-logo {
+              filter: grayscale(100%) contrast(140%) !important;
+            }
           </style>
         </head>
         <body>
-          <div style="padding: 10px;">
+          <div class="print-document-wrap">
             ${element.outerHTML}
           </div>
         </body>
@@ -565,7 +599,57 @@ export default function VaccinationRecordsPage() {
           document.body.removeChild(iframe);
         }
       }, 1500);
-    }, 350);
+    }, 450);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selectedRecord) return;
+    const element = document.getElementById("cvo-vaccination-certificate");
+    if (!element) return;
+
+    setDownloading(true);
+    try {
+      const canvas = await (html2canvas as any)(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        ignoreElements: (el: Element) =>
+          el.classList?.contains("print:hidden") ||
+          el.getAttribute("data-export-ignore") === "true",
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const printableWidth = pdfWidth - margin * 2;
+      const imgHeight = (canvas.height * printableWidth) / canvas.width;
+
+      pdf.addImage(
+        imgData,
+        "PNG",
+        margin,
+        margin,
+        printableWidth,
+        Math.min(imgHeight, pdfHeight - margin * 2)
+      );
+      pdf.save(`CVO-Vaccination-Certificate-${selectedRecord.id || "Record"}.pdf`);
+      toast.success("Official CVO Certificate Downloaded", {
+        description: `Saved as CVO-Vaccination-Certificate-${selectedRecord.id}.pdf`,
+      });
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      toast.error("Could not generate PDF. Please try Print > Save as PDF.");
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const formatDateDisplay = (dStr?: string) => {
@@ -879,7 +963,7 @@ export default function VaccinationRecordsPage() {
           {selectedRecord && (
             <div id="cvo-vaccination-certificate" className="space-y-4 text-xs">
               {/* Header with City Vet Icon in Black and White */}
-              <DialogHeader className="space-y-0 pb-3 border-b border-border/60 text-left !pr-0">
+              <DialogHeader className="space-y-0 pb-3 border-b border-border/60 text-left pr-10 sm:pr-12">
                 <div className="flex items-center gap-3.5">
                   <div className="size-14 rounded-xl bg-muted/40 p-1 border border-border/70 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
                     <Image
@@ -892,11 +976,11 @@ export default function VaccinationRecordsPage() {
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 pr-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">
                         Republic of the Philippines • Cagayan de Oro City
                       </span>
-                      <Badge variant="outline" className="font-mono text-[10px] shrink-0 font-bold">
+                      <Badge variant="outline" className="font-mono text-[10px] shrink-0 font-bold bg-muted/30">
                         {selectedRecord.id}
                       </Badge>
                     </div>
@@ -974,6 +1058,32 @@ export default function VaccinationRecordsPage() {
                 </div>
               </div>
 
+              {/* Official Certification & Signature Line */}
+              <div className="pt-2 border-t border-border/60">
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-2">
+                  <span className="italic">
+                    Official proof of immunization issued under RA 9482 (Anti-Rabies Act).
+                  </span>
+                  <span className="font-semibold text-emerald-600">CVO Certified Record</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 items-end pt-1">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 p-2 rounded-lg bg-muted/20 border border-border/50 text-[10px]">
+                      <ShieldCheck className="size-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-muted-foreground font-medium leading-tight">
+                        City Veterinary Office • Cagayan de Oro City
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right space-y-0.5">
+                    <div className="border-b border-foreground/30 pb-0.5 w-40 ml-auto">
+                      <p className="font-bold text-foreground text-xs">{selectedRecord.vet}</p>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground font-medium">Attending Licensed Vaccinator</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Footer actions */}
               <div className="flex items-center justify-between pt-2 border-t border-border/60 print:hidden">
                 <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -991,10 +1101,21 @@ export default function VaccinationRecordsPage() {
                   </Button>
                   <Button
                     size="sm"
-                    className="text-xs cursor-pointer font-semibold"
-                    onClick={() => setSelectedRecord(null)}
+                    className="gap-1.5 text-xs cursor-pointer font-semibold shadow-xs"
+                    onClick={handleDownloadPdf}
+                    disabled={downloading}
                   >
-                    Done
+                    {downloading ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin" />
+                        <span>Downloading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="size-3.5" />
+                        <span>Download</span>
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

@@ -104,7 +104,7 @@ function getHistoryStatusBadge(status?: string) {
 export function NewConsultationDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { addConsultation, activeRoleView, consultations, inventory } = useCVO();
+  const { addConsultation, activeRoleView, consultations, inventory, deductInventoryStock } = useCVO();
   const { user } = useUser();
   const queryClient = useQueryClient();
 
@@ -694,6 +694,18 @@ export function NewConsultationDialog() {
             const nextYearIso = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
             const vaxRecordNo = `VAX-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
+            // Find matching inventory batch or first available FEFO batch
+            const availableVax = (inventory || []).filter((i: any) => i.category === "Vaccines" && i.stock > 0);
+            const matchedBatch = availableVax.find((i: any) =>
+              treatment.toLowerCase().includes(i.name.toLowerCase()) ||
+              treatment.toLowerCase().includes(i.batchNumber.toLowerCase())
+            ) || availableVax[0];
+
+            const chosenBatchNumber = matchedBatch?.batchNumber || "AR-2026-EMR";
+            const chosenVaccineName = matchedBatch?.name || (treatment.toLowerCase().includes("rabisin")
+              ? "Rabisin Anti-Rabies Vaccine (1.0 mL SC)"
+              : "Anti-Rabies Prophylaxis (1.0 mL SC)");
+
             await supabase.from("vaccination_records").insert({
               record_no: vaxRecordNo,
               pet_name: petName || "Pet",
@@ -703,15 +715,17 @@ export function NewConsultationDialog() {
               owner_name: ownerName || "Pet Owner",
               owner_contact: ownerContact || null,
               barangay: ownerBarangay || "Carmen",
-              vaccine_name: treatment.toLowerCase().includes("rabisin")
-                ? "Rabisin Anti-Rabies Vaccine (1.0 mL SC)"
-                : "Anti-Rabies Prophylaxis (1.0 mL SC)",
-              batch_number: "AR-2026-EMR",
+              vaccine_name: chosenVaccineName,
+              batch_number: chosenBatchNumber,
               administered_date: todayIso,
               next_due_date: nextYearIso,
               veterinarian: vetName || "Dr. Elena Santos, DVM",
               status: "complete",
             });
+
+            if (matchedBatch) {
+              await deductInventoryStock(matchedBatch.batchNumber, 1);
+            }
 
             if (selectedPetId) {
               await supabase
@@ -725,9 +739,22 @@ export function NewConsultationDialog() {
                 .eq("id", selectedPetId);
             }
 
+            // Also deduct matching prescribed medication if in inventory
+            if (medication && medication.trim()) {
+              const matchedMed = (inventory || []).find((i: any) =>
+                i.stock > 0 &&
+                (i.name.toLowerCase().includes(medication.trim().toLowerCase()) ||
+                 medication.toLowerCase().includes(i.name.toLowerCase()))
+              );
+              if (matchedMed) {
+                await deductInventoryStock(matchedMed.batchNumber || matchedMed.id, 1);
+              }
+            }
+
             queryClient.invalidateQueries({ queryKey: ["vaccination_records"] });
             queryClient.invalidateQueries({ queryKey: ["queue-pets"] });
             queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+            queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
           } catch (err) {
             console.warn("Auto-log consultation vaccination error", err);
           }

@@ -80,6 +80,15 @@ export function ProcedureDatePicker({
       // Disable weekends (Saturday = 6, Sunday = 0)
       if (dayOfWeek === 0 || dayOfWeek === 6) return true;
 
+      // Disable same-day booking outside 8:00 AM – 5:00 PM operating hours
+      if (day.getTime() === today.getTime()) {
+        const now = new Date();
+        const currentHour = now.getHours();
+        if (currentHour < 8 || currentHour >= 17) {
+          return true;
+        }
+      }
+
       // Disable same-day conflict with another procedure for the same pet
       if (conflictDate) {
         const checkDateStr = format(checkDate, "yyyy-MM-dd");
@@ -129,14 +138,18 @@ export function ProcedureDatePicker({
                 variant="outline"
                 className={cn(
                   "ml-2 text-[10px] font-bold shrink-0",
-                  selectedDateStatus.remainingSlots > 3
+                  !selectedDateStatus.isAvailable
+                    ? "bg-destructive/10 text-destructive border-destructive/30"
+                    : selectedDateStatus.remainingSlots > 3
                     ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
                     : selectedDateStatus.remainingSlots > 0
                     ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
                     : "bg-destructive/10 text-destructive border-destructive/30"
                 )}
               >
-                {selectedDateStatus.remainingSlots} slots left
+                {!selectedDateStatus.isAvailable
+                  ? selectedDateStatus.statusLabel
+                  : `${selectedDateStatus.remainingSlots} slots left`}
               </Badge>
             )}
           </Button>
@@ -170,7 +183,7 @@ export function ProcedureDatePicker({
           <div className="p-3 bg-muted/30 border-b border-border/60 flex items-center justify-between text-xs">
             <span className="font-bold text-foreground flex items-center gap-1.5">
               <CalendarIcon className="size-3.5 text-primary" />
-              Monday – Friday Operating Schedule
+              Mon – Fri Operating Schedule (8 AM – 5 PM)
             </span>
             <Badge variant="outline" className="text-[10px] font-semibold bg-background">
               {service === "vaccination" ? "10 Daily Slots" : "5 Daily Slots"}
@@ -197,13 +210,29 @@ export function ProcedureDatePicker({
           <div className="p-3 bg-muted/20 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-emerald-500 inline-block" />
-              Available (Mon–Fri)
+              Available (8 AM–5 PM)
             </span>
             <span className="flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-muted-foreground/30 inline-block" />
-              Disabled (Weekend / Booked)
+              Disabled (Weekend / Closed / Full)
             </span>
           </div>
+
+          {(() => {
+            const now = new Date();
+            const h = now.getHours();
+            if (h >= 17 || h < 8) {
+              return (
+                <div className="p-2.5 bg-amber-500/10 border-t border-amber-500/25 text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                  <AlertCircle className="size-3.5 shrink-0 text-amber-600" />
+                  <span>
+                    Same-day booking is open <strong>8:00 AM – 5:00 PM</strong>. Today is closed ({h >= 17 ? "clinic hours ended at 5:00 PM" : "opens at 8:00 AM"}). Please select tomorrow or a future weekday.
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {conflictDate && (
             <div className="p-2.5 bg-amber-500/10 border-t border-amber-500/25 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
@@ -221,7 +250,9 @@ export function ProcedureDatePicker({
         <div
           className={cn(
             "p-3 rounded-xl border text-xs flex items-center justify-between gap-3 animate-in fade-in-0 duration-200",
-            selectedDateStatus.remainingSlots > 2
+            !selectedDateStatus.isAvailable
+              ? "bg-destructive/10 border-destructive/30 text-destructive"
+              : selectedDateStatus.remainingSlots > 2
               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200"
               : selectedDateStatus.remainingSlots > 0
               ? "bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200"
@@ -229,19 +260,25 @@ export function ProcedureDatePicker({
           )}
         >
           <div className="flex items-center gap-2">
-            {selectedDateStatus.remainingSlots > 2 ? (
-              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-            ) : selectedDateStatus.remainingSlots > 0 ? (
-              <AlertCircle className="size-4 text-amber-600 shrink-0" />
-            ) : (
+            {!selectedDateStatus.isAvailable ? (
               <AlertCircle className="size-4 text-destructive shrink-0" />
+            ) : selectedDateStatus.remainingSlots > 2 ? (
+              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 text-amber-600 shrink-0" />
             )}
             <div>
               <p className="font-bold">
-                {selectedDateStatus.remainingSlots} of {selectedDateStatus.totalCapacity} Slots Available
+                {!selectedDateStatus.isAvailable
+                  ? selectedDateStatus.statusLabel
+                  : `${selectedDateStatus.remainingSlots} of ${selectedDateStatus.totalCapacity} Slots Available`}
               </p>
               <p className="text-[11px] opacity-80">
-                {selectedDateStatus.remainingSlots > 2
+                {!selectedDateStatus.isAvailable
+                  ? selectedDateStatus.isClosedToday
+                    ? "Same-day booking is open from 8:00 AM to 5:00 PM (Monday – Friday). Operating hours have ended for today. Please pick tomorrow or a future weekday."
+                    : "This date is not available for booking. Please select another weekday."
+                  : selectedDateStatus.remainingSlots > 2
                   ? "Standard booking quota is open for this date."
                   : selectedDateStatus.remainingSlots > 0
                   ? "Limited slots remaining. Book early to secure appointment."

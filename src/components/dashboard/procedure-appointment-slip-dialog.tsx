@@ -200,10 +200,25 @@ export function ProcedureAppointmentSlipDialog({
           <DialogTitle>Official Procedure Appointment Slip</DialogTitle>
         </DialogHeader>
 
+        {/* Top Print Action (placed right before the dialog Close 'X' icon) */}
+        <div className="absolute top-3.5 right-13 sm:top-4 sm:right-14 z-50 flex items-center gap-1.5 print:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handlePrint}
+            className="h-8 px-2.5 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/80 bg-background/90 hover:bg-muted text-foreground shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            title="Print Appointment Pass"
+          >
+            <Printer className="size-3.5 text-primary" />
+            <span>Print</span>
+          </Button>
+        </div>
+
         {/* Printable Pass Container */}
         <div id="cvo-appointment-slip" className="space-y-5 text-foreground print:p-0">
           {/* Header Banner */}
-          <div className="flex items-start justify-between border-b border-border/80 pb-4 pr-10 sm:pr-12">
+          <div className="flex items-start justify-between border-b border-border/80 pb-4 pr-32 sm:pr-36">
             <div className="flex items-center gap-3">
               <div className="size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
                 <Image
@@ -345,29 +360,6 @@ export function ProcedureAppointmentSlipDialog({
                 <li key={i}>{item}</li>
               ))}
             </ul>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-2 border-t border-border/60 print:hidden">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="text-xs rounded-xl"
-            >
-              Close
-            </Button>
-
-            <Button
-              type="button"
-              size="sm"
-              onClick={handlePrint}
-              className="text-xs font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-xs cursor-pointer"
-            >
-              <Printer className="size-3.5" />
-              <span>Print Appointment Pass</span>
-            </Button>
           </div>
         </div>
       </DialogContent>

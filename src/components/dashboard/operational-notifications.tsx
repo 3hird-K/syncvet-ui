@@ -27,6 +27,7 @@ import {
   isAfter,
   addDays,
   startOfDay,
+  formatDistanceToNow,
 } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,6 @@ import { useUser } from "@clerk/nextjs";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn, isTodayDate } from "@/lib/utils";
-import { toast } from "sonner";
 
 export type OperationalAlertCategory =
   | "booster_due"
@@ -65,15 +65,34 @@ export interface OperationalAlert {
   priority: "high" | "medium" | "low";
 }
 
-function formatRelativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatAlertDateFns(dateOrMs?: number | Date | string): string {
+  if (!dateOrMs) return "Just now";
+  try {
+    const d = typeof dateOrMs === "number" || typeof dateOrMs === "string" ? new Date(dateOrMs) : dateOrMs;
+    if (!isValid(d)) return "Just now";
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return "Just now";
+  }
+}
+
+function formatAlertDisplayTime(alert: OperationalAlert): string {
+  if (
+    alert.category === "booster_due" ||
+    alert.category === "booster_overdue" ||
+    alert.category === "fefo_expiry"
+  ) {
+    return alert.timestamp;
+  }
+  if (alert.createdAt && !isNaN(alert.createdAt)) {
+    try {
+      const d = new Date(alert.createdAt);
+      if (isValid(d)) {
+        return formatDistanceToNow(d, { addSuffix: true });
+      }
+    } catch {}
+  }
+  return alert.timestamp || "Recently";
 }
 
 function getDestinationLabel(category: OperationalAlertCategory): string {
@@ -262,13 +281,15 @@ export function OperationalNotifications() {
 
     for (const item of lowStockItems.slice(0, 3)) {
       const isOut = item.stock <= 0;
+      const rawDate = (item as any).updated_at || (item as any).created_at;
+      const itemTime = rawDate ? new Date(rawDate).getTime() : Date.now() - 3600000;
       list.push({
         id: `low-stock-${item.id || item.batchNumber}`,
         category: "low_stock",
         title: isOut ? "Out of Stock Alert" : "Low Stock Alert",
         message: `${item.name} • ${isOut ? "0 doses left in storage" : `Only ${item.stock} ${item.unit} remaining`} (Minimum safe count: ${item.minimumStock || 15}).`,
-        timestamp: isOut ? "Restock Needed" : "Low Stock",
-        createdAt: Date.now() - 3600000,
+        timestamp: formatAlertDateFns(itemTime),
+        createdAt: itemTime,
         href: "/vaccine-inventory",
         isRead: false,
         priority: isOut ? "high" : "medium",
@@ -313,13 +334,14 @@ export function OperationalNotifications() {
       .slice(0, 2);
 
     for (const log of recentStockLogs) {
-      const timeMs = new Date(log.timestamp).getTime() || Date.now();
+      const rawIso = log.createdAt || (log as any).created_at;
+      const timeMs = rawIso ? new Date(rawIso).getTime() : Date.now();
       list.push({
         id: `stock-log-${log.id}`,
         category: "stock_added",
         title: "Added Vaccine Stock",
         message: log.details || `Logged new batch ${log.recordId} into clinic storage.`,
-        timestamp: formatRelativeTime(timeMs),
+        timestamp: formatAlertDateFns(timeMs),
         createdAt: timeMs,
         href: "/vaccine-inventory",
         isRead: false,
@@ -391,7 +413,7 @@ export function OperationalNotifications() {
         category: "bite_surveillance",
         title: "Bite Surveillance Advisory",
         message: `Canine bite surveillance active in ${b.barangay || "Lapasan"}. Observation protocol assigned.`,
-        timestamp: formatRelativeTime(timeMs),
+        timestamp: formatAlertDateFns(timeMs),
         createdAt: timeMs,
         href: "/consultations",
         isRead: false,
@@ -445,7 +467,7 @@ export function OperationalNotifications() {
             category: "stock_added",
             title: "Added Vaccine Stock",
             message: `New batch ${row.batch_number || "BATCH"} (${row.quantity || row.stock || 0} ${row.unit || "doses"} of ${row.item_name || row.name}) logged into inventory.`,
-            timestamp: "Just now",
+            timestamp: formatAlertDateFns(Date.now()),
             createdAt: Date.now(),
             href: "/vaccine-inventory",
             isRead: false,
@@ -467,7 +489,7 @@ export function OperationalNotifications() {
             category: "new_booking",
             title: "New Citizen Booking",
             message: `New appointment registered for ${row.pet_name || "Pet"} (${serviceName}) on ${row.date || "scheduled date"}.`,
-            timestamp: "Just now",
+            timestamp: formatAlertDateFns(Date.now()),
             createdAt: Date.now(),
             href: "/consultations",
             isRead: false,
@@ -513,10 +535,6 @@ export function OperationalNotifications() {
     updated.add(alert.id);
     persistReadIds(updated);
     setIsOpen(false);
-    toast.info(alert.title, {
-      description: alert.message,
-      duration: 5000,
-    });
     router.push(alert.href);
   };
 
@@ -529,7 +547,7 @@ export function OperationalNotifications() {
           className="relative size-10 rounded-full bg-muted/60 dark:bg-zinc-800/90 hover:bg-muted dark:hover:bg-zinc-700 text-foreground transition-all cursor-pointer flex items-center justify-center shrink-0 border border-border/40"
           aria-label="Operational Notifications"
         >
-          <Bell className="size-5.5 fill-current text-foreground" />
+          <Bell className="size-6 fill-current text-foreground" />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 z-10 flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-rose-600 text-[11px] font-extrabold text-white shadow-md border-2 border-background animate-in zoom-in-75">
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -636,7 +654,9 @@ export function OperationalNotifications() {
                       <span className={cn(isUnread ? "text-foreground/90 font-medium" : "text-muted-foreground")}>{alert.message}</span>
                     </p>
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>{alert.timestamp}</span>
+                      <span title={alert.createdAt ? format(new Date(alert.createdAt), "PPpp") : undefined}>
+                        {formatAlertDisplayTime(alert)}
+                      </span>
                       <span>•</span>
                       <span className="text-primary font-medium">{getDestinationLabel(alert.category)}</span>
                     </div>

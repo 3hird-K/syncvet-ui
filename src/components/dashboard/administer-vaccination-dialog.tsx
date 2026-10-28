@@ -80,7 +80,7 @@ export function AdministerVaccinationDialog({
   onOpenChange,
   onCompleted,
 }: AdministerVaccinationDialogProps) {
-  const { inventory } = useCVO();
+  const { inventory, deductInventoryStock } = useCVO();
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
 
@@ -299,6 +299,15 @@ export function AdministerVaccinationDialog({
         });
       } catch (vaxErr) {
         console.warn("Vaccination record table insert notice:", vaxErr);
+      }
+
+      // Auto-deduct 1 dose from cold-chain inventory stock
+      if (batchNo.trim()) {
+        try {
+          await deductInventoryStock(batchNo.trim(), 1);
+        } catch (stockErr) {
+          console.warn("Inventory deduction notice:", stockErr);
+        }
       }
 
       // 3. Update appointments table to 'completed' with clinical dose notes

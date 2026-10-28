@@ -273,7 +273,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoaded } = useUser();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const cvo = useOptionalCVO();
-  const isStaffUser = cvo?.activeRoleView ? cvo.activeRoleView !== "Pet Owner" : false;
+  const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || "";
+  const isAdminEmail = userEmail === "dime.neil03@gmail.com";
+  const roleFromMeta = (user?.publicMetadata?.role as string) || (user?.unsafeMetadata?.role as string);
+  const isStaffUser =
+    isAdminEmail ||
+    roleFromMeta?.toLowerCase()?.includes("admin") ||
+    roleFromMeta?.toLowerCase()?.includes("vet") ||
+    (cvo?.activeRoleView ? cvo.activeRoleView !== "Pet Owner" : false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedPet, setSelectedPet] = useState<{ id: string; name: string } | null>(null);
@@ -506,7 +513,12 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           setReactions((prev) => ({ ...prev, ...rxMap }));
 
           const readMapped = isOpenRef.current
-            ? mapped.map((m) => (m.senderRole !== "Pet Owner" ? { ...m, isRead: true } : m))
+            ? mapped.map((m) => {
+                const isIncoming = isStaffUser
+                  ? m.senderRole === "Pet Owner"
+                  : m.senderRole !== "Pet Owner";
+                return isIncoming ? { ...m, isRead: true } : m;
+              })
             : mapped;
 
           const newNormalized = normalizeAndDeduplicate(readMapped);
@@ -537,12 +549,17 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           });
 
           if (isOpenRef.current) {
-            supabase
+            const query = supabase
               .from("chat_messages")
               .update({ is_read: true })
-              .eq("chat_id", targetChatId)
-              .neq("sender_role", "Pet Owner")
-              .then(() => {});
+              .eq("chat_id", targetChatId);
+
+            if (isStaffUser) {
+              query.eq("sender_role", "Pet Owner");
+            } else {
+              query.neq("sender_role", "Pet Owner");
+            }
+            query.then(() => {});
           }
           return;
         } else {
@@ -785,7 +802,11 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
             }
 
             const isCurrentlyOpen = isOpenRef.current;
-            if (isCurrentlyOpen && row.sender_role !== "Pet Owner") {
+            const isIncoming = isStaffUser
+              ? row.sender_role === "Pet Owner"
+              : row.sender_role !== "Pet Owner";
+
+            if (isCurrentlyOpen && isIncoming) {
               supabase
                 .from("chat_messages")
                 .update({ is_read: true })
@@ -893,7 +914,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                   createdAt: row.created_at,
                   reaction: rowReaction,
                   replyTo: rowReplyTo,
-                  isRead: isCurrentlyOpen ? true : row.is_read,
+                  isRead: isCurrentlyOpen && isIncoming ? true : Boolean(row.is_read),
                 },
               ];
             });
@@ -1044,6 +1065,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         { event: "messages_read" },
         ({ payload }: any) => {
           if (!payload?.chatId) return;
+          if (payload.readByUserId && payload.readByUserId === user?.id) return;
           setMessages((prev) =>
             prev.map((m) =>
               (!m.chatId || m.chatId === payload.chatId) && !m.isRead
@@ -1304,7 +1326,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                 sender_role: isAdminDesk ? "Staff" : "Veterinarian",
                 sender_name: vetName,
                 message_text: reply,
-                is_read: isOpenRef.current ? true : false,
+                is_read: false,
               });
             } catch {
               // ignore
@@ -1653,14 +1675,26 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const markAllAsRead = useCallback(async () => {
     setMessages((prev) => {
-      const hasUnread = prev.some((m) => !m.isRead && m.senderRole !== "Pet Owner");
+      const hasUnread = prev.some((m) => {
+        const isIncoming = isStaffUser
+          ? m.senderRole === "Pet Owner"
+          : m.senderRole !== "Pet Owner";
+        return !m.isRead && isIncoming;
+      });
       if (!hasUnread) return prev;
-      return prev.map((m) => (m.senderRole !== "Pet Owner" && !m.isRead ? { ...m, isRead: true } : m));
+      return prev.map((m) => {
+        const isIncoming = isStaffUser
+          ? m.senderRole === "Pet Owner"
+          : m.senderRole !== "Pet Owner";
+        return isIncoming && !m.isRead ? { ...m, isRead: true } : m;
+      });
     });
 
     const targetChatId = activeChatId || messages.find((m) => m.chatId)?.chatId;
+    const isIncomingMsg = (m: ChatMessageItem) =>
+      isStaffUser ? m.senderRole === "Pet Owner" : m.senderRole !== "Pet Owner";
     const unreadDbIds = messages
-      .filter((m) => m.senderRole !== "Pet Owner" && !m.isRead && m.id && !m.id.startsWith("msg-"))
+      .filter((m) => isIncomingMsg(m) && !m.isRead && m.id && !m.id.startsWith("msg-"))
       .map((m) => m.id);
 
     try {
@@ -1671,11 +1705,16 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           .in("id", unreadDbIds);
       }
       if (targetChatId) {
-        await supabase
+        const query = supabase
           .from("chat_messages")
           .update({ is_read: true })
-          .eq("chat_id", targetChatId)
-          .neq("sender_role", "Pet Owner");
+          .eq("chat_id", targetChatId);
+
+        if (isStaffUser) {
+          await query.eq("sender_role", "Pet Owner");
+        } else {
+          await query.neq("sender_role", "Pet Owner");
+        }
 
         channelRef.current?.send({
           type: "broadcast",
@@ -1686,7 +1725,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
     } catch {
       // ignore
     }
-  }, [activeChatId, messages, supabase, user?.id]);
+  }, [activeChatId, messages, supabase, user?.id, isStaffUser]);
 
   // When messenger opens, automatically mark all messages as read
   useEffect(() => {
@@ -1697,8 +1736,13 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const unreadCount = useMemo(() => {
     if (isOpen) return 0;
-    return messages.filter((m) => m.senderRole !== "Pet Owner" && !m.isRead).length;
-  }, [messages, isOpen]);
+    return messages.filter((m) => {
+      const isIncoming = isStaffUser
+        ? m.senderRole === "Pet Owner"
+        : m.senderRole !== "Pet Owner";
+      return isIncoming && !m.isRead;
+    }).length;
+  }, [messages, isOpen, isStaffUser]);
 
   // Broadcast real-time typing events to other party (via BroadcastChannel & Supabase Realtime)
   const lastTypingSentRef = useRef<number>(0);

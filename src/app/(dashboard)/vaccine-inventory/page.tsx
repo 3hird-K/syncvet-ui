@@ -1,16 +1,25 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import {
   Package,
   AlertTriangle,
   TrendingDown,
   ShieldCheck,
   ArrowUpDown,
+  Pencil,
+  Trash2,
+  Search,
+  Loader2,
+  PackageCheck,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -34,29 +43,179 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { AddBatchDialog } from "@/components/dashboard/add-batch-dialog";
+import { DeleteBatchDialog } from "@/components/dashboard/delete-batch-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import type { CVOInventoryItem } from "@/data/cvo-store";
+import { format, parseISO } from "date-fns";
+import { toast } from "sonner";
+
+const CATEGORIES = ["Vaccines", "Medicines", "Surgical Supplies", "Medical Supplies"] as const;
+
+const STORAGE_LOCATIONS = [
+  "Main Vaccine Refrigerator (2°C – 8°C)",
+  "Medicine & Pharmacy Cabinet",
+  "Medical & Surgical Supply Shelf",
+];
+
+const UNITS = ["doses", "vials", "units", "boxes"] as const;
 
 export default function VaccineInventoryPage() {
-  const { inventory } = useCVO();
+  const { inventory, updateInventoryBatch, addAuditLog } = useCVO();
   const effectiveInventory = inventory;
+  const queryClient = useQueryClient();
+  const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
+  // Realtime subscription to live sync inventory whenever doses are deducted or added
+  useEffect(() => {
+    const channel = supabase
+      .channel("vaccine-inventory-live-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory_items" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "vaccination_records" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, queryClient]);
+
+  const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fefoSort, setFefoSort] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedBatch, setSelectedBatch] = useState<CVOInventoryItem | null>(null);
+
+  // Edit State for the Right Sidebar Drawer
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState<string>("Vaccines");
+  const [editBatchNumber, setEditBatchNumber] = useState("");
+  const [editManufacturer, setEditManufacturer] = useState("");
+  const [editStock, setEditStock] = useState("100");
+  const [editUnit, setEditUnit] = useState<string>("doses");
+  const [editMinimumStock, setEditMinimumStock] = useState("25");
+  const [editExpiry, setEditExpiry] = useState<Date | undefined>();
+  const [editStorageLocation, setEditStorageLocation] = useState(STORAGE_LOCATIONS[0]);
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  // Delete state
+  const [batchToDelete, setBatchToDelete] = useState<CVOInventoryItem | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Automatically populate and enter edit state whenever a row is clicked
+  useEffect(() => {
+    if (selectedBatch) {
+      setEditName(selectedBatch.name || "");
+      setEditCategory(selectedBatch.category || "Vaccines");
+      setEditBatchNumber(selectedBatch.batchNumber || "");
+      setEditManufacturer(selectedBatch.manufacturer || "");
+      setEditStock(String(selectedBatch.stock ?? 0));
+      setEditUnit(selectedBatch.unit || "doses");
+      setEditMinimumStock(String(selectedBatch.minimumStock ?? 25));
+      setEditStorageLocation(selectedBatch.storageLocation || STORAGE_LOCATIONS[0]);
+
+      if (selectedBatch.expirationDate) {
+        try {
+          setEditExpiry(parseISO(selectedBatch.expirationDate));
+        } catch {
+          setEditExpiry(new Date(selectedBatch.expirationDate));
+        }
+      }
+    }
+  }, [selectedBatch]);
+
+  const currentExpiryDays = useMemo(() => {
+    if (!editExpiry) return 0;
+    const diffTime = editExpiry.getTime() - new Date().getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }, [editExpiry]);
+
+  const handleSaveEdit = async () => {
+    if (!selectedBatch) return;
+
+    if (!editName.trim()) {
+      toast.error("Item name is required.");
+      return;
+    }
+
+    if (!editBatchNumber.trim()) {
+      toast.error("Batch/Lot number is required.");
+      return;
+    }
+
+    if (!editExpiry) {
+      toast.error("Please pick an expiration date for FEFO tracking.");
+      return;
+    }
+
+    const stockNum = Math.max(0, parseInt(editStock) || 0);
+    const minStockNum = Math.max(0, parseInt(editMinimumStock) || 0);
+    const formattedExpiry = format(editExpiry, "yyyy-MM-dd");
+
+    setSaveLoading(true);
+
+    try {
+      const updates: Partial<CVOInventoryItem> = {
+        name: editName.trim(),
+        category: editCategory as any,
+        batchNumber: editBatchNumber.trim().toUpperCase(),
+        manufacturer: editManufacturer.trim(),
+        stock: stockNum,
+        unit: editUnit as any,
+        minimumStock: minStockNum,
+        expirationDate: formattedExpiry,
+        storageLocation: editStorageLocation,
+      };
+
+      const success = await updateInventoryBatch(selectedBatch.id || selectedBatch.batchNumber, updates);
+
+      if (success) {
+        addAuditLog({
+          user: "CVO Logistics Officer",
+          role: "Administrator",
+          action: "Updated Inventory Batch",
+          entity: "Inventory",
+          recordId: editBatchNumber.trim().toUpperCase(),
+          details: `Updated batch ${editBatchNumber.trim().toUpperCase()} (${editName.trim()}). Stock: ${stockNum} ${editUnit}, Expiry: ${formattedExpiry}.`,
+        });
+
+        toast.success("Batch Updated Successfully", {
+          description: `${editName.trim()} (Lot #${editBatchNumber.trim().toUpperCase()}) updated in FEFO ledger.`,
+        });
+
+        setSelectedBatch((prev) => (prev ? ({ ...prev, ...updates } as CVOInventoryItem) : null));
+      } else {
+        toast.error("Failed to update batch. Please check your connection.");
+      }
+    } catch {
+      toast.error("An error occurred while updating the batch.");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
 
   const totalDoses = useMemo(() => effectiveInventory.reduce((sum, i) => sum + i.stock, 0), [effectiveInventory]);
   const adequateCount = useMemo(() => effectiveInventory.filter((i) => i.status === "in-stock").length, [effectiveInventory]);
@@ -131,6 +290,18 @@ export default function VaccineInventoryPage() {
   const filtered = useMemo(() => {
     let list = [...effectiveInventory];
 
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          i.batchNumber.toLowerCase().includes(q) ||
+          i.manufacturer?.toLowerCase().includes(q) ||
+          i.storageLocation?.toLowerCase().includes(q) ||
+          i.category?.toLowerCase().includes(q)
+      );
+    }
+
     if (statusFilter !== "all") {
       list = list.filter((i) => {
         if (statusFilter === "expiring-soon") {
@@ -154,7 +325,7 @@ export default function VaccineInventoryPage() {
     }
 
     return list;
-  }, [effectiveInventory, statusFilter, fefoSort]);
+  }, [effectiveInventory, searchQuery, statusFilter, fefoSort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -209,6 +380,20 @@ export default function VaccineInventoryPage() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Search item / batch */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search ledger..."
+                  className="h-8 pl-8 text-xs bg-muted/20 w-36 sm:w-44 rounded-lg"
+                />
+              </div>
+
               {/* Status Filter */}
               <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger className="h-8 w-36 text-xs bg-muted/20 shrink-0">
@@ -250,6 +435,9 @@ export default function VaccineInventoryPage() {
                 visibleColumns={visibleColumns}
                 onToggleColumn={toggleColumn}
               />
+
+              {/* Create: + Add Batch Button directly in ledger header */}
+              <AddBatchDialog />
             </div>
           </div>
         </CardHeader>
@@ -328,16 +516,17 @@ export default function VaccineInventoryPage() {
                             Your clinic inventory ledger is currently empty. Start logging cold-chain vaccines and medical supplies to enable FEFO stock tracking.
                           </p>
                         </div>
+                        <AddBatchDialog />
                       </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center max-w-sm mx-auto py-8 text-center space-y-2">
-                        <p className="text-xs text-muted-foreground">No batches match the selected status filter.</p>
+                        <p className="text-xs text-muted-foreground">No batches match the selected filters or search.</p>
                         <button
                           type="button"
-                          onClick={() => { setStatusFilter("all"); }}
+                          onClick={() => { setStatusFilter("all"); setSearchQuery(""); }}
                           className="text-xs text-primary hover:underline font-semibold cursor-pointer"
                         >
-                          Reset status filter
+                          Reset filters & search
                         </button>
                       </div>
                     )}
@@ -425,82 +614,245 @@ export default function VaccineInventoryPage() {
         </CardContent>
       </Card>
 
-      {/* Batch Full Details Dialog */}
-      <Dialog open={!!selectedBatch} onOpenChange={(open) => !open && setSelectedBatch(null)}>
-        <DialogContent className="sm:max-w-[460px] p-6 bg-background rounded-2xl">
+      {/* ── Batch Full Details & Edit State Right Sidebar Drawer ── */}
+      <Sheet open={!!selectedBatch} onOpenChange={(open) => !open && setSelectedBatch(null)}>
+        <SheetContent side="right" className="sm:max-w-[500px] overflow-y-auto p-6 space-y-5">
           {selectedBatch && (
-            <>
-              <DialogHeader className="pb-3 border-b border-border/60">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
-                    {selectedBatch.batchNumber}
-                  </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {selectedBatch.category}
-                  </Badge>
+            <div className="space-y-5">
+              <SheetHeader className="p-0 text-left space-y-2">
+                <div className="flex items-center justify-between pr-6">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
+                      {selectedBatch.batchNumber}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {editCategory}
+                    </Badge>
+                  </div>
+                  {getStatusBadge(selectedBatch.status, currentExpiryDays)}
                 </div>
-                <DialogTitle className="text-base font-bold text-foreground mt-2">
-                  {selectedBatch.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  {selectedBatch.manufacturer || "Department of Agriculture / CVO CDO"}
-                </DialogDescription>
-              </DialogHeader>
+                <SheetTitle className="text-xl font-bold flex items-center gap-2 text-foreground">
+                  <Package className="size-5 text-primary" />
+                  Edit Batch Ledger
+                </SheetTitle>
+                <SheetDescription className="text-xs text-muted-foreground">
+                  Direct edit state for cold-chain vaccine parameters, stock count, low stock alert, and FEFO expiry.
+                </SheetDescription>
+              </SheetHeader>
 
-              <div className="grid gap-3 py-3 text-xs">
+              {/* Form in direct Edit State */}
+              <div className="space-y-4 text-xs">
+                {/* Product Name */}
+                <div className="space-y-1">
+                  <Label htmlFor="drawer-name" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Product / Item Name *
+                  </Label>
+                  <Input
+                    id="drawer-name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="e.g. Rabisin (Boehringer Ingelheim) — 1.0 mL"
+                    className="h-9 text-xs font-semibold"
+                  />
+                </div>
+
+                {/* Category & Manufacturer */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-muted/20 rounded-xl border border-border/60">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-1">
-                      Current Stock
-                    </span>
-                    <p className="text-2xl font-mono font-bold text-foreground">
-                      {selectedBatch.stock}{" "}
-                      <span className="text-xs font-normal text-muted-foreground">{selectedBatch.unit}</span>
-                    </p>
+                  <div className="space-y-1">
+                    <Label htmlFor="drawer-cat" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Category *
+                    </Label>
+                    <Select value={editCategory} onValueChange={setEditCategory}>
+                      <SelectTrigger id="drawer-cat" className="h-9 text-xs w-full">
+                        <SelectValue placeholder="Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => (
+                          <SelectItem key={c} value={c} className="text-xs">
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div className="p-3 bg-muted/20 rounded-xl border border-border/60">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-1">
-                      Low Stock Alert
-                    </span>
-                    <p className="text-2xl font-mono font-bold text-foreground">
-                      {selectedBatch.minimumStock}{" "}
-                      <span className="text-xs font-normal text-muted-foreground">{selectedBatch.unit}</span>
-                    </p>
+                  <div className="space-y-1">
+                    <Label htmlFor="drawer-mfg" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Manufacturer / Source
+                    </Label>
+                    <Input
+                      id="drawer-mfg"
+                      value={editManufacturer}
+                      onChange={(e) => setEditManufacturer(e.target.value)}
+                      placeholder="e.g. Zoetis Philippines Inc."
+                      className="h-9 text-xs"
+                    />
                   </div>
                 </div>
 
-                <div className="p-3 bg-muted/20 rounded-xl border border-border/60 space-y-2">
+                {/* Batch / Lot No */}
+                <div className="space-y-1">
+                  <Label htmlFor="drawer-batch" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Batch / Lot Number *
+                  </Label>
+                  <Input
+                    id="drawer-batch"
+                    value={editBatchNumber}
+                    onChange={(e) => setEditBatchNumber(e.target.value)}
+                    placeholder="e.g. RAB-2026-8433"
+                    className="h-9 font-mono text-xs uppercase"
+                  />
+                </div>
+
+                {/* Stock, Unit & Minimum Alert */}
+                <div className="p-3.5 bg-muted/20 rounded-xl border border-border/60 space-y-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                    Stock & Cold-Chain Inventory
+                  </p>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div className="space-y-1">
+                      <Label htmlFor="drawer-stock" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        In Stock *
+                      </Label>
+                      <Input
+                        id="drawer-stock"
+                        type="number"
+                        min="0"
+                        value={editStock}
+                        onChange={(e) => setEditStock(e.target.value)}
+                        className="h-9 text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="drawer-unit" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Unit *
+                      </Label>
+                      <Select value={editUnit} onValueChange={setEditUnit}>
+                        <SelectTrigger id="drawer-unit" className="h-9 text-xs w-full">
+                          <SelectValue placeholder="Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNITS.map((u) => (
+                            <SelectItem key={u} value={u} className="text-xs">
+                              {u}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="drawer-min" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Low Stock Alert *
+                      </Label>
+                      <Input
+                        id="drawer-min"
+                        type="number"
+                        min="0"
+                        value={editMinimumStock}
+                        onChange={(e) => setEditMinimumStock(e.target.value)}
+                        className="h-9 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expiration Date (FEFO) */}
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                      Expiration Date (FEFO)
-                    </span>
-                    <span className="font-mono font-bold text-foreground">{selectedBatch.expirationDate}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Shelf Life:</span>
-                    <span className="font-medium">
-                      {selectedBatch.daysToExpiry > 0 ? `${selectedBatch.daysToExpiry} days remaining` : "Expired"}
+                    <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Expiration Date (FEFO) *
+                    </Label>
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {currentExpiryDays > 0 ? `${currentExpiryDays} days remaining` : "Expired"}
                     </span>
                   </div>
+                  <DatePicker
+                    date={editExpiry}
+                    setDate={setEditExpiry}
+                    placeholder="Pick expiration date"
+                  />
                 </div>
 
-                <div className="p-3 bg-muted/20 rounded-xl border border-border/60 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
-                    Storage Location
-                  </span>
-                  <p className="text-xs font-medium text-foreground">{selectedBatch.storageLocation}</p>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-muted-foreground">Ledger Status:</span>
-                  {getStatusBadge(selectedBatch.status, selectedBatch.daysToExpiry)}
+                {/* Storage Location */}
+                <div className="space-y-1">
+                  <Label htmlFor="drawer-storage" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Cold-Chain Storage Location *
+                  </Label>
+                  <Select value={editStorageLocation} onValueChange={setEditStorageLocation}>
+                    <SelectTrigger id="drawer-storage" className="h-9 text-xs truncate w-full">
+                      <SelectValue placeholder="Storage location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STORAGE_LOCATIONS.map((loc) => (
+                        <SelectItem key={loc} value={loc} className="text-xs">
+                          {loc}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            </>
+
+              {/* Bottom Action Footer */}
+              <div className="pt-4 border-t border-border/60 flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const target = selectedBatch;
+                    setSelectedBatch(null);
+                    setBatchToDelete(target);
+                    setDeleteDialogOpen(true);
+                  }}
+                  className="h-9 text-xs gap-1.5 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer font-medium border-border/60"
+                >
+                  <Trash2 className="size-3.5" /> Delete Batch
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedBatch(null)}
+                    className="h-9 text-xs cursor-pointer rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveEdit}
+                    disabled={saveLoading || !editExpiry}
+                    className="h-9 px-4 text-xs font-semibold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs gap-1.5"
+                  >
+                    {saveLoading ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <PackageCheck className="size-3.5" />
+                        <span>Save Changes</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
+
+      {/* Delete Batch Confirmation Dialog (Delete) */}
+      <DeleteBatchDialog
+        batch={batchToDelete}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onDeleted={() => setSelectedBatch(null)}
+      />
     </div>
   );
 }

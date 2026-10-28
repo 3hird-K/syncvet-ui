@@ -15,6 +15,7 @@ export interface CVOConsultation {
   vetName: string;
   date: string;
   time: string;
+  createdAt?: string;
   chiefComplaint: string;
   symptoms: string[];
   vitals: {
@@ -170,6 +171,7 @@ export interface CVOInventoryItem {
 export interface CVOAuditLog {
   id: string;
   timestamp: string;
+  createdAt?: string;
   user: string;
   role: string;
   action: string;

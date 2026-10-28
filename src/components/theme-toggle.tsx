@@ -36,9 +36,9 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
       {isDark ? (
-        <Sun className="size-5 stroke-[1.8] text-foreground transition-colors" />
+        <Sun className="size-6 stroke-[2] text-foreground transition-colors" />
       ) : (
-        <Moon className="size-5 stroke-[1.8] fill-none text-foreground transition-colors" />
+        <Moon className="size-6 stroke-[2] fill-none text-foreground transition-colors" />
       )}
     </Button>
   );

@@ -89,6 +89,7 @@ function mapDbConsultationToCVO(row: any): CVOConsultation {
     vetName: row.vet_name,
     date: row.date,
     time: row.time,
+    createdAt: row.created_at,
     chiefComplaint: row.chief_complaint,
     symptoms: Array.isArray(row.symptoms) ? row.symptoms : [],
     vitals: {
@@ -182,6 +183,7 @@ function mapDbAuditLogToCVO(row: any): CVOAuditLog {
     entity: row.entity,
     recordId: row.record_id,
     details: row.details || "",
+    createdAt: row.created_at,
   };
 }
 
@@ -499,6 +501,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       ...c,
       id,
       encounterNo,
+      createdAt: new Date().toISOString(),
     };
 
     // Optimistic TanStack Query update
@@ -893,27 +896,85 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
   const deductInventoryStock = async (batchNumberOrId: string, quantity: number = 1): Promise<boolean> => {
     try {
-      const item = inventory.find((i) => i.batchNumber === batchNumberOrId || i.id === batchNumberOrId);
-      if (!item) return false;
-      const newStock = Math.max(0, item.stock - quantity);
-      const newStatus = newStock === 0 ? "expired" : newStock <= item.minimumStock ? "low-stock" : "in-stock";
+      if (!batchNumberOrId) return false;
+      const target = batchNumberOrId.trim();
+      const targetLower = target.toLowerCase();
 
+      // Find in memory or search broadly
+      let item = inventory.find(
+        (i) =>
+          i.batchNumber?.trim().toLowerCase() === targetLower ||
+          i.id?.toLowerCase() === targetLower ||
+          i.name?.toLowerCase().includes(targetLower)
+      );
+
+      let targetId = item?.id;
+      let targetBatch = item?.batchNumber;
+      let currentStock = item?.stock;
+      let minStock = item?.minimumStock ?? 25;
+      let itemName = item?.name;
+
+      // If not in local context, query Supabase directly
+      if (!item) {
+        const { data: dbItem } = await supabase
+          .from("inventory_items")
+          .select("*")
+          .or(`batch_number.eq.${target},id.eq.${target},name.ilike.%${target}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (dbItem) {
+          targetId = dbItem.id;
+          targetBatch = dbItem.batch_number;
+          currentStock = Number(dbItem.stock);
+          minStock = Number(dbItem.minimum_stock) || 25;
+          itemName = dbItem.name;
+        }
+      }
+
+      if (currentStock === undefined) return false;
+
+      const newStock = Math.max(0, currentStock - quantity);
+      const newStatus =
+        newStock === 0 ? "expired" : newStock <= minStock ? "low-stock" : "in-stock";
+
+      // Optimistic cache update
       queryClient.setQueryData<CVOInventoryItem[]>(["cvo_inventory"], (old = []) =>
         old.map((i) =>
-          i.batchNumber === batchNumberOrId || i.id === batchNumberOrId
+          (targetId && i.id === targetId) || (targetBatch && i.batchNumber === targetBatch)
             ? { ...i, stock: newStock, status: newStatus }
             : i
         )
       );
 
-      await supabase
-        .from("inventory_items")
-        .update({ stock: newStock, status: newStatus })
-        .or(`id.eq.${item.id},batch_number.eq.${item.batchNumber}`);
+      // Persist to database
+      if (targetId) {
+        await supabase
+          .from("inventory_items")
+          .update({ stock: newStock, status: newStatus, updated_at: new Date().toISOString() })
+          .eq("id", targetId);
+      } else if (targetBatch) {
+        await supabase
+          .from("inventory_items")
+          .update({ stock: newStock, status: newStatus, updated_at: new Date().toISOString() })
+          .eq("batch_number", targetBatch);
+      }
 
       queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["vax-log-batches"] });
+
+      addAuditLog({
+        user: "Clinical Operations",
+        role: "Veterinarian",
+        action: "Stock Auto-Deducted",
+        entity: "Inventory",
+        recordId: targetBatch || targetId || "INV",
+        details: `Auto-deducted ${quantity} unit/dose from ${itemName || target} for patient care. Remaining stock: ${newStock}.`,
+      });
+
       return true;
-    } catch {
+    } catch (err) {
+      console.error("Deduct inventory error:", err);
       return false;
     }
   };
@@ -992,6 +1053,33 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
   const updateInventoryBatch = async (idOrBatchNumber: string, updates: Partial<CVOInventoryItem>): Promise<boolean> => {
     try {
+      let calculatedDays: number | undefined;
+      if (updates.expirationDate) {
+        const expiry = new Date(updates.expirationDate);
+        const diffTime = expiry.getTime() - new Date().getTime();
+        calculatedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+
+      // Optimistic cache update
+      queryClient.setQueryData<CVOInventoryItem[]>(["cvo_inventory"], (old = []) =>
+        old.map((i) => {
+          if (i.id === idOrBatchNumber || i.batchNumber === idOrBatchNumber) {
+            const merged = { ...i, ...updates };
+            if (calculatedDays !== undefined) {
+              merged.daysToExpiry = calculatedDays;
+            }
+            if (!updates.status) {
+              if (merged.daysToExpiry <= 0 || merged.stock === 0) merged.status = "expired";
+              else if (merged.daysToExpiry <= 30) merged.status = "expiring-soon";
+              else if (merged.stock <= merged.minimumStock) merged.status = "low-stock";
+              else merged.status = "in-stock";
+            }
+            return merged;
+          }
+          return i;
+        })
+      );
+
       const dbUpdates: Record<string, any> = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.category !== undefined) dbUpdates.category = updates.category;
@@ -1002,8 +1090,20 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       if (updates.minimumStock !== undefined) dbUpdates.minimum_stock = updates.minimumStock;
       if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate;
       if (updates.storageLocation !== undefined) dbUpdates.storage_location = updates.storageLocation;
-      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.status !== undefined) {
+        dbUpdates.status = updates.status;
+      } else {
+        const current = inventory.find((i) => i.id === idOrBatchNumber || i.batchNumber === idOrBatchNumber);
+        const finalStock = updates.stock ?? current?.stock ?? 100;
+        const finalMin = updates.minimumStock ?? current?.minimumStock ?? 25;
+        const finalDays = calculatedDays ?? current?.daysToExpiry ?? 90;
+        if (finalDays <= 0 || finalStock === 0) dbUpdates.status = "expired";
+        else if (finalDays <= 30) dbUpdates.status = "expiring-soon";
+        else if (finalStock <= finalMin) dbUpdates.status = "low-stock";
+        else dbUpdates.status = "in-stock";
+      }
       if (updates.fefoPriority !== undefined) dbUpdates.fefo_priority = updates.fefoPriority;
+      dbUpdates.updated_at = new Date().toISOString();
 
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrBatchNumber);
       if (isUuid) {
@@ -1012,6 +1112,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
         await supabase.from("inventory_items").update(dbUpdates).eq("batch_number", idOrBatchNumber);
       }
       queryClient.invalidateQueries({ queryKey: ["cvo_inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["vax-log-batches"] });
       return true;
     } catch {
       return false;

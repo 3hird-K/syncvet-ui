@@ -30,7 +30,7 @@ import { cvoBarangays } from "@/data/cvo-store";
 export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) => void }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { addAuditLog, inventory } = useCVO();
+  const { addAuditLog, inventory, deductInventoryStock } = useCVO();
   const queryClient = useQueryClient();
   const supabase = getPublicSupabaseClient();
 
@@ -168,6 +168,15 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
 
       if (insertError) {
         console.error("Failed to insert vaccination record:", insertError);
+      }
+
+      // Auto-deduct 1 dose from cold-chain inventory stock
+      if (batchNo.trim()) {
+        try {
+          await deductInventoryStock(batchNo.trim(), 1);
+        } catch (stockErr) {
+          console.warn("Inventory deduction notice:", stockErr);
+        }
       }
 
       // 2. If a registered pet was chosen, update its vaccination state
