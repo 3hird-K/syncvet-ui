@@ -240,7 +240,7 @@ export function ConversationProfileDrawer({
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="sm:max-w-[560px] md:max-w-[620px] w-full p-0 flex flex-col h-full bg-background border-l border-border/60 shadow-2xl z-50 overflow-hidden"
+        className="sm:max-w-[560px] md:max-w-[620px] w-full p-0 flex flex-col h-full bg-background border-l border-border/60 shadow-2xl !z-[2000] overflow-hidden"
       >
         {/* Header Section */}
         <div className="relative border-b border-border/60 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent p-6 shrink-0">

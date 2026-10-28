@@ -49,6 +49,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessengerIcon } from "@/components/icons/messenger-icon";
+import { ConversationProfileDrawer } from "@/components/chat/conversation-profile-drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -809,6 +810,7 @@ export function CitizenChatWidget() {
               onClose={() => closeWindow(contact.id)}
               onMaximize={(activeDbId) => handleMaximize(contact, activeDbId)}
               onMarkAsRead={markContactAsRead}
+              dbUsers={dbUsers}
             />
           );
         })}
@@ -1138,6 +1140,7 @@ function FacebookMessengerWindow({
   onClose,
   onMaximize,
   onMarkAsRead,
+  dbUsers,
 }: {
   contact: ChatContact;
   isStaff: boolean;
@@ -1153,6 +1156,7 @@ function FacebookMessengerWindow({
   onClose: () => void;
   onMaximize: (activeDbId?: string | null) => void;
   onMarkAsRead?: (contactId: string, chatId?: string | null) => void;
+  dbUsers?: any[];
 }) {
   const { selectedPet, setSelectedPet, sendTypingStatus, isOtherTyping, typingInfo, reactions, toggleReaction, unsendMessage, removeMessageForMe } =
     useCitizenChat();
@@ -1168,6 +1172,7 @@ function FacebookMessengerWindow({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [hasNewUnseen, setHasNewUnseen] = useState(false);
   const [activeChatDbId, setActiveChatDbId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const activeChatDbIdRef = useRef<string | null>(null);
   useEffect(() => {
     activeChatDbIdRef.current = activeChatDbId;
@@ -1831,9 +1836,34 @@ function FacebookMessengerWindow({
     >
       {/* ── Facebook-style Chat Header: Avatar, Name, Minimize (-), Maximize, Close (X) - NO CALLS ── */}
       <div className="px-3 py-2.5 border-b border-border/70 bg-gradient-to-r from-muted/50 via-card to-muted/30 flex items-center justify-between shrink-0 select-none">
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Contact info & Avatar: Clickable for Veterinarian / Staff to view profile info & history */}
+        <div
+          onClick={() => {
+            if (isStaff && contact.id !== "admin" && contact.id !== "vet") {
+              setIsProfileOpen(true);
+            }
+          }}
+          className={cn(
+            "flex items-center gap-2 min-w-0 text-left select-none transition-colors",
+            isStaff && contact.id !== "admin" && contact.id !== "vet"
+              ? "cursor-pointer group/profile hover:opacity-95"
+              : ""
+          )}
+          title={
+            isStaff && contact.id !== "admin" && contact.id !== "vet"
+              ? "Click profile picture to view citizen info, pets & clinical history"
+              : undefined
+          }
+        >
           <div className="relative shrink-0">
-            <Avatar className="size-8 border border-border shadow-2xs overflow-hidden">
+            <Avatar
+              className={cn(
+                "size-8 border border-border shadow-2xs overflow-hidden transition-all",
+                isStaff && contact.id !== "admin" && contact.id !== "vet"
+                  ? "group-hover/profile:scale-110 group-hover/profile:ring-2 group-hover/profile:ring-primary/50 group-hover/profile:border-primary shadow-xs"
+                  : ""
+              )}
+            >
               {contact.avatar ? (
                 <AvatarImage
                   src={contact.avatar}
@@ -1871,8 +1901,13 @@ function FacebookMessengerWindow({
           </div>
 
           <div className="min-w-0">
-            <h3 className="font-bold text-xs text-foreground truncate flex items-center gap-1">
-              {contact.shortName}
+            <h3
+              className={cn(
+                "font-bold text-xs text-foreground truncate flex items-center gap-1 transition-colors",
+                isStaff && contact.id !== "admin" && contact.id !== "vet" ? "group-hover/profile:text-primary" : ""
+              )}
+            >
+              <span>{contact.shortName}</span>
             </h3>
             <p className="text-[10px] text-muted-foreground truncate font-medium flex items-center gap-1">
               <span
@@ -1918,8 +1953,22 @@ function FacebookMessengerWindow({
           </div>
         )}
 
-        {/* Action Controls: Minimize (_), Maximize, Close (X) ── Strictly NO call icons ── */}
+        {/* Action Controls: Profile Info (for staff/vet), Minimize (_), Close (X) ── Strictly NO call icons ── */}
         <div className="flex items-center gap-0.5 text-muted-foreground shrink-0 ml-1">
+          {/* Profile & History Drawer Button for Veterinarian / Staff */}
+          {isStaff && contact.id !== "admin" && contact.id !== "vet" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsProfileOpen(true)}
+              className="size-7 rounded-full hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+              title="View Profile Information, Registered Pets & Clinical History"
+              aria-label="Profile Info & History"
+            >
+              <User className="size-3.5 text-primary" />
+            </Button>
+          )}
+
           {/* Minimize button: collapses chat into circular profile on side */}
           <Button
             variant="ghost"
@@ -2588,6 +2637,48 @@ function FacebookMessengerWindow({
           </button>
         )}
       </div>
+      {/* ── Citizen Profile & Clinical History Drawer (Veterinarian / Staff view) ── */}
+      {isStaff && contact.id !== "admin" && contact.id !== "vet" && (() => {
+        const matchedCitizen = dbUsers?.find(
+          (u: any) =>
+            u.id === contact.ownerId ||
+            u.id === contact.id ||
+            (contact.name && u.full_name && u.full_name.trim().toLowerCase() === contact.name.trim().toLowerCase())
+        );
+        const targetOwnerId =
+          matchedCitizen?.id ||
+          contact.ownerId ||
+          (contact.id !== "vet" && contact.id !== "admin" ? contact.id : undefined);
+
+        return (
+          <ConversationProfileDrawer
+            isOpen={isProfileOpen}
+            onOpenChange={setIsProfileOpen}
+            activeThread={{
+              id: activeChatDbId || contact.id,
+              owner_id: targetOwnerId,
+              users: {
+                id: targetOwnerId,
+                full_name: matchedCitizen?.full_name || contact.name || contact.shortName,
+                email: matchedCitizen?.email,
+                avatar_url: matchedCitizen?.avatar_url || contact.avatar,
+                phone: (matchedCitizen as any)?.phone || (matchedCitizen as any)?.phone_number,
+                address: (matchedCitizen as any)?.address,
+              },
+              pet_name: selectedPet?.name || "Registered Pet",
+              pet_species: (selectedPet as any)?.species || "Dog",
+              pet_breed: (selectedPet as any)?.breed || "Mixed",
+            }}
+            isVeterinarian={true}
+            activeDesk={effectiveDesk === "admin" ? "admin" : "vet"}
+            contactName={matchedCitizen?.full_name || contact.name || contact.shortName}
+            contactAvatarUrl={matchedCitizen?.avatar_url || contact.avatar}
+            contactSubtitle={contact.roleDescription || "Citizen Consultation • Pet Owner"}
+            activeStatusLabel={presence?.isActive ? "Active now" : presence?.statusText || "Offline"}
+            isCurrentActive={presence?.isActive ?? false}
+          />
+        );
+      })()}
     </div>
   );
 }
