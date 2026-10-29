@@ -1766,10 +1766,17 @@ function FacebookMessengerWindow({
           ? serializeAttachmentMeta({ replyTo: currentReply })
           : null;
 
-        const { data: insertedMsg } = await supabase.from("chat_messages").insert({
+        // In Supabase, chat_messages_sender_role_check strictly allows: 'Pet Owner', 'Veterinarian', 'Staff', 'System'
+        const dbSenderRole = isStaff
+          ? effectiveDesk === "admin"
+            ? "Staff"
+            : "Veterinarian"
+          : "Pet Owner";
+
+        const { data: insertedMsg, error: insertError } = await supabase.from("chat_messages").insert({
           chat_id: chatId,
-          sender_id: user?.id,
-          sender_role: senderRole,
+          sender_id: user?.id || null,
+          sender_role: dbSenderRole,
           sender_name: isStaff
             ? effectiveDesk === "admin"
               ? "CVO Inquiry & Admin Desk"
@@ -1779,7 +1786,34 @@ function FacebookMessengerWindow({
           attachment_url: metaPayload,
         }).select("id, created_at").single();
 
-        if (insertedMsg?.id) {
+        if (insertError) {
+          console.error("Failed to insert chat message:", insertError);
+          // If foreign key constraint on sender_id fails, retry safely with null sender_id
+          if (insertError.code === "23503") {
+            const { data: fallbackMsg } = await supabase.from("chat_messages").insert({
+              chat_id: chatId,
+              sender_id: null,
+              sender_role: dbSenderRole,
+              sender_name: isStaff
+                ? effectiveDesk === "admin"
+                  ? "CVO Inquiry & Admin Desk"
+                  : UNIFIED_VET_NAME
+                : user?.fullName || "Pet Owner",
+              message_text: clean,
+              attachment_url: metaPayload,
+            }).select("id, created_at").single();
+
+            if (fallbackMsg?.id) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === optimisticMsg.id
+                    ? { ...m, id: fallbackMsg.id, createdAt: fallbackMsg.created_at, chatId: chatId! }
+                    : m
+                )
+              );
+            }
+          }
+        } else if (insertedMsg?.id) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === optimisticMsg.id

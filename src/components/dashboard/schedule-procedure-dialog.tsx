@@ -829,6 +829,7 @@ export function ScheduleProcedureDialog({
       // Invalidate queries so lists update in real time
       queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
       queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+      queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
       queryClient.invalidateQueries({ queryKey: ["user-transactions"] });
       window.dispatchEvent(new Event("syncvet-appointment-updated"));
 

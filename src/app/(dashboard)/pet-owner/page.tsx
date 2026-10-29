@@ -13,6 +13,8 @@ import { type CVOConsultation, isConsultationLockedByVet } from "@/data/cvo-stor
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
 import {
   PawPrint,
+  Cat,
+  Dog,
   Lock,
   Heart,
   Stethoscope,
@@ -895,11 +897,11 @@ export default function PetOwnerPortalPage() {
   }
 
   return (
-    <div className="flex-1 bg-background min-h-screen text-foreground py-4 px-3 sm:px-4">
+    <div className="flex-1 bg-background min-h-screen text-foreground py-3 sm:py-4 px-2.5 sm:px-4 pb-20 sm:pb-8">
       {/* ── Main Dashboard Layout: Left Main Column + Right Sidebar (Announcements & Clinic Info) ── */}
-      <div className="max-w-[1140px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="max-w-[1140px] mx-auto grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-5 items-start">
         {/* ── LEFT COLUMN (Main Content) ── */}
-        <div className="lg:col-span-8 space-y-4 min-w-0">
+        <div className="md:col-span-7 lg:col-span-8 space-y-4 min-w-0">
           <Tabs
             value={activeTab}
             onValueChange={(val) => {
@@ -919,22 +921,22 @@ export default function PetOwnerPortalPage() {
 
       {/* ── Annual Rabies Vaccination Reminder Alert ── */}
       {boosterAlertPets.length > 0 && (
-        <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-xs space-y-2 animate-in fade-in-0 shadow-2xs">
+        <div className="p-3.5 sm:p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-xs space-y-2 animate-in fade-in-0 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start sm:items-center gap-3 min-w-0">
-              <div className="size-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30">
-                <Syringe className="size-5" />
+              <div className="size-9 sm:size-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <Syringe className="size-4.5 sm:size-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-bold text-sm text-foreground">
+                  <h4 className="font-bold text-xs sm:text-sm text-foreground">
                     Annual Vaccination Booster Due
                   </h4>
                   <Badge variant="outline" className="text-[10px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40 font-bold">
                     {boosterAlertPets.length} Pet{boosterAlertPets.length > 1 ? "s" : ""}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground pt-0.5 leading-relaxed">
+                <p className="text-[11px] sm:text-xs text-muted-foreground pt-0.5 leading-relaxed">
                   {boosterAlertPets
                     .map(({ pet, status }) => `${pet.name}: ${status.reason}`)
                     .join(" • ")}
@@ -950,7 +952,7 @@ export default function PetOwnerPortalPage() {
               trigger={
                 <Button
                   size="sm"
-                  className="h-9 px-4 text-xs font-bold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl shrink-0 cursor-pointer shadow-xs"
+                  className="h-8.5 sm:h-9 px-3.5 sm:px-4 text-xs font-bold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl shrink-0 cursor-pointer shadow-xs w-full sm:w-auto"
                 >
                   <Calendar className="size-3.5" />
                   <span>Schedule Booster</span>
@@ -961,12 +963,13 @@ export default function PetOwnerPortalPage() {
         </div>
       )}
 
-      {/* ── 2. Facebook-Style Vertical Stories Carousel ── */}
+      {/* ── 2. Pet Registry & Digital Passports Carousel ── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Companions & Stories
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <PawPrint className="size-3.5 text-primary" />
+              <span>Registered Pets & Passports</span>
             </span>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-bold rounded-full">
               {pets.length}
@@ -974,30 +977,30 @@ export default function PetOwnerPortalPage() {
           </div>
         </div>
 
-        {/* Facebook-Style Stories Strip */}
+        {/* Pet Digital Passports Strip */}
         <div className="relative group/stories">
           <div
             ref={petsScrollRef}
-            className="flex items-center gap-2.5 overflow-x-auto pb-1 pt-1 no-scrollbar scroll-smooth"
+            className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-1.5 pt-1 no-scrollbar scroll-smooth snap-x snap-mandatory"
           >
-            {/* 1. Register Companion Story Card */}
+            {/* 1. Register Pet Card */}
             <RegisterPetDialog
               trigger={
                 <div
-                  className="w-32 sm:w-[150px] h-48 sm:h-52 rounded-2xl bg-card border-2 border-dashed border-primary/30 hover:border-primary overflow-hidden relative flex flex-col items-center justify-center p-3 text-center shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 select-none group/story bg-gradient-to-b from-primary/10 via-primary/5 to-card"
-                  title="Register a new companion animal"
+                  className="w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl bg-card border-2 border-dashed border-primary/30 hover:border-primary overflow-hidden relative flex flex-col items-center justify-center p-2.5 sm:p-3 text-center shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 select-none group/story bg-gradient-to-b from-primary/10 via-primary/5 to-card snap-start"
+                  title="Register a new pet into CVO database"
                 >
-                  <div className="size-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md shadow-primary/25 mb-3 group-hover/story:scale-110 transition-transform">
-                    <Plus className="size-6 stroke-[3]" />
+                  <div className="size-10 sm:size-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md shadow-primary/25 mb-2 sm:mb-3 group-hover/story:scale-110 transition-transform">
+                    <Plus className="size-5 sm:size-6 stroke-[3]" />
                   </div>
                   <p className="text-xs sm:text-sm font-extrabold text-foreground group-hover/story:text-primary transition-colors leading-tight">
                     Register Pet
                   </p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight mt-1">
-                    New companion
+                  <p className="text-[9px] sm:text-xs text-muted-foreground leading-tight mt-0.5 sm:mt-1">
+                    Digital Passport
                   </p>
-                  <span className="mt-2.5 text-[9px] sm:text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20">
-                    + Add Animal
+                  <span className="mt-2 text-[8.5px] sm:text-[10px] font-bold text-primary bg-primary/10 px-2 sm:px-2.5 py-0.5 rounded-full border border-primary/20">
+                    + Add Pet
                   </span>
                 </div>
               }
@@ -1023,24 +1026,24 @@ export default function PetOwnerPortalPage() {
                   key={pet.id}
                   onClick={() => handleOpenPetInfo(pet)}
                   className={cn(
-                    "w-32 sm:w-[150px] h-48 sm:h-52 rounded-2xl overflow-hidden relative shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 border border-border/60 select-none group/story flex flex-col justify-between p-3",
+                    "w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl overflow-hidden relative shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 border border-border/60 select-none group/story flex flex-col justify-between p-2.5 sm:p-3 snap-start",
                     gradientBg
                   )}
                   title={`${pet.name} (${pet.species}) — Click to view Pet Details & Passport`}
                 >
-                  {/* Subtle decorative paw watermark */}
-                  <PawPrint className="size-32 text-white/[0.04] absolute -bottom-6 -right-6 pointer-events-none" />
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-white/[0.06] rounded-full blur-2xl pointer-events-none" />
+                  {/* Subtle decorative ambient glow */}
+                  <div className="absolute -bottom-6 -right-6 size-24 sm:size-28 bg-white/[0.05] rounded-full blur-xl pointer-events-none" />
+                  <div className="absolute top-0 right-0 w-20 sm:w-24 h-20 sm:h-24 bg-white/[0.06] rounded-full blur-2xl pointer-events-none" />
 
-                  {/* Top Row: Species Crest & Status Badge */}
+                  {/* Top Row: Pet Initial Monogram & Vaccination Status Badge */}
                   <div className="flex items-center justify-between relative z-10 w-full">
-                    <div className="size-7 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white">
-                      <PawPrint className="size-3.5" />
+                    <div className="size-6 sm:size-7 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-[10px] sm:text-xs font-extrabold text-white shadow-xs">
+                      {pet.name.charAt(0).toUpperCase()}
                     </div>
 
                     <span
                       className={cn(
-                        "text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md",
+                        "text-[8.5px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md",
                         vaxStatus.isOverdue
                           ? "bg-rose-600/90 text-white"
                           : vaxStatus.isDueSoon
@@ -1060,11 +1063,15 @@ export default function PetOwnerPortalPage() {
                     </span>
                   </div>
 
-                  {/* Center: Frosted Glass Digital Passport Crest */}
+                  {/* Center: Frosted Glass Digital Passport Species Crest */}
                   <div className="relative z-10 flex flex-col items-center justify-center my-auto transition-transform group-hover/story:scale-108">
-                    <div className="size-13 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-md flex flex-col items-center justify-center">
-                      <PawPrint className="size-5.5 text-white mb-0.5" />
-                      <span className="text-[8px] font-mono font-bold tracking-wider text-emerald-200 uppercase">
+                    <div className="size-11 sm:size-13 rounded-xl sm:rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-md flex flex-col items-center justify-center">
+                      {isCat ? (
+                        <Cat className="size-5 sm:size-6 text-white mb-0.5" />
+                      ) : (
+                        <Dog className="size-5 sm:size-6 text-white mb-0.5" />
+                      )}
+                      <span className="text-[7.5px] sm:text-[8px] font-mono font-bold tracking-wider text-emerald-200 uppercase">
                         {isCat ? "FELINE" : "CANINE"}
                       </span>
                     </div>
@@ -1075,11 +1082,11 @@ export default function PetOwnerPortalPage() {
                     <p className="text-xs sm:text-sm font-extrabold text-white leading-tight drop-shadow-xs truncate">
                       {pet.name}
                     </p>
-                    <p className="text-[10px] sm:text-xs text-white/80 truncate leading-tight font-medium">
+                    <p className="text-[9px] sm:text-xs text-white/80 truncate leading-tight font-medium">
                       {pet.breed || pet.species} • {pet.gender === "Female" ? "♀" : "♂"}
                     </p>
-                    <div className="pt-1 flex items-center gap-1 text-[9px] font-mono text-emerald-200 bg-black/40 px-1.5 py-0.5 rounded-md w-fit max-w-full">
-                      <QrCode className="size-2.5 text-emerald-300 shrink-0" />
+                    <div className="pt-0.5 sm:pt-1 flex items-center gap-1 text-[8px] sm:text-[9px] font-mono text-emerald-200 bg-black/40 px-1.5 py-0.5 rounded-md w-fit max-w-full">
+                      <QrCode className="size-2 sm:size-2.5 text-emerald-300 shrink-0" />
                       <span className="truncate">#{cdoPassportId.startsWith("pet-") ? cdoPassportId.slice(0, 8) : cdoPassportId}</span>
                     </div>
                   </div>
@@ -1088,50 +1095,50 @@ export default function PetOwnerPortalPage() {
             })}
           </div>
 
-          {/* Floating Right Scroll Arrow Button */}
+          {/* Floating Right Scroll Arrow Button (hidden on mobile touch screens, active on tablet/desktop) */}
           {pets.length > 2 && (
             <button
               type="button"
               onClick={() => scrollPets("right")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 size-9 rounded-full bg-card/90 hover:bg-card border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 transition-all cursor-pointer backdrop-blur-sm"
-              title="Next stories"
+              className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 size-8 sm:size-9 rounded-full bg-card/90 hover:bg-card border border-border shadow-md items-center justify-center text-foreground hover:scale-105 transition-all cursor-pointer backdrop-blur-sm"
+              title="View next pets"
             >
-              <ChevronRight className="size-5" />
+              <ChevronRight className="size-4 sm:size-5" />
             </button>
           )}
         </div>
 
         {/* ── 3. Quick Citizen Healthcare Services ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
           <PetOwnerConsultationDialog
             pets={pets}
             ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
             trigger={
               <button
                 type="button"
-                className="group relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-emerald-500/[0.04] p-4 text-left shadow-2xs hover:shadow-xs hover:border-emerald-500/50 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3.5"
+                className="group relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-emerald-500/[0.04] p-3 sm:p-4 text-left shadow-2xs hover:shadow-xs hover:border-emerald-500/50 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3"
               >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="size-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-emerald-500/15 transition-all">
-                    <Stethoscope className="size-5" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-10 sm:size-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-emerald-500/15 transition-all">
+                    <Stethoscope className="size-4.5 sm:size-5" />
                   </div>
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-sm text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      <span className="font-bold text-xs sm:text-sm text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                         Request Clinical Care
                       </span>
                       <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.2 rounded-full">
                         Free
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
                       Health check-up, symptom review & vet advice
                     </p>
                   </div>
                 </div>
 
-                <div className="size-8 rounded-full bg-muted/50 group-hover:bg-emerald-500/15 group-hover:text-emerald-600 text-muted-foreground flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="size-4 group-hover:translate-x-0.5 transition-transform" />
+                <div className="size-7 sm:size-8 rounded-full bg-muted/50 group-hover:bg-emerald-500/15 group-hover:text-emerald-600 text-muted-foreground flex items-center justify-center shrink-0 transition-colors">
+                  <ArrowRight className="size-3.5 sm:size-4 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
             }
@@ -1143,34 +1150,76 @@ export default function PetOwnerPortalPage() {
             trigger={
               <button
                 type="button"
-                className="group relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-blue-500/[0.04] p-4 text-left shadow-2xs hover:shadow-xs hover:border-blue-500/50 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3.5"
+                className="group relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-blue-500/[0.04] p-3 sm:p-4 text-left shadow-2xs hover:shadow-xs hover:border-blue-500/50 transition-all duration-200 cursor-pointer flex items-center justify-between gap-3"
               >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="size-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-blue-500/15 transition-all">
-                    <Calendar className="size-5" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="size-10 sm:size-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-blue-500/15 transition-all">
+                    <Calendar className="size-4.5 sm:size-5" />
                   </div>
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-sm text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      <span className="font-bold text-xs sm:text-sm text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                         Schedule Procedure
                       </span>
                       <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 bg-blue-500/15 px-1.5 py-0.2 rounded-full">
                         Quotas
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
                       Book Anti-Rabies vaccine or Kapon slot
                     </p>
                   </div>
                 </div>
 
-                <div className="size-8 rounded-full bg-muted/50 group-hover:bg-blue-500/15 group-hover:text-blue-600 text-muted-foreground flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="size-4 group-hover:translate-x-0.5 transition-transform" />
+                <div className="size-7 sm:size-8 rounded-full bg-muted/50 group-hover:bg-blue-500/15 group-hover:text-blue-600 text-muted-foreground flex items-center justify-center shrink-0 transition-colors">
+                  <ArrowRight className="size-3.5 sm:size-4 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
             }
           />
         </div>
+
+        {/* ── Mobile Upcoming Care Quick Banner (< md only) ── */}
+        {(() => {
+          const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
+          const nextApt = activeAppointments[0];
+          const waitingConsultation = ownerConsultations.find((c: any) => c.status === "waiting");
+          if (!nextApt && !waitingConsultation) return null;
+
+          return (
+            <div className="md:hidden p-3 rounded-2xl border border-primary/20 bg-primary/[0.04] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+                  <CalendarClock className="size-3" />
+                  Upcoming Care Schedule
+                </span>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {activeAppointments.length} Active
+                </span>
+              </div>
+              {nextApt && (
+                <div className="flex items-center justify-between gap-2 bg-card p-2.5 rounded-xl border border-border/80 text-xs">
+                  <div className="min-w-0">
+                    <p className="font-bold text-foreground truncate">{nextApt.pet_name || nextApt.petName} • {nextApt.service_type || nextApt.serviceType}</p>
+                    <p className="text-[11px] text-muted-foreground">{nextApt.appointment_date || nextApt.date} ({nextApt.appointment_time || "Morning"})</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedAppointmentForSlip(nextApt);
+                      setAppointmentSlipOpen(true);
+                    }}
+                    className="h-7 px-2 text-[10px] font-semibold gap-1 rounded-lg shrink-0"
+                  >
+                    <Printer className="size-2.5 text-primary" />
+                    <span>Slip</span>
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
         {/* Friendly Empty state if 0 pets registered */}
@@ -1935,7 +1984,7 @@ export default function PetOwnerPortalPage() {
       </div>
 
       {/* ── RIGHT COLUMN: Sticky Information & Quick Municipal Services ── */}
-      <div className="lg:col-span-4 space-y-4 lg:sticky lg:top-18">
+      <div className="md:col-span-5 lg:col-span-4 space-y-4 md:sticky md:top-18">
       {/* Top Card: Next Visit / Care Status Quick Glance */}
       <Card className="rounded-2xl border border-border/80 bg-card shadow-2xs overflow-hidden">
         <CardHeader className="p-4 pb-3 border-b border-border/50 bg-muted/20">
@@ -2137,7 +2186,7 @@ export default function PetOwnerPortalPage() {
                       : "bg-gradient-to-br from-emerald-800 via-teal-950 to-slate-950"
                   )}
                 >
-                  <PawPrint className="size-48 text-white/[0.04] absolute -bottom-10 -right-10 pointer-events-none" />
+                  <div className="absolute -bottom-10 -right-10 size-40 bg-white/[0.05] rounded-full blur-2xl pointer-events-none" />
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
 
                   {/* Top Header Row */}
@@ -2234,7 +2283,11 @@ export default function PetOwnerPortalPage() {
                   {/* Hero Identity */}
                   <div className="flex items-center gap-4 relative z-10">
                     <div className="size-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-md flex items-center justify-center shrink-0">
-                      <PawPrint className="size-8 text-white" />
+                      {isCat ? (
+                        <Cat className="size-8 text-white" />
+                      ) : (
+                        <Dog className="size-8 text-white" />
+                      )}
                     </div>
 
                     <div className="space-y-1 min-w-0 flex-1">

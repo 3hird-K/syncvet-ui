@@ -148,14 +148,14 @@ export function FacebookTopBar({
   ];
 
   return (
-    <header className="sticky top-0 z-50 h-14 w-full bg-card/95 backdrop-blur-md border-b border-border/80 shadow-xs select-none px-3 sm:px-4">
-      <div className="max-w-[1140px] mx-auto h-full flex items-center justify-between">
+    <header className="sticky top-0 z-50 h-13 sm:h-14 w-full bg-card/95 backdrop-blur-md border-b border-border/80 shadow-xs select-none px-2 sm:px-4 md:px-6">
+      <div className="max-w-[1140px] mx-auto h-full flex items-center justify-between gap-1 sm:gap-3">
         {/* ── 1. Left Section: Circular Emblem Logo ── */}
         <div className="flex items-center shrink-0">
           <Link
             href="/pet-owner?tab=feed"
             onClick={() => handleTabClick("feed")}
-            className="group relative size-10 rounded-full flex items-center justify-center overflow-hidden transition-transform duration-200 hover:scale-105 outline-none cursor-pointer"
+            className="group relative size-8.5 sm:size-9.5 md:size-10 rounded-full flex items-center justify-center overflow-hidden transition-transform duration-200 hover:scale-105 outline-none cursor-pointer"
             title="SyncVet Home"
             aria-label="SyncVet Home"
           >
@@ -171,7 +171,7 @@ export function FacebookTopBar({
         </div>
 
         {/* ── 2. Center Section: Integrated Themed Navigation Tabs ── */}
-        <nav className="flex items-center justify-center h-full gap-1 sm:gap-2">
+        <nav className="flex items-center justify-center h-full gap-0.5 sm:gap-1.5 md:gap-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.key && pathname.startsWith("/pet-owner");
@@ -182,7 +182,7 @@ export function FacebookTopBar({
                 type="button"
                 onClick={() => handleTabClick(item.key)}
                 className={cn(
-                  "relative flex items-center justify-center gap-2 h-full px-3 sm:px-4 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none select-none group",
+                  "relative flex items-center justify-center gap-1.5 h-full px-2 sm:px-3 md:px-4 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none select-none group",
                   isActive
                     ? "text-primary font-bold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl font-medium"
@@ -192,16 +192,16 @@ export function FacebookTopBar({
               >
                 <Icon
                   className={cn(
-                    "size-4 sm:size-4.5 transition-transform group-hover:scale-105",
+                    "size-4 sm:size-4.5 transition-transform group-hover:scale-105 shrink-0",
                     isActive ? "text-primary stroke-[2.5]" : "text-muted-foreground stroke-[2]"
                   )}
                 />
                 <span
                   className={cn(
-                    "tracking-tight text-xs transition-colors",
+                    "tracking-tight text-[11px] sm:text-xs transition-colors",
                     isActive
-                      ? "text-primary font-bold inline-block"
-                      : "text-muted-foreground group-hover:text-foreground font-medium hidden sm:inline-block"
+                      ? "text-primary font-bold hidden min-[420px]:inline-block"
+                      : "text-muted-foreground group-hover:text-foreground font-medium hidden md:inline-block"
                   )}
                 >
                   {item.shortLabel}
@@ -209,7 +209,7 @@ export function FacebookTopBar({
 
                 {/* Theme bottom active indicator bar */}
                 {isActive && (
-                  <span className="absolute bottom-0 inset-x-2 sm:inset-x-3 h-[3px] bg-primary rounded-t-full shadow-[0_-1px_6px_hsl(var(--primary)/0.6)]" />
+                  <span className="absolute bottom-0 inset-x-1 sm:inset-x-2 md:inset-x-3 h-[3px] bg-primary rounded-t-full shadow-[0_-1px_6px_hsl(var(--primary)/0.6)]" />
                 )}
               </button>
             );
@@ -217,17 +217,17 @@ export function FacebookTopBar({
         </nav>
 
         {/* ── 3. Right Section: Utility Icons (Menu, Chat, Profile) ── */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
         {/* CVO Services Quick Grid Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="size-10 rounded-full bg-muted/60 hover:bg-muted text-foreground cursor-pointer transition-transform hover:scale-105"
+              className="size-8.5 sm:size-9.5 md:size-10 rounded-full bg-muted/60 hover:bg-muted text-foreground cursor-pointer transition-transform hover:scale-105"
               title="CVO Municipal Services"
             >
-              <LayoutGrid className="size-5" />
+              <LayoutGrid className="size-4 sm:size-4.5 md:size-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72 rounded-2xl p-2.5 space-y-1 shadow-xl bg-popover text-xs">
@@ -319,12 +319,12 @@ export function FacebookTopBar({
         {/* Messenger Icon (with red unread count badge) */}
         <Link
           href="/messages"
-          className="relative size-10 rounded-full bg-muted/60 hover:bg-muted text-foreground flex items-center justify-center transition-transform hover:scale-105 cursor-pointer outline-none"
+          className="relative size-8.5 sm:size-9.5 md:size-10 rounded-full bg-muted/60 hover:bg-muted text-foreground flex items-center justify-center transition-transform hover:scale-105 cursor-pointer outline-none"
           title="Ask a Veterinarian in Messages"
         >
-          <MessengerIcon className="size-5 text-foreground" />
+          <MessengerIcon className="size-4 sm:size-4.5 md:size-5 text-foreground" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 size-5 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-card shadow-xs">
+            <span className="absolute -top-1 -right-1 size-4.5 sm:size-5 rounded-full bg-rose-600 text-white text-[9px] sm:text-[10px] font-bold flex items-center justify-center ring-2 ring-card shadow-xs">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -335,21 +335,21 @@ export function FacebookTopBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="relative size-10 rounded-full cursor-pointer outline-none transition-transform hover:scale-105 group"
+              className="relative size-8.5 sm:size-9.5 md:size-10 rounded-full cursor-pointer outline-none transition-transform hover:scale-105 group"
               title="Account Menu"
             >
-              <Avatar className="size-10 rounded-full border border-border/80 shadow-2xs">
+              <Avatar className="size-8.5 sm:size-9.5 md:size-10 rounded-full border border-border/80 shadow-2xs">
                 {userAvatarUrl ? (
                   <AvatarImage src={userAvatarUrl} alt={displayName} className="object-cover" />
                 ) : null}
                 <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-700 text-white font-bold text-xs">
-                  <PawIcon className="size-4.5 text-white" />
+                  <PawIcon className="size-4 text-white" />
                 </AvatarFallback>
               </Avatar>
 
               {/* Bottom Right Chevron Overlay */}
-              <div className="absolute -bottom-0.5 -right-0.5 size-4 rounded-full bg-card border border-border flex items-center justify-center shadow-2xs group-hover:bg-muted">
-                <ChevronDown className="size-2.5 text-foreground" />
+              <div className="absolute -bottom-0.5 -right-0.5 size-3.5 sm:size-4 rounded-full bg-card border border-border flex items-center justify-center shadow-2xs group-hover:bg-muted">
+                <ChevronDown className="size-2 sm:size-2.5 text-foreground" />
               </div>
             </button>
           </DropdownMenuTrigger>

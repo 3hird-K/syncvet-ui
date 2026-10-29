@@ -16,6 +16,9 @@ import {
   Building2,
   Lock,
   X,
+  Search,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "@clerk/nextjs";
@@ -23,6 +26,11 @@ import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -104,8 +112,17 @@ export function ScheduleDriveDialog() {
 
   // Barangay selection
   const [barangay, setBarangay] = useState<string>("Lapasan");
+  const [barangaySearch, setBarangaySearch] = useState<string>("");
+  const [barangayPopoverOpen, setBarangayPopoverOpen] = useState(false);
   const [venue, setVenue] = useState<string>("Barangay Hall Covered Court");
   const [customVenue, setCustomVenue] = useState<string>("");
+
+  // Search filtered CDO Barangays
+  const filteredBarangays = useMemo(() => {
+    const q = barangaySearch.toLowerCase().trim();
+    if (!q) return cvoBarangays;
+    return cvoBarangays.filter((b) => b.toLowerCase().includes(q));
+  }, [barangaySearch]);
 
   // Services offered: strictly Consultation, Vaccination, Spay/Neuter
   const [services, setServices] = useState<{
@@ -341,18 +358,80 @@ export function ScheduleDriveDialog() {
                     <Label htmlFor="barangay" className="text-[11px] font-semibold text-foreground">
                       Target Barangay (CDO) <span className="text-destructive">*</span>
                     </Label>
-                    <Select value={barangay} onValueChange={setBarangay}>
-                      <SelectTrigger id="barangay" className="h-9 text-xs bg-background">
-                        <SelectValue placeholder="Select barangay" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {cvoBarangays.map((b) => (
-                          <SelectItem key={b} value={b} className="text-xs">
-                            Barangay {b}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={barangayPopoverOpen} onOpenChange={setBarangayPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="barangay"
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={barangayPopoverOpen}
+                          className="w-full h-9 justify-between px-3 text-xs bg-background font-normal border-input hover:bg-muted/40 cursor-pointer text-left"
+                        >
+                          <span className="font-semibold text-foreground truncate">
+                            {barangay ? `Barangay ${barangay}` : "Select barangay..."}
+                          </span>
+                          <ChevronsUpDown className="size-3.5 opacity-50 shrink-0 ml-1.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0 shadow-lg border border-border" align="start">
+                        <div className="p-2 border-b border-border/80">
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border bg-muted/30">
+                            <Search className="size-3.5 text-muted-foreground shrink-0" />
+                            <input
+                              type="text"
+                              value={barangaySearch}
+                              onChange={(e) => setBarangaySearch(e.target.value)}
+                              placeholder="Search CDO barangay..."
+                              className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                              autoFocus
+                            />
+                            {barangaySearch && (
+                              <button
+                                type="button"
+                                onClick={() => setBarangaySearch("")}
+                                className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                                title="Clear search"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="max-h-56 overflow-y-auto p-1 space-y-0.5">
+                          {filteredBarangays.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-4 italic">
+                              No barangay found matching &ldquo;{barangaySearch}&rdquo;
+                            </p>
+                          ) : (
+                            filteredBarangays.map((b) => {
+                              const isSelected = barangay.toLowerCase() === b.toLowerCase();
+                              return (
+                                <button
+                                  key={b}
+                                  type="button"
+                                  onClick={() => {
+                                    setBarangay(b);
+                                    setBarangayPopoverOpen(false);
+                                    setBarangaySearch("");
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-2 rounded-md hover:bg-muted text-xs flex items-center justify-between cursor-pointer transition-colors",
+                                    isSelected && "bg-primary/10 text-primary font-bold"
+                                  )}
+                                >
+                                  <span>Barangay {b}</span>
+                                  {isSelected && <Check className="size-3.5 text-primary shrink-0" />}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                        <div className="p-1.5 border-t border-border/60 bg-muted/20 text-[10px] text-muted-foreground text-center">
+                          {filteredBarangays.length} of {cvoBarangays.length} CDO barangays
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
                   <div className="grid gap-1.5">

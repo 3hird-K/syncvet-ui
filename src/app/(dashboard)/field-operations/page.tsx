@@ -690,10 +690,13 @@ export default function FieldOperationsPage() {
                 </Avatar>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-foreground">
+                    <DialogTitle className="text-base font-bold text-foreground">
                       {profileModalVet.name}
-                    </h3>
+                    </DialogTitle>
                   </div>
+                  <DialogDescription className="sr-only">
+                    Profile credentials and field outreach duties for {profileModalVet.name}
+                  </DialogDescription>
                   <Badge variant="outline" className="text-[10px] border-primary/30 text-primary bg-primary/10">
                     {profileModalVet.licenseNo}
                   </Badge>

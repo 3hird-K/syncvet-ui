@@ -935,10 +935,10 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
         const announcementContent = `The City Veterinary Office (CVO) mobile veterinary team will be deployed to Barangay ${op.barangay} for a community outreach visit.
 
-📅 Date: ${formattedDate}
-⏰ Time: ${op.timeWindow || "08:00 AM - 12:00 PM"}
-📍 Venue: ${op.venue || "Barangay Covered Court / Hall"}
-🩺 Attending Veterinarian: ${op.lead}${op.vetProfile?.role ? ` (${op.vetProfile.role})` : ""}
+Date: ${formattedDate}
+Time: ${op.timeWindow || "08:00 AM - 12:00 PM"}
+Venue: ${op.venue || "Barangay Covered Court / Hall"}
+Attending Veterinarian: ${op.lead}${op.vetProfile?.role ? ` (${op.vetProfile.role})` : ""}
 
 SERVICES OFFERED:
 ${servicesLabels.join("\n")}

@@ -141,6 +141,41 @@ export default function AnnouncementsManagementPage() {
     staleTime: 1000 * 30,
   });
 
+  // Fetch staff profiles for avatar resolution
+  const { data: staffProfiles } = useQuery<{ id: string; full_name: string | null; avatar_url: string | null }[]>({
+    queryKey: ["announcements-staff-profiles"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("id, full_name, avatar_url");
+        if (error) return [];
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Fetch field operations to correlate with announcements
+  const { data: dbFieldOps } = useQuery({
+    queryKey: ["announcements-field-ops"],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from("field_operations")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (error) return [];
+        return data || [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 30,
+  });
+
   // Realtime subscription
   useEffect(() => {
     const channel = supabase
@@ -150,6 +185,13 @@ export default function AnnouncementsManagementPage() {
         { event: "*", schema: "public", table: "announcements" },
         () => {
           queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "field_operations" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["announcements-field-ops"] });
         }
       )
       .subscribe();
@@ -165,6 +207,80 @@ export default function AnnouncementsManagementPage() {
     }
     return DEFAULT_ANNOUNCEMENTS;
   }, [dbAnnouncements]);
+
+  // Correlate announcement with field operation
+  const getFieldOp = (item: CVOAnnouncement) => {
+    const opIdMatch = item.content.match(/\[OP_ID:(FO-[^\]]+)\]/i);
+    if (opIdMatch && opIdMatch[1] && dbFieldOps) {
+      const match = (dbFieldOps as any[]).find(
+        (f) => (f.op_id || f.opId) === opIdMatch[1]
+      );
+      if (match) return match;
+    }
+
+    const rawBarangay = (item.target_barangay || item.title || "")
+      .replace(/CVO Outreach Visit:\s*/i, "")
+      .replace(/^Brgy\.\s*/i, "")
+      .replace(/^Barangay\s*/i, "")
+      .trim()
+      .toLowerCase();
+
+    if (rawBarangay && dbFieldOps) {
+      const match = (dbFieldOps as any[]).find((f) => {
+        const b = (f.barangay || "").trim().toLowerCase();
+        return b && (b.includes(rawBarangay) || rawBarangay.includes(b));
+      });
+      if (match) return match;
+    }
+
+    return null;
+  };
+
+  // Resolve author avatar photo
+  const getAuthorAvatar = (authorName: string, authorId?: string | null, matchedOp?: any) => {
+    if (matchedOp?.vetProfile?.avatarUrl) {
+      return matchedOp.vetProfile.avatarUrl;
+    }
+    if (matchedOp?.notes && matchedOp.notes.includes("__CVO_FIELD_META__:")) {
+      try {
+        const metaPart = matchedOp.notes.split("__CVO_FIELD_META__:")[1];
+        const parsed = JSON.parse(metaPart);
+        if (parsed?.vetProfile?.avatarUrl) {
+          return parsed.vetProfile.avatarUrl;
+        }
+      } catch {}
+    }
+
+    if (staffProfiles && authorId) {
+      const match = staffProfiles.find((u) => u.id === authorId);
+      if (match?.avatar_url) return match.avatar_url;
+    }
+
+    if (staffProfiles && authorName) {
+      const clean = authorName
+        .replace(/^(Dr\.|Dra\.|Atty\.)\s*/i, "")
+        .replace(/,\s*(DVM|MD|RN|DDS).*$/i, "")
+        .trim()
+        .toLowerCase();
+
+      const matchByName = staffProfiles.find((u) => {
+        if (!u.full_name) return false;
+        const uClean = u.full_name
+          .replace(/^(Dr\.|Dra\.|Atty\.)\s*/i, "")
+          .replace(/,\s*(DVM|MD|RN|DDS).*$/i, "")
+          .trim()
+          .toLowerCase();
+        return uClean === clean || clean.includes(uClean) || uClean.includes(clean);
+      });
+      if (matchByName?.avatar_url) return matchByName.avatar_url;
+    }
+
+    if (authorName.toLowerCase().includes("helen") || authorName.toLowerCase().includes("tacandong")) {
+      return "/dr-helen-tacandong.jpg";
+    }
+
+    return null;
+  };
 
   const pinnedAnnouncement = useMemo(() => {
     return announcements.find((a) => a.is_pinned) || null;
@@ -372,6 +488,14 @@ export default function AnnouncementsManagementPage() {
               const Icon = badge.icon;
               const isUrgent = item.priority === "urgent" || item.priority === "high";
 
+              const matchedOp = getFieldOp(item);
+              const avatarUrl = getAuthorAvatar(item.author_name, item.author_id, matchedOp);
+
+              const opStatus = (matchedOp?.status || "").toLowerCase();
+              const isInProgress = opStatus === "in-progress" || opStatus === "in progress";
+              const isCompleted = opStatus === "completed";
+              const isScheduled = opStatus === "scheduled";
+
               const contentLines = item.content.split("\n");
               const mainText = contentLines
                 .filter((l) => !l.startsWith("#"))
@@ -384,8 +508,12 @@ export default function AnnouncementsManagementPage() {
                 <article
                   key={item.id}
                   className={cn(
-                    "rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 space-y-3.5",
-                    item.is_pinned && "border-amber-500/40 bg-gradient-to-b from-amber-500/5 via-card to-card shadow-sm"
+                    "rounded-2xl border bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 space-y-3.5",
+                    isInProgress
+                      ? "border-blue-500/50 bg-gradient-to-b from-blue-500/[0.04] via-card to-card ring-1 ring-blue-500/20"
+                      : item.is_pinned
+                      ? "border-amber-500/40 bg-gradient-to-b from-amber-500/5 via-card to-card shadow-sm"
+                      : "border-border/80"
                   )}
                 >
                   {/* Row 1: Badges & Management Controls */}
@@ -403,6 +531,38 @@ export default function AnnouncementsManagementPage() {
                         >
                           <Pin className="size-2.5 fill-amber-500 text-amber-500" />
                           <span>Pinned to Top</span>
+                        </Badge>
+                      )}
+
+                      {/* ── Live Field Operation Status Badge ── */}
+                      {isInProgress && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9.5px] px-2.5 py-0.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/40 hover:border-blue-500/60 gap-1.5 font-bold rounded-full shadow-2xs transition-colors cursor-default"
+                          title="Field outreach visit is currently in progress"
+                        >
+                          <Clock className="size-3 text-blue-600 dark:text-blue-400" />
+                          <span>In Progress</span>
+                        </Badge>
+                      )}
+                      {isCompleted && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9.5px] px-2.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50 gap-1.5 font-bold rounded-full shadow-2xs transition-colors cursor-default"
+                          title="Field outreach mission concluded"
+                        >
+                          <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          <span>Completed</span>
+                        </Badge>
+                      )}
+                      {isScheduled && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9.5px] px-2.5 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:border-amber-500/50 gap-1.5 font-bold rounded-full shadow-2xs transition-colors cursor-default"
+                          title="Scheduled upcoming outreach"
+                        >
+                          <Calendar className="size-3 text-amber-600 dark:text-amber-400" />
+                          <span>Scheduled</span>
                         </Badge>
                       )}
 
@@ -501,19 +661,45 @@ export default function AnnouncementsManagementPage() {
                           <p className="text-xs font-bold text-foreground truncate">{item.title}</p>
                           <p className="text-[11px] text-muted-foreground truncate">
                             {item.target_barangay} • 100% Free Municipal Service
+                            {matchedOp && (
+                              <span className="ml-1 font-semibold text-foreground/80">
+                                • Status: {isInProgress ? "In Progress" : isCompleted ? "Completed" : "Scheduled"}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0">
-                        Citizen Caravan
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0",
+                        isInProgress
+                          ? "text-blue-600 bg-blue-500/10 border-blue-500/20"
+                          : "text-emerald-600 bg-emerald-500/10 border-emerald-500/20"
+                      )}>
+                        {isInProgress ? "In Progress" : isCompleted ? "Mission Concluded" : "Citizen Caravan"}
                       </span>
                     </div>
                   )}
 
-                  {/* Footer Meta Row: Author, Barangay, and Published Time */}
+                  {/* Footer Meta Row: Author Avatar, Role, Barangay, and Published Time */}
                   <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2 text-xs text-muted-foreground flex-wrap">
                     <div className="flex items-center gap-2 min-w-0">
+                      <Avatar className="size-6 rounded-full border border-border/80 shrink-0">
+                        {avatarUrl ? (
+                          <AvatarImage src={avatarUrl} alt={item.author_name} className="object-cover" />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/20 text-primary font-bold text-[9px]">
+                          {item.author_name
+                            .replace(/^Dr\.\s*/i, "")
+                            .trim()
+                            .split(" ")
+                            .map((n) => n[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+
                       <span className="font-semibold text-foreground truncate">{item.author_name}</span>
                       <span>•</span>
                       <span className="text-primary font-medium">{item.author_role}</span>
