@@ -69,7 +69,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "City Veterinary Services" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
           { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
-          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+          { label: "Pet Registry", icon: PawIcon, href: "/pet-registry" },
           { label: "Field Operations", icon: MapPin, href: "/field-operations" },
         ],
       };
@@ -83,7 +83,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "Clinical Procedures" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },
           { label: "Vaccine Inventory", icon: Package, href: "/vaccine-inventory" },
-          { label: "Pet Registry & Passports", icon: PawIcon, href: "/pet-registry" },
+          { label: "Pet Registry", icon: PawIcon, href: "/pet-registry" },
           { label: "Field Operations", icon: MapPin, href: "/field-operations" },
         ],
       };

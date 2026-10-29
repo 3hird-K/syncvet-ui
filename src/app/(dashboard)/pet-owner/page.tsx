@@ -963,13 +963,13 @@ export default function PetOwnerPortalPage() {
         </div>
       )}
 
-      {/* ── 2. Pet Registry & Digital Passports Carousel ── */}
+      {/* ── 2. Pet Registry Carousel ── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <PawPrint className="size-3.5 text-primary" />
-              <span>Registered Pets & Passports</span>
+              <span>Pet Registry</span>
             </span>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-bold rounded-full">
               {pets.length}
@@ -977,7 +977,7 @@ export default function PetOwnerPortalPage() {
           </div>
         </div>
 
-        {/* Pet Digital Passports Strip */}
+        {/* Pet Registry Strip */}
         <div className="relative group/stories">
           <div
             ref={petsScrollRef}
@@ -997,7 +997,7 @@ export default function PetOwnerPortalPage() {
                     Register Pet
                   </p>
                   <p className="text-[9px] sm:text-xs text-muted-foreground leading-tight mt-0.5 sm:mt-1">
-                    Digital Passport
+                    Pet Registry
                   </p>
                   <span className="mt-2 text-[8.5px] sm:text-[10px] font-bold text-primary bg-primary/10 px-2 sm:px-2.5 py-0.5 rounded-full border border-primary/20">
                     + Add Pet
