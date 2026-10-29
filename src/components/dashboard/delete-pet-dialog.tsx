@@ -50,66 +50,60 @@ export function DeletePetDialog({
         if (!Array.isArray(old)) return old;
         return old.filter((p: any) => p.id !== pet.id);
       });
+      const petNameLower = pet.name?.toLowerCase() || "";
 
-      // 1. Find all appointments associated with this pet (by pet.id or pet.name) to cascade delete transactions
-      const petNameLower = pet.name?.toLowerCase();
-      let aptIds: string[] = [];
-
+      // 1. Cascade delete appointments from Supabase
       try {
-        const { data: aptData } = await supabase
-          .from("appointments")
-          .select("id")
-          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
-        if (aptData) {
-          aptIds = aptData.map((a) => a.id);
-        }
-      } catch {}
-
-      // 2. Cascade delete appointments from Supabase
-      try {
-        await supabase
-          .from("appointments")
-          .delete()
-          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
-      } catch {}
-
-      // 3. Cascade delete service transactions (by appointment reference_id or pet title)
-      try {
-        if (aptIds.length > 0) {
-          for (const id of aptIds) {
-            await supabase
-              .from("service_transactions")
-              .delete()
-              .or(`reference_id.eq.${id},id.eq.${id}`);
-          }
+        if (pet.id) {
+          await supabase.from("appointments").delete().eq("pet_id", pet.id);
         }
         if (pet.name) {
-          await supabase
-            .from("service_transactions")
-            .delete()
-            .ilike("title", `%${pet.name}%`);
+          await supabase.from("appointments").delete().eq("pet_name", pet.name);
         }
-      } catch {}
+      } catch (e) {
+        console.warn("Appointments delete warning:", e);
+      }
 
-      // 4. Cascade delete consultations & chats & medical records for this pet
+      // 2. Cascade delete service transactions
       try {
-        await supabase
-          .from("consultations")
-          .delete()
-          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
-      } catch {}
+        if (pet.id) {
+          await supabase.from("service_transactions").delete().eq("reference_id", pet.id);
+        }
+        if (pet.name) {
+          await supabase.from("service_transactions").delete().ilike("title", `%${pet.name}%`);
+        }
+      } catch (e) {
+        console.warn("Transactions delete warning:", e);
+      }
+
+      // 3. Cascade delete consultations & chats & medical records for this pet
       try {
-        await supabase
-          .from("vaccination_records")
-          .delete()
-          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
-      } catch {}
+        if (pet.id) {
+          await supabase.from("consultations").delete().eq("pet_id", pet.id);
+        }
+        if (pet.name) {
+          await supabase.from("consultations").delete().eq("pet_name", pet.name);
+        }
+      } catch (e) {
+        console.warn("Consultations delete warning:", e);
+      }
       try {
-        await supabase
-          .from("chats")
-          .delete()
-          .or(`pet_id.eq.${pet.id},pet_name.eq.${pet.name}`);
-      } catch {}
+        if (pet.id) {
+          await supabase.from("vaccination_records").delete().eq("pet_id", pet.id);
+        }
+        if (pet.name) {
+          await supabase.from("vaccination_records").delete().eq("pet_name", pet.name);
+        }
+      } catch (e) {
+        console.warn("Vaccination delete warning:", e);
+      }
+      try {
+        if (pet.id) {
+          await supabase.from("chats").delete().eq("pet_id", pet.id);
+        }
+      } catch (e) {
+        console.warn("Chats delete warning:", e);
+      }
 
       // 5. Clean up localStorage cache
       try {

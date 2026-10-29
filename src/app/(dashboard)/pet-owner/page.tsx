@@ -53,6 +53,9 @@ import {
   Scissors,
   Download,
   Loader2,
+  Megaphone,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
@@ -108,6 +111,7 @@ import { ProcedureAppointmentSlipDialog } from "@/components/dashboard/procedure
 import { getSlotConfiguration, PROCEDURE_SERVICES } from "@/lib/cvo-slots";
 import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
 import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
+import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -126,7 +130,27 @@ export default function PetOwnerPortalPage() {
   const { openChatWithPet, unreadCount } = useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
-  const [activeTab, setActiveTab] = useState("consultations");
+  const [activeTab, setActiveTab] = useState("feed");
+  const [showPetCards, setShowPetCards] = useState(false);
+
+  // Sync activeTab with Facebook Top Bar and URL params
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam) setActiveTab(tabParam);
+    }
+
+    const handleTabChange = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) {
+        setActiveTab(customEvent.detail);
+      }
+    };
+
+    window.addEventListener("syncvet-tab-change", handleTabChange);
+    return () => window.removeEventListener("syncvet-tab-change", handleTabChange);
+  }, []);
   const [selectedConsultation, setSelectedConsultation] = useState<CVOConsultation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -958,64 +982,243 @@ export default function PetOwnerPortalPage() {
         </div>
       )}
 
-      {/* ── 2. My Registered Pets (4 Columns, Single-Row Scrollable Carousel) ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shadow-2xs">
-              <PawPrint className="size-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold tracking-tight text-foreground">
-                  Registered Pets
-                </h2>
-                <Badge variant="secondary" className="text-[10px] px-2 py-0 h-4.5 font-bold rounded-full">
-                  {pets.length}
-                </Badge>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Digital QR passports, municipal IDs, and verified anti-rabies immunity
-              </p>
-            </div>
+      {/* ── 2. Facebook-Style Vertical Stories Carousel ── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Companions & Stories
+            </span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-bold rounded-full">
+              {pets.length}
+            </Badge>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Scroll buttons for desktop */}
-            {pets.length > 3 && (
-              <div className="h-8 flex items-center gap-0.5 bg-muted/40 p-0.5 rounded-xl border border-border/70 box-border">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => scrollPets("left")}
-                  className="h-6.5 w-6.5 rounded-lg hover:bg-background cursor-pointer"
-                  title="Scroll left"
-                >
-                  <ChevronLeft className="size-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => scrollPets("right")}
-                  className="h-6.5 w-6.5 rounded-lg hover:bg-background cursor-pointer"
-                  title="Scroll right"
-                >
-                  <ChevronRight className="size-3.5" />
-                </Button>
-              </div>
-            )}
+          {pets.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPetCards((v) => !v)}
+              className="h-7 px-2.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer gap-1 rounded-lg"
+            >
+              {showPetCards ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+              <span>{showPetCards ? "Hide Detail Cards" : "View Detail Cards"}</span>
+            </Button>
+          )}
+        </div>
+
+        {/* Facebook-Style Stories Strip */}
+        <div className="relative group/stories">
+          <div
+            ref={petsScrollRef}
+            className="flex items-center gap-2.5 overflow-x-auto pb-1 pt-1 no-scrollbar scroll-smooth"
+          >
+            {/* 1. Facebook "Create Story" Card: Register Companion */}
             <RegisterPetDialog
               trigger={
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-semibold rounded-xl cursor-pointer">
-                  <Plus className="size-3" />
-                  <span>Register Pet</span>
-                </Button>
+                <div
+                  className="w-28 sm:w-32 h-44 sm:h-52 rounded-2xl bg-card border border-border/80 overflow-hidden relative flex flex-col justify-between shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 select-none group/story"
+                  title="Register a new pet companion"
+                >
+                  <div className="relative w-full h-[72%] overflow-hidden bg-muted/40">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/gallery/guardian-companion.jpg"
+                      alt="Register Pet"
+                      className="size-full object-cover transition-transform duration-300 group-hover/story:scale-108"
+                    />
+                    <div className="absolute inset-0 bg-black/15 group-hover/story:bg-black/5 transition-colors" />
+                  </div>
+
+                  {/* Facebook Center Floating Plus Circle */}
+                  <div className="absolute top-[70%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+                    <div className="size-9 rounded-full bg-[#1877F2] text-white flex items-center justify-center border-4 border-card shadow-sm group-hover/story:scale-110 transition-transform">
+                      <Plus className="size-4.5 stroke-[3]" />
+                    </div>
+                  </div>
+
+                  {/* Bottom Label */}
+                  <div className="h-[28%] bg-card pt-3 pb-1 px-1 flex items-center justify-center text-center">
+                    <p className="text-xs font-bold text-foreground leading-tight">
+                      Register Pet
+                    </p>
+                  </div>
+                </div>
+              }
+            />
+
+            {/* 2..N: Each Pet's Facebook Story Card */}
+            {pets.map((pet, idx) => {
+              const vaxStatus = getPetVaccinationStatus(pet);
+              const isCat = pet.species === "Cat";
+              const bgImg = isCat
+                ? "/gallery/vet-cat.jpg"
+                : idx % 2 === 0
+                ? "/gallery/clean_cvo_dogday.jpg"
+                : "/gallery/clean_cvo_carmen.jpg";
+
+              const ringBorder = vaxStatus.isOverdue
+                ? "border-rose-500 ring-rose-500/40"
+                : vaxStatus.isDueSoon
+                ? "border-amber-400 ring-amber-500/40"
+                : "border-[#1877F2] ring-blue-500/40";
+
+              return (
+                <div
+                  key={pet.id}
+                  onClick={() => handleOpenPassport(pet)}
+                  className="w-28 sm:w-32 h-44 sm:h-52 rounded-2xl overflow-hidden relative shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 border border-border/60 select-none group/story"
+                  title={`${pet.name} (${pet.species}) — Click to view Digital QR Passport`}
+                >
+                  {/* Full-bleed background image */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={bgImg}
+                    alt={pet.name}
+                    className="size-full object-cover transition-transform duration-300 group-hover/story:scale-108"
+                    loading="lazy"
+                  />
+
+                  {/* Top-Left Facebook-style Story Avatar with Ring */}
+                  <div className="absolute top-2.5 left-2.5 z-10">
+                    <div
+                      className={cn(
+                        "size-9 rounded-full border-3 flex items-center justify-center bg-card shadow-md ring-2",
+                        ringBorder
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "size-full rounded-full flex items-center justify-center font-bold text-[10px]",
+                          isCat ? "bg-purple-500/20 text-purple-700 dark:text-purple-300" : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                        )}
+                      >
+                        <PawPrint className="size-4.5" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top-Right Status Tag */}
+                  <div className="absolute top-2.5 right-2.5 z-10">
+                    <span
+                      className={cn(
+                        "text-[9px] font-extrabold px-1.5 py-0.5 rounded-full shadow-sm",
+                        vaxStatus.isOverdue
+                          ? "bg-rose-600 text-white"
+                          : vaxStatus.isDueSoon
+                          ? "bg-amber-500 text-black font-bold"
+                          : "bg-emerald-600 text-white"
+                      )}
+                    >
+                      {vaxStatus.isOverdue ? "Overdue" : vaxStatus.isDueSoon ? "Due Soon" : "Protected"}
+                    </span>
+                  </div>
+
+                  {/* Bottom Dark Gradient Fade + White Bold Name */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2.5 pt-8 z-10">
+                    <p className="text-xs sm:text-sm font-extrabold text-white leading-tight drop-shadow-sm truncate">
+                      {pet.name}
+                    </p>
+                    <p className="text-[10px] text-white/80 truncate leading-tight font-medium mt-0.5">
+                      {pet.breed || pet.species}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Floating Right Scroll Arrow Button */}
+          {pets.length > 2 && (
+            <button
+              type="button"
+              onClick={() => scrollPets("right")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 size-9 rounded-full bg-card/90 hover:bg-card border border-border shadow-md flex items-center justify-center text-foreground hover:scale-105 transition-all cursor-pointer backdrop-blur-sm"
+              title="Next stories"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          )}
+        </div>
+
+        {/* ── 3. Facebook "What's on your mind?" Action Composer Bar ── */}
+        <div className="rounded-2xl border border-border/70 bg-card p-3 sm:p-4 shadow-xs space-y-3">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-10 rounded-full border border-border/80 shadow-2xs shrink-0">
+              <AvatarImage src={ownerAvatar || undefined} alt={ownerName} className="object-cover" />
+              <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-700 text-white font-bold text-xs">
+                {ownerName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+
+            <PetOwnerConsultationDialog
+              pets={pets}
+              initialPet={pets[0]}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <button
+                  type="button"
+                  className="flex-1 h-10 rounded-full bg-muted/50 hover:bg-muted/90 px-4 text-xs sm:text-sm text-muted-foreground flex items-center justify-start cursor-pointer transition-colors border border-border/40 text-left outline-none truncate"
+                >
+                  <span className="truncate">What&apos;s on your mind, {ownerName.split(" ")[0]}? (Inquire or request care...)</span>
+                </button>
               }
             />
           </div>
-        </div>
 
-        {/* Single-Row Scrollable Carousel / Responsive Grid */}
+          <div className="pt-2 border-t border-border/40 grid grid-cols-3 gap-1">
+            <PetOwnerConsultationDialog
+              pets={pets}
+              initialPet={pets[0]}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <div className="size-6 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Stethoscope className="size-3.5" />
+                  </div>
+                  <span className="truncate">Clinical Care</span>
+                </button>
+              }
+            />
+
+            <ScheduleProcedureDialog
+              pets={pets}
+              initialPet={pets[0]}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <button
+                  type="button"
+                  className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <div className="size-6 rounded-full bg-blue-500/15 text-blue-600 flex items-center justify-center shrink-0">
+                    <Calendar className="size-3.5" />
+                  </div>
+                  <span className="truncate">Book Slot</span>
+                </button>
+              }
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                if (pets.length > 0) openChatWithPet(pets[0]);
+                else router.push("/messages");
+              }}
+              className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors cursor-pointer"
+            >
+              <div className="size-6 rounded-full bg-[#1877F2]/15 text-[#1877F2] flex items-center justify-center shrink-0">
+                <MessengerIcon className="size-3.5 text-[#1877F2]" />
+              </div>
+              <span className="truncate">Ask City Vet</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+        {/* Detailed Pet Cards Carousel (Shown if showPetCards is true or if 0 pets) */}
         {pets.length === 0 ? (
           <Card className="p-8 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
             <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
@@ -1035,7 +1238,7 @@ export default function PetOwnerPortalPage() {
               }
             />
           </Card>
-        ) : (
+        ) : showPetCards ? (
           <div
             ref={petsScrollRef}
             className={cn(
@@ -1234,13 +1437,29 @@ export default function PetOwnerPortalPage() {
               );
             })}
           </div>
-        )}
-      </div>
+        ) : null}
 
       {/* ── 4. Main Services & Veterinary Communication Tabs ── */}
       <div className="space-y-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 h-auto p-1 bg-muted/50 border border-border/70 rounded-xl gap-1">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("syncvet-tab-change", { detail: val }));
+              const url = new URL(window.location.href);
+              url.searchParams.set("tab", val);
+              window.history.pushState({}, "", url.toString());
+            }
+          }}
+          className="w-full"
+        >
+          <TabsList className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 h-auto p-1 bg-muted/50 border border-border/70 rounded-xl gap-1">
+            <TabsTrigger value="feed" className="text-xs font-bold gap-1.5 cursor-pointer py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Megaphone className="size-3.5" />
+              <span>CVO Field Feed</span>
+              <span className="flex size-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+            </TabsTrigger>
             <TabsTrigger value="consultations" className="text-xs font-bold gap-1.5 cursor-pointer py-2">
               <Stethoscope className="size-3.5" />
               <span>Consultations</span>
@@ -1270,6 +1489,26 @@ export default function PetOwnerPortalPage() {
               <span>Bite Protocol</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* ════ TAB 0: CVO Central Social Media Feed ════ */}
+          <TabsContent value="feed" className="space-y-4 pt-2">
+            <CVOSocialFeed
+              currentUserId={user?.id}
+              currentUserName={user?.fullName || dbUser?.full_name || "City Veterinary Staff"}
+              currentUserRole={userRole}
+              isStaff={isStaff}
+              onSchedulePetClick={() => {
+                setActiveTab("procedures");
+              }}
+              onOpenChatWithNotice={() => {
+                if (pets.length > 0) {
+                  openChatWithPet(pets[0]);
+                } else {
+                  router.push("/messages");
+                }
+              }}
+            />
+          </TabsContent>
 
           {/* ════ TAB 1: Consultations & Official CVO Forms ════ */}
           <TabsContent value="consultations" className="space-y-4 pt-2">
@@ -2008,23 +2247,163 @@ export default function PetOwnerPortalPage() {
       </div>
     </div>
 
-    {/* ── RIGHT COLUMN (2 Stacked Cards on Desktop, 2 Columns on Tablet, 1 Column on Mobile) ── */}
-    <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 xl:sticky xl:top-4">
-      {/* Top Card: Official CVO Announcements & Public Bulletins */}
-      <CVOAnnouncementsCard
-        currentUserId={user?.id}
-        currentUserName={user?.fullName || dbUser?.full_name || "City Veterinary Staff"}
-        currentUserRole={userRole}
-        isStaff={isStaff}
-      />
+    {/* ── RIGHT COLUMN: Sticky Information & Quick Municipal Services ── */}
+    <div className="xl:col-span-4 space-y-5 xl:sticky xl:top-4">
+      {/* Top Card: Next Visit / Care Status Quick Glance */}
+      <Card className="rounded-2xl border border-border/80 bg-card shadow-2xs overflow-hidden">
+        <CardHeader className="p-4 pb-3 border-b border-border/50 bg-muted/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                <CalendarClock className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-bold text-foreground">
+                  My Upcoming Care
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground">
+                  Scheduled clinic appointments & encounters
+                </p>
+              </div>
+            </div>
+            {ownerAppointments.filter((a: any) => a.status !== "cancelled").length > 0 && (
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-bold">
+                {ownerAppointments.filter((a: any) => a.status !== "cancelled").length} Active
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
 
-      {/* Bottom Card: CVO Municipal Clinic Services, Daily Quotas & Emergency Hotline */}
+        <CardContent className="p-4 space-y-3 text-xs">
+          {(() => {
+            const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
+            const nextApt = activeAppointments[0];
+            const waitingConsultation = ownerConsultations.find((c: any) => c.status === "waiting");
+
+            if (!nextApt && !waitingConsultation) {
+              return (
+                <div className="p-3.5 rounded-xl bg-muted/20 border border-border/50 text-center space-y-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    No active appointments or waiting encounters.
+                  </p>
+                  <div className="flex items-center justify-center gap-2 pt-0.5">
+                    <PetOwnerConsultationDialog
+                      pets={pets}
+                      initialPet={pets[0]}
+                      ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                      trigger={
+                        <Button size="sm" variant="outline" className="h-7.5 px-2.5 text-[11px] font-semibold gap-1.5 rounded-xl cursor-pointer">
+                          <Stethoscope className="size-3 text-primary" />
+                          <span>Request Care</span>
+                        </Button>
+                      }
+                    />
+                    <ScheduleProcedureDialog
+                      pets={pets}
+                      initialPet={pets[0]}
+                      ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                      trigger={
+                        <Button size="sm" className="h-7.5 px-2.5 text-[11px] font-semibold gap-1.5 rounded-xl cursor-pointer bg-primary text-primary-foreground">
+                          <Calendar className="size-3" />
+                          <span>Book Visit</span>
+                        </Button>
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-2.5">
+                {nextApt && (
+                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                        Next Appointment
+                      </span>
+                      <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30">
+                        {nextApt.service_type || nextApt.serviceType}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-xs text-foreground">{nextApt.pet_name || nextApt.petName}</p>
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                        <Calendar className="size-3" />
+                        {nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedAppointmentForSlip(nextApt);
+                        setAppointmentSlipOpen(true);
+                      }}
+                      className="w-full h-7 text-[11px] font-semibold gap-1.5 rounded-lg cursor-pointer bg-card hover:bg-muted"
+                    >
+                      <Printer className="size-3 text-primary" />
+                      <span>View Official Appointment Slip</span>
+                    </Button>
+                  </div>
+                )}
+
+                {waitingConsultation && (
+                  <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                        Pending Consultation
+                      </span>
+                      <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30">
+                        Waiting Vet
+                      </Badge>
+                    </div>
+                    <p className="text-xs font-bold text-foreground">
+                      {waitingConsultation.petName} — {waitingConsultation.serviceType}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground line-clamp-1">
+                      {waitingConsultation.chiefComplaint}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
+
+      {/* CVO Municipal Clinic Services, Daily Quotas & Emergency Hotline */}
       <CVOClinicInfoCard
         vaxSlots={slotConfig.defaultVaccinationSlots}
         surgerySlots={slotConfig.defaultSpayNeuterSlots}
         isStaff={isStaff}
         currentUserRole={userRole}
       />
+
+      {/* 24/7 Animal Bite Emergency & Help Card */}
+      <Card className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-card p-4 space-y-2.5 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="size-8 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30">
+            <ShieldAlert className="size-4" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-foreground">24/7 Animal Bite Emergency?</h4>
+            <p className="text-[10px] text-muted-foreground">Official rabies exposure protocol</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Wash the bite wound immediately under running water with soap for at least 15 minutes. Do not apply garlic or bleed the wound.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setActiveTab("protocols")}
+          className="w-full h-7.5 text-xs font-bold border-amber-500/30 hover:bg-amber-500/15 text-amber-800 dark:text-amber-200 rounded-xl cursor-pointer"
+        >
+          <span>Open Full Bite Protocol</span>
+          <ArrowRight className="size-3.5 ml-1" />
+        </Button>
+      </Card>
     </div>
   </div>
 

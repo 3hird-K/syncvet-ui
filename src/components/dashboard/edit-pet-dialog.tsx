@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, PawPrint, ShieldCheck, Scale, Calendar, QrCode, Trash2, Check } from "lucide-react";
+import { Loader2, PawPrint, Scale, Calendar, QrCode, Check, Lock, X } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -54,8 +53,6 @@ export function EditPetDialog({
   const [gender, setGender] = useState<"Male" | "Female">("Male");
   const [birthYear, setBirthYear] = useState<string>(String(currentYear - 1));
   const [weightCategory, setWeightCategory] = useState<string>("Medium (10 – 25 kg)");
-  const [isSpayedNeutered, setIsSpayedNeutered] = useState(false);
-  const [rabiesVaccinated, setRabiesVaccinated] = useState(true);
   const [microchipNumber, setMicrochipNumber] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -90,8 +87,6 @@ export function EditPetDialog({
         else setWeightCategory("Large (> 25 kg)");
       }
 
-      setIsSpayedNeutered(Boolean(pet.is_spayed_neutered || pet.sterilized));
-      setRabiesVaccinated(Boolean(pet.rabies_vaccinated || pet.rabiesVaccinated || pet.is_vaccinated || pet.vaccinated));
       setMicrochipNumber(pet.microchip_number || pet.microchip || "");
       setNotes(pet.notes || "");
     }
@@ -117,10 +112,6 @@ export function EditPetDialog({
           gender,
           birth_year: birthYear ? Number(birthYear) : null,
           weight_category: weightCategory || null,
-          is_spayed_neutered: isSpayedNeutered,
-          rabies_vaccinated: rabiesVaccinated,
-          is_vaccinated: rabiesVaccinated,
-          microchip_number: microchipNumber.trim() || null,
           notes: notes.trim() || null,
           updated_at: new Date().toISOString(),
         })
@@ -156,34 +147,56 @@ export function EditPetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-5 rounded-2xl">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader className="pb-2 border-b border-border/50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <PawIcon className="size-5" />
-                <DialogTitle className="text-lg font-bold">Edit Pet Profile</DialogTitle>
+      <DialogContent showCloseButton={false} className="w-[95vw] sm:max-w-[580px] md:max-w-[620px] p-5 sm:p-6 rounded-2xl shadow-2xl overflow-hidden">
+        <form onSubmit={handleSubmit} className="space-y-0">
+          <DialogHeader className="pb-3 border-b border-border/60 !pr-0 space-y-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+                  <PawIcon className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-base font-bold text-foreground truncate">Edit Pet Profile</DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground truncate">
+                    Modify registration records and biological vitals.
+                  </DialogDescription>
+                </div>
               </div>
-              {onDeleteRequest && (
+
+              {/* Action Buttons: Save changes beside X */}
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={loading}
+                  className="h-8 px-3.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs gap-1.5 shrink-0 whitespace-nowrap"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="size-3.5" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </Button>
+
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    onOpenChange(false);
-                    onDeleteRequest(pet);
-                  }}
-                  className="h-7 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-1 px-2 cursor-pointer rounded-lg"
-                  title="Delete this pet"
+                  size="icon"
+                  onClick={() => onOpenChange(false)}
+                  className="size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer shrink-0 border border-border/60"
+                  title="Close"
                 >
-                  <Trash2 className="size-3" />
-                  <span>Delete</span>
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
                 </Button>
-              )}
+              </div>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Modify registration records and biological vitals in the municipal database.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 py-3.5 max-h-[68vh] overflow-y-auto pr-1">
@@ -308,71 +321,31 @@ export function EditPetDialog({
               </div>
             </div>
 
-            {/* Health & Immunity Toggles */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setRabiesVaccinated((v) => !v)}
-                className={cn(
-                  "flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all",
-                  rabiesVaccinated
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 shadow-2xs"
-                    : "bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted/50"
-                )}
-              >
-                <div className="min-w-0 pr-1">
-                  <span className="text-[11px] font-bold block flex items-center gap-1">
-                    <ShieldCheck className="size-3 shrink-0" /> Rabies Vaccinated
-                  </span>
-                  <span className="text-[9px] text-muted-foreground block truncate">
-                    {rabiesVaccinated ? "Immunity Certified" : "Schedule Due"}
-                  </span>
-                </div>
-                <div className={cn(
-                  "size-4 rounded-full flex items-center justify-center shrink-0 border",
-                  rabiesVaccinated ? "bg-emerald-500 text-white border-emerald-600" : "border-border"
-                )}>
-                  {rabiesVaccinated && <Check className="size-2.5" />}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsSpayedNeutered((v) => !v)}
-                className={cn(
-                  "flex items-center justify-between p-2.5 rounded-xl border text-left cursor-pointer transition-all",
-                  isSpayedNeutered
-                    ? "bg-primary/10 border-primary/30 text-primary shadow-2xs"
-                    : "bg-muted/30 border-border/60 text-muted-foreground hover:bg-muted/50"
-                )}
-              >
-                <div className="min-w-0 pr-1">
-                  <span className="text-[11px] font-bold block">Spayed / Neutered</span>
-                  <span className="text-[9px] text-muted-foreground block truncate">
-                    {isSpayedNeutered ? "Kapon Complete" : "Intact"}
-                  </span>
-                </div>
-                <div className={cn(
-                  "size-4 rounded-full flex items-center justify-center shrink-0 border",
-                  isSpayedNeutered ? "bg-primary text-white border-primary" : "border-border"
-                )}>
-                  {isSpayedNeutered && <Check className="size-2.5" />}
-                </div>
-              </button>
-            </div>
-
-            {/* Microchip / Tag */}
+            {/* Microchip / Municipal Tag (Autogenerated - Non-editable) */}
             <div className="grid gap-1">
-              <Label htmlFor="edit-tag" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                <QrCode className="size-2.5" /> Microchip / Municipal Tag
-              </Label>
-              <Input
-                id="edit-tag"
-                value={microchipNumber}
-                onChange={(e) => setMicrochipNumber(e.target.value)}
-                placeholder="Municipal Tag ID"
-                className="h-8.5 text-xs font-mono rounded-lg"
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-tag" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <QrCode className="size-2.5 text-primary" /> Microchip / Municipal Tag
+                </Label>
+                <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Autogenerated
+                </span>
+              </div>
+              <div className="relative">
+                <Input
+                  id="edit-tag"
+                  value={microchipNumber || pet?.microchip || pet?.id || "Unassigned"}
+                  readOnly
+                  disabled
+                  className="h-8.5 text-xs font-mono rounded-lg bg-muted/60 text-muted-foreground border-border/70 cursor-not-allowed select-all pr-8"
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none">
+                  <Lock className="size-3" />
+                </div>
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                Municipal identifier is permanent and locked to avoid record desynchronization.
+              </p>
             </div>
 
             {/* Notes */}
@@ -389,47 +362,6 @@ export function EditPetDialog({
               />
             </div>
           </div>
-
-          <DialogFooter className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
-            {onDeleteRequest && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  onOpenChange(false);
-                  onDeleteRequest(pet);
-                }}
-                className="h-9 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive rounded-xl cursor-pointer gap-1.5"
-              >
-                <Trash2 className="size-3.5" />
-                <span>Delete Pet</span>
-              </Button>
-            )}
-            <div className="flex items-center gap-2 ml-auto">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="h-9 text-xs rounded-xl cursor-pointer"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={loading}
-                className="cursor-pointer h-9 text-xs font-bold rounded-xl"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    Saving Changes...
-                  </>
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
-            </div>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

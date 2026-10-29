@@ -30,6 +30,7 @@ import {
   UserCog,
   Fingerprint,
   X,
+  Save,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { toast } from "sonner";
@@ -932,7 +933,7 @@ export function UsersDirectoryTable({
           open={!!selectedUser}
           onOpenChange={(open) => !open && setSelectedUser(null)}
         >
-          <SheetContent showCloseButton={false} className="w-full sm:w-[94vw] md:w-[90vw] lg:w-[84vw] xl:w-[78vw] sm:max-w-none max-w-full p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden">
+          <SheetContent noAnimation showCloseButton={false} className="w-full sm:max-w-[560px] md:max-w-[600px] p-0 flex flex-col h-full bg-background border-l border-border/80 shadow-2xl overflow-hidden !transition-none !animate-none !duration-0">
             <SheetHeader className="sr-only">
               <SheetTitle>
                 {selectedUser ? `${selectedUser.full_name || selectedUser.email || "User"} Profile Dossier` : "User Profile Dossier"}
@@ -942,19 +943,13 @@ export function UsersDirectoryTable({
               </SheetDescription>
             </SheetHeader>
             {selectedUser && (
-              <motion.div
+              <div
                 key={selectedUser.id}
-                initial={{ opacity: 0, x: 28 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                 className="flex flex-col h-full overflow-hidden"
               >
                 {/* ── Top Header Section ── */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.05 }}
-                  className="px-4 sm:px-6 md:px-7 py-3.5 sm:py-5 border-b border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 shrink-0"
+                <div
+                  className="px-4 sm:px-5 py-3.5 border-b border-border/60 bg-muted/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0"
                 >
                   <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                     <Avatar className="size-12 sm:size-14 shrink-0 border-2 border-border shadow-md">
@@ -1060,13 +1055,20 @@ export function UsersDirectoryTable({
                         </Button>
 
                         <Button
+                          type="button"
                           size="sm"
                           onClick={handleSaveUser}
                           disabled={isSaving || isDeleting}
-                          className="h-9 px-4 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground gap-2 rounded-xl shadow-sm cursor-pointer inline-flex items-center shrink-0"
+                          className="size-9 p-0 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs cursor-pointer shrink-0"
+                          title="Save changes"
+                          aria-label="Save changes"
                         >
-                          <CheckCircle2 className="size-3.5" />
-                          <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                          {isSaving ? (
+                            <RefreshCw className="size-4 animate-spin" />
+                          ) : (
+                            <Save className="size-4" />
+                          )}
+                          <span className="sr-only">Save Changes</span>
                         </Button>
                       </div>
                     )}
@@ -1086,143 +1088,55 @@ export function UsersDirectoryTable({
                       <X className="size-4" />
                     </Button>
                   </div>
-                </motion.div>
-
-                {/* ── Metrics Ribbon ── */}
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
-                  className="px-4 sm:px-6 md:px-7 py-3 bg-muted/20 border-b border-border/50 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 shrink-0"
-                >
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-purple-500/40">
-                    <div className="size-9 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                      <PawPrint className="size-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
-                        Registered Pets
-                      </p>
-                      <p className="text-sm font-extrabold text-foreground truncate">
-                        {loadingPets ? "..." : allPets.length} <span className="text-xs font-semibold text-muted-foreground">Animal{allPets.length === 1 ? "" : "s"}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-emerald-500/40">
-                    <div className="size-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                      <Syringe className="size-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
-                        Rabies Vaccinated
-                      </p>
-                      <p className="text-sm font-extrabold text-foreground truncate">
-                        {allPets.filter((p) => p.rabies_vaccinated).length} of {allPets.length} <span className="text-xs font-semibold text-muted-foreground">Vaccinated</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-blue-500/40">
-                    <div className="size-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                      <Calendar className="size-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
-                        Appointments
-                      </p>
-                      <p className="text-sm font-extrabold text-foreground truncate">
-                        {loadingAppointments ? "..." : userAppointments.length} <span className="text-xs font-semibold text-muted-foreground">Booked</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 sm:p-3 rounded-xl bg-card border border-border/60 shadow-2xs flex items-center gap-3 transition-all hover:border-amber-500/40">
-                    <div className="size-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                      <FileText className="size-4.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider truncate">
-                        Service Records
-                      </p>
-                      <p className="text-sm font-extrabold text-foreground truncate">
-                        {loadingTransactions ? "..." : userTransactions.length} <span className="text-xs font-semibold text-muted-foreground">Transactions</span>
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
+                </div>
 
                 {/* ── Tabbed Dossier Body ── */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: 0.14 }}
-                    className="px-4 sm:px-6 md:px-7 py-2 sm:py-3 border-b border-border/40 bg-muted/10 flex items-center justify-between gap-3 shrink-0 overflow-hidden"
-                  >
-                    <div className="overflow-x-auto scrollbar-none flex-1 -my-1 py-1">
-                      <TabsList className="h-10 sm:h-11 p-1 bg-muted/80 border border-border/60 rounded-xl gap-1 inline-flex w-max shrink-0">
-                        <TabsTrigger
-                          value="account"
-                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
-                        >
-                          <User className="size-3.5 sm:size-4 text-primary" />
-                          <span>Profile & Permissions</span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="pets"
-                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
-                        >
-                          <PawPrint className="size-3.5 sm:size-4 text-purple-500" />
-                          <span>Registered Pets</span>
-                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-                            {allPets.length}
-                          </span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="appointments"
-                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
-                        >
-                          <Calendar className="size-3.5 sm:size-4 text-blue-500" />
-                          <span>Appointments</span>
-                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                            {userAppointments.length}
-                          </span>
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="transactions"
-                          className="h-8 sm:h-9 px-3 sm:px-4 text-xs md:text-sm font-semibold gap-1.5 sm:gap-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-border/60 transition-all shrink-0 cursor-pointer"
-                        >
-                          <FileText className="size-3.5 sm:size-4 text-amber-500" />
-                          <span>Service Records</span>
-                          <span className="ml-1 text-[10px] sm:text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                            {userTransactions.length}
-                          </span>
-                        </TabsTrigger>
-                      </TabsList>
-                    </div>
-
-                    <div className="hidden xl:flex text-[11px] text-muted-foreground font-medium items-center gap-1.5 pb-1 shrink-0">
-                      {userPerspective === "admin" && (
-                        <span className="text-primary font-semibold flex items-center gap-1">
-                          <UserCog className="size-3" /> CVO Administrator Controls & Account Management
+                  <div className="px-4 sm:px-5 py-2.5 border-b border-border/40 bg-muted/10 shrink-0">
+                    <TabsList className="grid grid-cols-4 w-full h-9 p-1 bg-muted/80 border border-border/60 rounded-xl gap-1">
+                      <TabsTrigger
+                        value="account"
+                        className="h-7 px-1.5 sm:px-2 text-xs font-semibold gap-1.5 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:border data-[state=active]:border-border/60 transition-all cursor-pointer truncate"
+                      >
+                        <User className="size-3.5 text-primary shrink-0" />
+                        <span className="truncate">Profile</span>
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="pets"
+                        className="h-7 px-1.5 sm:px-2 text-xs font-semibold gap-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:border data-[state=active]:border-border/60 transition-all cursor-pointer truncate"
+                      >
+                        <PawPrint className="size-3.5 text-purple-500 shrink-0" />
+                        <span className="truncate">Pets</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
+                          {allPets.length}
                         </span>
-                      )}
-                      {userPerspective === "veterinary" && (
-                        <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                          <Stethoscope className="size-3" /> Clinical History & Rabies Registry Active
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="appointments"
+                        className="h-7 px-1.5 sm:px-2 text-xs font-semibold gap-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:border data-[state=active]:border-border/60 transition-all cursor-pointer truncate"
+                        title="Service Appointments & Visits"
+                      >
+                        <Calendar className="size-3.5 text-blue-500 shrink-0" />
+                        <span className="truncate">Visits</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                          {userAppointments.length}
                         </span>
-                      )}
-                      {userPerspective === "pet_owner" && (
-                        <span className="text-purple-400 font-semibold flex items-center gap-1">
-                          <PawPrint className="size-3" /> Digital Pet Passports & Owner View
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="transactions"
+                        className="h-7 px-1.5 sm:px-2 text-xs font-semibold gap-1 rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:border data-[state=active]:border-border/60 transition-all cursor-pointer truncate"
+                      >
+                        <FileText className="size-3.5 text-amber-500 shrink-0" />
+                        <span className="truncate">Records</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                          {userTransactions.length}
                         </span>
-                      )}
-                    </div>
-                  </motion.div>
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
 
                   {/* ── TAB: REGISTERED PETS ── */}
-                  <TabsContent value="pets" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
+                  <TabsContent value="pets" className="flex-1 p-4 sm:p-5 overflow-y-auto m-0 space-y-4">
                     {/* Perspective Banner */}
                     {userPerspective === "admin" && (
                       <div className="bg-primary/10 border border-primary/25 rounded-2xl p-4 flex items-center justify-between text-xs text-primary">
@@ -1305,7 +1219,7 @@ export function UsersDirectoryTable({
                         </p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="space-y-3">
                         {allPets.map((pet) => {
                           const isDog = (pet.species || "").toLowerCase().includes("dog") || (pet.species || "").toLowerCase().includes("canine");
                           return (
@@ -1413,7 +1327,7 @@ export function UsersDirectoryTable({
                   </TabsContent>
 
                   {/* ── TAB 2: APPOINTMENTS ── */}
-                  <TabsContent value="appointments" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
+                  <TabsContent value="appointments" className="flex-1 p-4 sm:p-5 overflow-y-auto m-0 space-y-4">
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
                       <div>
                         <h3 className="text-sm font-bold text-foreground">Service Appointments</h3>
@@ -1502,7 +1416,7 @@ export function UsersDirectoryTable({
                   </TabsContent>
 
                   {/* ── TAB 3: SERVICE TRANSACTIONS ── */}
-                  <TabsContent value="transactions" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
+                  <TabsContent value="transactions" className="flex-1 p-4 sm:p-5 overflow-y-auto m-0 space-y-4">
                     <div className="flex items-center justify-between pb-2 border-b border-border/40">
                       <div>
                         <h3 className="text-sm font-bold text-foreground">Service History & Registrations</h3>
@@ -1572,7 +1486,7 @@ export function UsersDirectoryTable({
                   </TabsContent>
 
                   {/* ── TAB: ACCOUNT & PERMISSIONS (EDIT PROFILE) ── */}
-                  <TabsContent value="account" className="flex-1 p-4 sm:p-6 md:p-7 overflow-y-auto m-0 space-y-4 sm:space-y-6">
+                  <TabsContent value="account" className="flex-1 p-4 sm:p-5 overflow-y-auto m-0 space-y-4">
                     {isAdmin ? (
                       <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-primary/10 border border-emerald-500/25 rounded-2xl p-4 text-xs text-foreground flex items-center justify-between gap-3 shadow-2xs">
                         <div className="flex items-center gap-3">
@@ -1606,7 +1520,7 @@ export function UsersDirectoryTable({
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    <div className="space-y-4">
                       {/* Personal Info Box */}
                       <div className="bg-card border border-border/70 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
                         <div className="flex items-center justify-between pb-3 border-b border-border/50">
@@ -1872,7 +1786,7 @@ export function UsersDirectoryTable({
                     </div>
                   </TabsContent>
                 </Tabs>
-              </motion.div>
+              </div>
             )}
           </SheetContent>
         </Sheet>

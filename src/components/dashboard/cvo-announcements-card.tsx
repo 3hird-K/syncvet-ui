@@ -135,14 +135,24 @@ export function CVOAnnouncementsCard({
     if (!dbAnnouncements || dbAnnouncements.length === 0) return;
     const now = Date.now();
     const expired = dbAnnouncements.filter((a) => {
-      if (!a.expires_at) return false;
-      try {
-        const exp = new Date(a.expires_at);
-        if (a.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
-        return exp.getTime() <= now;
-      } catch {
-        return false;
+      if (a.expires_at) {
+        try {
+          const exp = new Date(a.expires_at);
+          if (a.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
+          if (exp.getTime() <= now) return true;
+        } catch {}
       }
+      if (a.content) {
+        const match = a.content.match(/\[EVENT_DATE:(\d{4}-\d{2}-\d{2})\]/);
+        if (match) {
+          try {
+            const exp = new Date(match[1]);
+            exp.setHours(23, 59, 59, 999);
+            if (exp.getTime() <= now) return true;
+          } catch {}
+        }
+      }
+      return false;
     });
 
     if (expired.length > 0) {
@@ -164,14 +174,24 @@ export function CVOAnnouncementsCard({
     const now = Date.now();
 
     const isExpired = (item: CVOAnnouncement) => {
-      if (!item.expires_at) return false;
-      try {
-        const exp = new Date(item.expires_at);
-        if (item.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
-        return exp.getTime() <= now;
-      } catch {
-        return false;
+      if (item.expires_at) {
+        try {
+          const exp = new Date(item.expires_at);
+          if (item.expires_at.length === 10) exp.setHours(23, 59, 59, 999);
+          if (exp.getTime() <= now) return true;
+        } catch {}
       }
+      if (item.content) {
+        const match = item.content.match(/\[EVENT_DATE:(\d{4}-\d{2}-\d{2})\]/);
+        if (match) {
+          try {
+            const exp = new Date(match[1]);
+            exp.setHours(23, 59, 59, 999);
+            if (exp.getTime() <= now) return true;
+          } catch {}
+        }
+      }
+      return false;
     };
 
     // 1. Add locally published in this session
@@ -442,7 +462,7 @@ export function CVOAnnouncementsCard({
                     isExpanded ? "whitespace-pre-line" : "line-clamp-2"
                   }`}
                 >
-                  {item.content}
+                  {item.content.replace(/\[(?:EVENT_DATE|OP_ID):[^\]]+\]/g, "").trim()}
                 </p>
 
                 {/* Footer Strip: Target Area + Author Tag */}

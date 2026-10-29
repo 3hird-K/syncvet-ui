@@ -13,6 +13,9 @@ import {
   MoreVertical,
   CircleUser,
   LogOut,
+  Moon,
+  Sun,
+  PanelLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,6 +25,8 @@ import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
+import { OperationalNotifications } from "@/components/dashboard/operational-notifications";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole, type SyncVetRole } from "@/data/syncvet-users";
 import { useCVO } from "@/lib/cvo-context";
@@ -91,9 +96,18 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
   }
 }
 
-export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?: boolean; onItemClick?: () => void }) {
+export function SidebarContent({
+  collapsed = false,
+  onItemClick,
+  onToggleCollapse,
+}: {
+  collapsed?: boolean;
+  onItemClick?: () => void;
+  onToggleCollapse?: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, isLoaded } = useUser();
@@ -206,42 +220,84 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
 
   return (
     <div className="flex h-full flex-col">
-      {/* ── Brand ── */}
-      <Link
-        href="/"
-        title="Return to SyncVet Landing Page"
-        className={cn(
-          "group flex shrink-0 items-center gap-3 transition-opacity duration-150 hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg cursor-pointer",
-          collapsed ? "flex-col items-center px-0" : "px-2",
-        )}
-      >
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200 group-hover:scale-105",
-            collapsed ? "size-8" : "size-10"
-          )}
-          aria-hidden
-        >
-          {mounted && (
-            <Image
-              src={Logo}
-              alt="SyncVet Logo"
-              className="size-full object-contain"
-              priority
-            />
+      {/* ── Brand & Sidebar Toggle ── */}
+      {collapsed ? (
+        <div className="flex shrink-0 flex-col items-center gap-2.5 px-0">
+          <Link
+            href="/"
+            title="Return to SyncVet Landing Page"
+            className="flex shrink-0 items-center justify-center outline-none transition-all duration-200 group cursor-pointer"
+            onClick={onItemClick}
+          >
+            <div className="flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200 group-hover:scale-105 size-8">
+              {mounted && (
+                <Image
+                  src={Logo}
+                  alt="SyncVet Logo"
+                  className="size-full object-contain"
+                  priority
+                />
+              )}
+            </div>
+          </Link>
+
+          {onToggleCollapse && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onToggleCollapse}
+              className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 shrink-0 cursor-pointer"
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+            >
+              <PanelLeft className="size-4 rotate-180" />
+            </Button>
           )}
         </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-extrabold tracking-tight text-foreground leading-none group-hover:text-primary transition-colors">
-              SYNCVET
-            </p>
-            <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
-              MANAGEMENT SYSTEM
-            </p>
-          </div>
-        )}
-      </Link>
+      ) : (
+        <div className="flex shrink-0 items-center justify-between px-2">
+          <Link
+            href="/"
+            title="Return to SyncVet Landing Page"
+            className="group flex shrink-0 items-center gap-3 transition-opacity duration-150 hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-lg cursor-pointer min-w-0"
+            onClick={onItemClick}
+          >
+            <div className="flex shrink-0 items-center justify-center overflow-hidden transition-all duration-200 group-hover:scale-105 size-10">
+              {mounted && (
+                <Image
+                  src={Logo}
+                  alt="SyncVet Logo"
+                  className="size-full object-contain"
+                  priority
+                />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold tracking-tight text-foreground leading-none group-hover:text-primary transition-colors">
+                SYNCVET
+              </p>
+              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
+                MANAGEMENT SYSTEM
+              </p>
+            </div>
+          </Link>
+
+          {onToggleCollapse && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onToggleCollapse}
+              className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 shrink-0 cursor-pointer"
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+            >
+              <PanelLeft className="size-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* ── Nav section ── */}
       <div
@@ -306,8 +362,36 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
           collapsed ? "px-0" : "px-1",
         )}
       >
-        {/* Support nav links */}
+        {/* Support nav links & Theme Switcher */}
         <div className="flex flex-col gap-1">
+          {/* Operational Notifications for Staff Accounts */}
+          {userRole !== "Pet Owner" && !pathname?.startsWith("/pet-owner") && (
+            <OperationalNotifications sidebarMode collapsed={collapsed} />
+          )}
+
+          {/* Theme switcher placed above Get Help */}
+          <button
+            type="button"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className={cn(
+              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150 cursor-pointer text-muted-foreground hover:bg-accent hover:text-foreground w-full outline-none",
+              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
+            )}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            aria-label="Toggle theme mode"
+          >
+            {mounted && theme === "dark" ? (
+              <Sun className="size-4 text-muted-foreground shrink-0 transition-transform duration-150" strokeWidth={2} />
+            ) : (
+              <Moon className="size-4 text-muted-foreground shrink-0 transition-transform duration-150" strokeWidth={2} />
+            )}
+            {!collapsed && (
+              <span className="truncate">
+                {mounted && theme === "dark" ? "Light Mode" : "Dark Mode"}
+              </span>
+            )}
+          </button>
+
           <Link
             href="/get-help"
             className={cn(
@@ -418,7 +502,13 @@ export function SidebarContent({ collapsed = false, onItemClick }: { collapsed?:
   );
 }
 
-export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
+export function DashboardSidebar({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed: boolean;
+  onToggleCollapse?: () => void;
+}) {
   return (
     <aside
       className={cn(
@@ -426,7 +516,7 @@ export function DashboardSidebar({ collapsed }: { collapsed: boolean }) {
         collapsed ? "w-[60px] px-1.5" : "w-[16%] min-w-[250px] px-5",
       )}
     >
-      <SidebarContent collapsed={collapsed} />
+      <SidebarContent collapsed={collapsed} onToggleCollapse={onToggleCollapse} />
     </aside>
   );
 }

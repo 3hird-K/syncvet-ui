@@ -31,6 +31,7 @@ import {
   Scissors,
   FileText,
   CheckCircle2,
+  Copy,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
@@ -68,6 +69,13 @@ import {
   SheetTitle,
   SheetClose,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -114,6 +122,8 @@ export default function PetRegistryPage() {
   const [pageSize, setPageSize] = useState(5);
   const [selectedPet, setSelectedPet] = useState<PetRecord | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<string>("overview");
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
 
   // CRUD states for Edit & Delete
   const [petToEdit, setPetToEdit] = useState<any>(null);
@@ -335,7 +345,7 @@ export default function PetRegistryPage() {
   useEffect(() => {
     if (!selectedPet) return;
     const petUrl = `${window.location.origin}/verify/pet/${selectedPet.id}?name=${encodeURIComponent(selectedPet.name)}&species=${encodeURIComponent(selectedPet.species)}&breed=${encodeURIComponent(selectedPet.breed)}&tag=${encodeURIComponent(selectedPet.microchip || selectedPet.id)}&owner=${encodeURIComponent(selectedPet.owner)}&bgy=${encodeURIComponent(selectedPet.barangay)}&vax=${selectedPet.vaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(selectedPet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(selectedPet.nextVaccinationDate || "")}`;
-    QRCode.toDataURL(petUrl, { width: 140, margin: 1 })
+    QRCode.toDataURL(petUrl, { width: 320, margin: 1 })
       .then((url) => setQrCodeUrl(url))
       .catch((e) => console.error(e));
   }, [selectedPet]);
@@ -667,7 +677,14 @@ export default function PetRegistryPage() {
                 </TableRow>
               ) : (
                 rows.map((pet, idx) => (
-                  <TableRow key={`${pet.id}-${idx}`} className="hover:bg-muted/50 cursor-pointer" onClick={() => setSelectedPet(pet)}>
+                  <TableRow
+                    key={`${pet.id}-${idx}`}
+                    className="hover:bg-muted/50 cursor-pointer"
+                    onClick={() => {
+                      setSelectedPet(pet);
+                      setActiveTab("overview");
+                    }}
+                  >
                     {visibleColumns.includes("id") && (
                       <TableCell className="font-mono text-xs text-muted-foreground pl-6" title={pet.id}>
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-muted/60 text-muted-foreground font-mono text-[11px] border border-border/40 select-all">
@@ -676,7 +693,7 @@ export default function PetRegistryPage() {
                       </TableCell>
                     )}
                     {visibleColumns.includes("name") && (
-                      <TableCell className="text-sm font-semibold">{pet.name}</TableCell>
+                      <TableCell className="text-xs font-medium text-foreground">{pet.name}</TableCell>
                     )}
                     {visibleColumns.includes("species") && (
                       <TableCell>
@@ -799,6 +816,18 @@ export default function PetRegistryPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5">
+                  {/* View QR Code Passport Modal */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setQrDialogOpen(true)}
+                    className="size-8 rounded-lg border-border/70 hover:bg-muted cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:border-primary/40 hover:text-primary"
+                    title="View QR Code Passport"
+                  >
+                    <QrCode className="size-3.5" />
+                    <span className="sr-only">View QR Passport</span>
+                  </Button>
+
                   {/* Edit Pet (Icon only) */}
                   <Button
                     variant="outline"
@@ -818,10 +847,9 @@ export default function PetRegistryPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => {
-                      const target = selectedPet;
-                      setSelectedPet(null);
-                      setPetToDelete(target);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPetToDelete(selectedPet);
                       setDeleteDialogOpen(true);
                     }}
                     className="size-8 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 border-rose-500/30 cursor-pointer"
@@ -893,11 +921,25 @@ export default function PetRegistryPage() {
                       {selectedPet.id}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Tag className="size-3 text-primary" />
-                    <span className="font-mono text-[10px] font-medium text-foreground">
-                      Tag #{selectedPet.microchip || selectedPet.id.slice(0, 8)}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Tag className="size-3 text-primary" />
+                      <span className="font-mono text-[10px] font-medium text-foreground">
+                        Tag #{selectedPet.microchip || selectedPet.id.slice(0, 8)}
+                      </span>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQrDialogOpen(true)}
+                      className="h-6 px-2 text-[10px] font-bold text-primary border-primary/30 hover:bg-primary/10 gap-1 rounded-md cursor-pointer shrink-0 shadow-2xs"
+                      title="View Digital QR Passport Modal"
+                    >
+                      <QrCode className="size-3" />
+                      <span>View QR</span>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -943,12 +985,15 @@ export default function PetRegistryPage() {
               </div>
 
               {/* Electronic Veterinary Record Tabs */}
-              <Tabs defaultValue="overview" className="w-full">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid grid-cols-4 h-9.5 w-full bg-muted/40 p-1 rounded-xl">
                   <TabsTrigger value="overview" className="text-xs font-semibold rounded-lg">Overview</TabsTrigger>
                   <TabsTrigger value="records" className="text-xs font-semibold rounded-lg">History & EMR</TabsTrigger>
                   <TabsTrigger value="vaccinations" className="text-xs font-semibold rounded-lg">Vaccines</TabsTrigger>
-                  <TabsTrigger value="passport" className="text-xs font-semibold rounded-lg">Passport</TabsTrigger>
+                  <TabsTrigger value="passport" className="text-xs font-semibold rounded-lg gap-1.5">
+                    <QrCode className="size-3" />
+                    <span>Passport</span>
+                  </TabsTrigger>
                 </TabsList>
 
                 {/* Tab 1: Overview */}
@@ -1305,10 +1350,129 @@ export default function PetRegistryPage() {
 
       {/* ── Delete Pet Dialog ── */}
       <DeletePetDialog
-        pet={petToDelete}
+        pet={petToDelete || selectedPet}
         open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
+        onOpenChange={(isOpen) => {
+          setDeleteDialogOpen(isOpen);
+          if (!isOpen) {
+            setPetToDelete(null);
+          }
+        }}
+        onDeleted={() => {
+          setSelectedPet(null);
+          setPetToDelete(null);
+          setDeleteDialogOpen(false);
+        }}
       />
+
+      {/* ── Pet Digital Passport QR Modal ── */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-md p-6 bg-background rounded-2xl shadow-2xl">
+          <DialogHeader className="border-b pb-3 pr-8 space-y-1">
+            <div className="flex items-center gap-2 text-primary">
+              <QrCode className="size-5 shrink-0" />
+              <DialogTitle className="text-base font-bold text-foreground">
+                Digital Animal Passport
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Official CDO City Veterinary Office verification pass
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPet && (
+            <div className="flex flex-col items-center justify-center pt-2 space-y-4 text-center">
+              {qrCodeUrl ? (
+                <div className="p-3.5 bg-white rounded-2xl border-2 border-primary/25 shadow-md max-w-fit mx-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrCodeUrl}
+                    alt={`${selectedPet.name} QR Passport`}
+                    className="size-48 rounded-lg"
+                  />
+                </div>
+              ) : (
+                <div className="size-48 flex items-center justify-center bg-muted rounded-2xl border">
+                  <QrCode className="size-10 text-muted-foreground animate-pulse" />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-center gap-2">
+                  <h3 className="font-extrabold text-lg text-foreground">
+                    {selectedPet.name}
+                  </h3>
+                  <Badge
+                    className={cn(
+                      "text-[10px] font-bold border-0 py-0.5 px-2",
+                      selectedPet.vaccinated
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                    )}
+                  >
+                    {selectedPet.vaccinated ? "Rabies Vaccinated" : "Unvaccinated"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">
+                  {selectedPet.species} • {selectedPet.breed} • {selectedPet.sex}
+                </p>
+                <div className="pt-1 flex items-center justify-center gap-1.5">
+                  <Tag className="size-3 text-primary" />
+                  <span className="font-mono text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+                    Tag #{selectedPet.microchip || selectedPet.id}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs mx-auto">
+                Scan with any smartphone camera or CVO scanner to verify microchip, anti-rabies immunity validity, and registered owner records.
+              </p>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${window.location.origin}/verify/pet/${selectedPet.id}`
+                    );
+                    toast.success("Verification Link Copied", {
+                      description: "Public link copied to clipboard.",
+                    });
+                  }}
+                  className="h-9 text-xs font-semibold gap-1.5 cursor-pointer rounded-xl border-border hover:bg-muted"
+                >
+                  <Copy className="size-3.5" />
+                  <span>Copy Link</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    if (!qrCodeUrl) return;
+                    const a = document.createElement("a");
+                    a.href = qrCodeUrl;
+                    a.download = `cvo-pet-passport-${selectedPet.name || selectedPet.id}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    toast.success("Pet Passport QR Downloaded", {
+                      description: `Saved QR code for ${selectedPet.name || "pet"}`,
+                    });
+                  }}
+                  className="h-9 text-xs font-semibold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer rounded-xl shadow-xs"
+                >
+                  <Download className="size-3.5" />
+                  <span>Download QR</span>
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -96,6 +96,7 @@ export default function ConsultationsPage() {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [todayOnly, setTodayOnly] = useState<boolean>(false);
   const [selectedConsultation, setSelectedConsultation] = useState<QueueEncounter | null>(null);
   const [officialFormOpen, setOfficialFormOpen] = useState(false);
   const [examDialogOpen, setExamDialogOpen] = useState(false);
@@ -637,7 +638,11 @@ export default function ConsultationsPage() {
       iconClass: "text-amber-500",
       badge: overdueCount > 0 ? `${overdueCount} Past Due` : (todaysItems.length > 0 ? "Active Floor" : "Queue Clear"),
       badgeClass: overdueCount > 0 ? "text-rose-600 bg-rose-500/15" : "text-emerald-500 bg-emerald-500/10",
-      sub: "Scheduled appointments today",
+      sub: todayOnly ? "Showing today only (Click to reset)" : "Click to view today's schedule",
+      onClick: () => {
+        setTodayOnly((prev) => !prev);
+        setPage(1);
+      },
     },
     {
       title: "Anti-Rabies Caseload",
@@ -696,9 +701,11 @@ export default function ConsultationsPage() {
         matchesStatus = c.status === statusFilter;
       }
 
-      return matchesQuery && matchesCategory && matchesStatus;
+      const matchesToday = !todayOnly || isTodayDate(c.date);
+
+      return matchesQuery && matchesCategory && matchesStatus && matchesToday;
     });
-  }, [userFilteredQueue, query, categoryFilter, statusFilter]);
+  }, [userFilteredQueue, query, categoryFilter, statusFilter, todayOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -827,9 +834,18 @@ export default function ConsultationsPage() {
         <CardHeader className="px-6 py-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <CardTitle className="text-lg font-bold">Clinical Encounters & Procedures Queue</CardTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="text-lg font-bold">Clinical Encounters & Procedures Queue</CardTitle>
+                {todayOnly && (
+                  <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px] font-bold gap-1 py-0.5">
+                    <CalendarCheck className="size-3" /> Today's Schedule Only
+                  </Badge>
+                )}
+              </div>
               <CardDescription className="text-[11px] text-muted-foreground/80">
-                Live patient queue at the CVO Central Clinic with categorized encounter and procedure lifecycle
+                {todayOnly
+                  ? `Showing ${filtered.length} encounter${filtered.length === 1 ? "" : "s"} scheduled for today (${format(new Date(), "MMMM d, yyyy")})`
+                  : "Live patient queue at the CVO Central Clinic with categorized encounter and procedure lifecycle"}
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -871,6 +887,28 @@ export default function ConsultationsPage() {
                   <SelectItem value="completed" className="text-xs py-1 cursor-pointer">Completed</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Today's Scheduled Filter Icon Button (Beside Filter) */}
+              <Button
+                type="button"
+                variant={todayOnly ? "default" : "outline"}
+                size="icon"
+                onClick={() => {
+                  setTodayOnly((prev) => !prev);
+                  setPage(1);
+                }}
+                className={cn(
+                  "size-8 rounded-lg cursor-pointer transition-all shrink-0",
+                  todayOnly
+                    ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs border-primary"
+                    : "bg-muted/20 hover:bg-muted/40 border-border/70 text-muted-foreground hover:text-foreground"
+                )}
+                title={todayOnly ? "Showing today's schedule only (Click to show all)" : `Filter today's scheduled (${todaysItems.length} appointments)`}
+                aria-label="Filter today's schedule"
+              >
+                <CalendarCheck className={cn("size-3.5", todayOnly ? "text-primary-foreground" : "text-foreground")} />
+                <span className="sr-only">Today's Schedule</span>
+              </Button>
 
               {/* Table Column Filter Icon Button */}
               <TableColumnFilter
@@ -926,8 +964,23 @@ export default function ConsultationsPage() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={visibleColumns.length} className="py-8 text-center text-muted-foreground text-xs">
-                    No clinical encounters or procedure appointments match the selected filter.
+                  <TableCell colSpan={visibleColumns.length} className="py-12 text-center text-muted-foreground text-xs space-y-2">
+                    <p className="font-semibold text-foreground">
+                      {todayOnly
+                        ? "No clinical encounters or procedures scheduled for today."
+                        : "No clinical encounters or procedure appointments match the selected filter."}
+                    </p>
+                    {todayOnly && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTodayOnly(false)}
+                        className="text-xs h-7 px-2.5 rounded-lg border-border hover:bg-muted cursor-pointer"
+                      >
+                        Show All Encounters
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (

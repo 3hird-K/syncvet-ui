@@ -114,7 +114,17 @@ function getDestinationLabel(category: OperationalAlertCategory): string {
   }
 }
 
-export function OperationalNotifications() {
+interface OperationalNotificationsProps {
+  sidebarMode?: boolean;
+  collapsed?: boolean;
+  trigger?: React.ReactNode;
+}
+
+export function OperationalNotifications({
+  sidebarMode = false,
+  collapsed = false,
+  trigger,
+}: OperationalNotificationsProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useUser();
@@ -541,24 +551,61 @@ export function OperationalNotifications() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative size-10 rounded-full bg-muted/60 dark:bg-zinc-800/90 hover:bg-muted dark:hover:bg-zinc-700 text-foreground transition-all cursor-pointer flex items-center justify-center shrink-0 border border-border/40"
-          aria-label="Operational Notifications"
-        >
-          <Bell className="size-6 fill-current text-foreground" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 z-10 flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-rose-600 text-[11px] font-extrabold text-white shadow-md border-2 border-background animate-in zoom-in-75">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </Button>
+        {sidebarMode ? (
+          <button
+            type="button"
+            className={cn(
+              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150 cursor-pointer text-muted-foreground hover:bg-accent hover:text-foreground w-full outline-none",
+              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2 justify-between"
+            )}
+            title={collapsed ? "Notifications" : undefined}
+            aria-label="Notifications"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative flex items-center justify-center">
+                <Bell className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+                {unreadCount > 0 && (
+                  <span
+                    className={cn(
+                      "rounded-full bg-rose-600 text-white font-extrabold flex items-center justify-center",
+                      collapsed
+                        ? "absolute -top-1.5 -right-1.5 size-2.5 ring-2 ring-background"
+                        : "hidden"
+                    )}
+                  />
+                )}
+              </div>
+              {!collapsed && <span className="truncate">Notifications</span>}
+            </div>
+            {!collapsed && unreadCount > 0 && (
+              <span className="flex min-w-4.5 h-4 px-1.5 items-center justify-center rounded-full bg-rose-600 text-[10px] font-extrabold text-white shrink-0">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+        ) : trigger ? (
+          trigger
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative size-10 rounded-full bg-muted/60 dark:bg-zinc-800/90 hover:bg-muted dark:hover:bg-zinc-700 text-foreground transition-all cursor-pointer flex items-center justify-center shrink-0 border border-border/40"
+            aria-label="Operational Notifications"
+          >
+            <Bell className="size-6 fill-current text-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 z-10 flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-rose-600 text-[11px] font-extrabold text-white shadow-md border-2 border-background animate-in zoom-in-75">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </Button>
+        )}
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
-        align="end"
-        sideOffset={8}
+        align={sidebarMode ? "end" : "end"}
+        side={sidebarMode ? "right" : "bottom"}
+        sideOffset={sidebarMode ? 14 : 8}
         className="w-[360px] sm:w-[400px] p-3 bg-background border border-border shadow-xl rounded-2xl z-50 animate-in fade-in-50 zoom-in-95"
       >
         {/* Header Bar */}

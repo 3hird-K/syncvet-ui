@@ -36,6 +36,9 @@ interface CVOContextType {
   addAnimalControlCase: (c: Omit<CVOAnimalControlCase, "caseId">) => CVOAnimalControlCase;
   updateAnimalControlStatus: (caseId: string, status: CVOAnimalControlCase["status"]) => void;
   addFieldOperation: (op: Omit<CVOFieldOperation, "id" | "opId">) => Promise<CVOFieldOperation>;
+  updateFieldOperationStatus: (id: string, status: CVOFieldOperation["status"]) => Promise<void>;
+  updateFieldOperation: (id: string, updates: Partial<CVOFieldOperation>) => Promise<void>;
+  deleteFieldOperation: (id: string) => Promise<boolean>;
   addOfflineRecord: (rec: Omit<CVOOfflineVaccinationRecord, "id" | "timestamp" | "syncStatus">) => void;
   syncOfflineRecords: () => Promise<number>;
   addAuditLog: (log: Omit<CVOAuditLog, "id" | "timestamp">) => void;
@@ -188,17 +191,32 @@ function mapDbAuditLogToCVO(row: any): CVOAuditLog {
 }
 
 function mapDbFieldOperationToCVO(row: any): CVOFieldOperation {
+  let extraMeta: any = {};
+  let cleanNotes = row.notes || "";
+  if (cleanNotes.includes("__CVO_FIELD_META__:")) {
+    const parts = cleanNotes.split("__CVO_FIELD_META__:");
+    cleanNotes = parts[0].trim();
+    try {
+      extraMeta = JSON.parse(parts[1].trim());
+    } catch {}
+  }
+
   return {
     id: row.id,
     opId: row.op_id,
     barangay: row.barangay,
+    venue: extraMeta.venue || "Barangay Covered Court / Hall",
+    timeWindow: extraMeta.timeWindow || "08:00 AM - 12:00 PM",
+    services: extraMeta.services || ["vaccination", "consultation"],
     type: row.operation_type,
     lead: row.lead,
+    vetProfile: extraMeta.vetProfile || undefined,
     date: row.scheduled_date,
     petsTarget: Number(row.target_pets) || 100,
     petsVaccinated: Number(row.vaccinated_pets) || 0,
     status: row.status || "scheduled",
-    notes: row.notes || undefined,
+    notes: cleanNotes || undefined,
+    announcementId: extraMeta.announcementId || undefined,
   };
 }
 
@@ -863,7 +881,16 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     // Optimistic TanStack update
     queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) => [newOp, ...old]);
 
-    // Push to Supabase if table exists
+    // Encode rich field meta inside notes column
+    const fieldMeta = {
+      venue: op.venue || "Barangay Covered Court / Hall",
+      timeWindow: op.timeWindow || "08:00 AM - 12:00 PM",
+      services: op.services || ["consultation", "vaccination"],
+      vetProfile: op.vetProfile,
+    };
+    const combinedNotes = `${op.notes ? op.notes.trim() + " " : ""}__CVO_FIELD_META__:${JSON.stringify(fieldMeta)}`;
+
+    // Push to Supabase field_operations
     void (async () => {
       try {
         await supabase.from("field_operations").insert({
@@ -875,23 +902,194 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           target_pets: op.petsTarget,
           vaccinated_pets: op.petsVaccinated,
           status: op.status,
-          notes: op.notes,
+          notes: combinedNotes,
         });
       } catch (err) {
         console.warn("Supabase field_operations insert notice", err);
       }
     })();
 
+    // Automatically publish official announcement for the barangay visit
+    void (async () => {
+      try {
+        const servicesLabels: string[] = [];
+        if (op.services?.includes("consultation") || op.type.toLowerCase().includes("consultation")) {
+          servicesLabels.push("• Clinical Consultation (General Physical Exam & Triage)");
+        }
+        if (op.services?.includes("vaccination") || op.type.toLowerCase().includes("rabies") || op.type.toLowerCase().includes("vaccin")) {
+          servicesLabels.push("• Mass Anti-Rabies Vaccination & Core Immunization");
+        }
+        if (op.services?.includes("spay-neuter") || op.type.toLowerCase().includes("spay") || op.type.toLowerCase().includes("kapon")) {
+          servicesLabels.push("• Free Spay & Neuter (Kapon) Surgical Procedures");
+        }
+        if (servicesLabels.length === 0) {
+          servicesLabels.push("• Veterinary Health Consultation & Vaccination Drive");
+        }
+
+        const formattedDate = new Date(op.date).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+
+        const announcementContent = `The City Veterinary Office (CVO) mobile veterinary team will be deployed to Barangay ${op.barangay} for a community outreach visit.
+
+📅 Date: ${formattedDate}
+⏰ Time: ${op.timeWindow || "08:00 AM - 12:00 PM"}
+📍 Venue: ${op.venue || "Barangay Covered Court / Hall"}
+🩺 Attending Veterinarian: ${op.lead}${op.vetProfile?.role ? ` (${op.vetProfile.role})` : ""}
+
+SERVICES OFFERED:
+${servicesLabels.join("\n")}
+
+Target Capacity: ${op.petsTarget} animal slots.
+Reminders for Pet Owners:
+1. Bring your pet's digital QR passport or vaccination booklet if available.
+2. Ensure dogs are secured on a leash and cats are inside secure pet carriers.
+3. For surgical spay/neuter patients, 8 hours of strict pre-operative fasting (no solid food) is required.
+
+[EVENT_DATE:${op.date}] [OP_ID:${opId}]`;
+
+        await supabase.from("announcements").insert([{
+          title: `CVO Outreach Visit: Brgy. ${op.barangay}`,
+          content: announcementContent,
+          category: op.services?.includes("spay-neuter") ? "Clinic Schedule" : "Vaccination Drive",
+          priority: "high",
+          author_name: op.lead,
+          author_role: op.vetProfile?.title || "Veterinarian",
+          target_barangay: `Brgy. ${op.barangay}`,
+          is_pinned: true,
+          is_active: true,
+        }]);
+
+        queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+      } catch (annErr) {
+        console.warn("Outreach announcement auto-publish notice", annErr);
+      }
+    })();
+
     addAuditLog({
-      user: "Current Operator",
+      user: op.lead || "Current Operator",
       role: "Veterinarian",
-      action: "Field Operation Scheduled",
+      action: "Field Outreach Scheduled & Announced",
       entity: "Field Operations",
       recordId: opId,
-      details: `Scheduled ${op.type} in Barangay ${op.barangay}. Lead: ${op.lead}.`,
+      details: `Scheduled outreach in Barangay ${op.barangay} (${op.type}). Attending: ${op.lead}. Official public announcement broadcasted.`,
     });
 
     return newOp;
+  };
+
+  const updateFieldOperationStatus = async (id: string, status: CVOFieldOperation["status"]) => {
+    // Optimistic cache update
+    const currentOp = fieldOperations.find((o) => o.id === id || o.opId === id);
+    queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) =>
+      old.map((o) => (o.id === id || o.opId === id ? { ...o, status } : o))
+    );
+
+    // Sync to Supabase
+    try {
+      await supabase
+        .from("field_operations")
+        .update({ status, updated_at: new Date().toISOString() })
+        .or(`id.eq.${id},op_id.eq.${id}`);
+    } catch (err) {
+      console.warn("Supabase field_operations update notice", err);
+    }
+
+    // Auto-delete / auto-archive the announcement when the event is completed or cancelled
+    if (status === "completed" || status === "cancelled") {
+      const opIdentifier = currentOp?.opId || id;
+      const opBarangay = currentOp?.barangay;
+      try {
+        if (opIdentifier) {
+          await supabase
+            .from("announcements")
+            .delete()
+            .ilike("content", `%[OP_ID:${opIdentifier}]%`);
+        }
+        if (opBarangay) {
+          await supabase
+            .from("announcements")
+            .delete()
+            .ilike("title", `%Brgy. ${opBarangay}%`);
+        }
+        queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+      } catch (delErr) {
+        console.warn("Auto-delete announcement notice", delErr);
+      }
+    }
+
+    addAuditLog({
+      user: currentOp?.lead || "CVO Officer",
+      role: "Veterinarian",
+      action: `Field Outreach Marked ${status.toUpperCase()}`,
+      entity: "Field Operations",
+      recordId: currentOp?.opId || id,
+      details: `Outreach in Barangay ${currentOp?.barangay || "CDO"} marked as ${status}.${
+        status === "completed" ? " Associated citizen announcement auto-deleted." : ""
+      }`,
+    });
+  };
+
+  const updateFieldOperation = async (id: string, updates: Partial<CVOFieldOperation>) => {
+    queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) =>
+      old.map((o) => (o.id === id || o.opId === id ? { ...o, ...updates } : o))
+    );
+
+    const dbUpdates: Record<string, any> = {};
+    if (updates.barangay !== undefined) dbUpdates.barangay = updates.barangay;
+    if (updates.type !== undefined) dbUpdates.operation_type = updates.type;
+    if (updates.lead !== undefined) dbUpdates.lead = updates.lead;
+    if (updates.date !== undefined) dbUpdates.scheduled_date = updates.date;
+    if (updates.petsTarget !== undefined) dbUpdates.target_pets = updates.petsTarget;
+    if (updates.petsVaccinated !== undefined) dbUpdates.vaccinated_pets = updates.petsVaccinated;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+
+    if (updates.venue || updates.timeWindow || updates.services || updates.vetProfile) {
+      const fieldMeta = {
+        venue: updates.venue,
+        timeWindow: updates.timeWindow,
+        services: updates.services,
+        vetProfile: updates.vetProfile,
+      };
+      dbUpdates.notes = `${updates.notes ? updates.notes.trim() + " " : ""}__CVO_FIELD_META__:${JSON.stringify(fieldMeta)}`;
+    } else if (updates.notes !== undefined) {
+      dbUpdates.notes = updates.notes;
+    }
+
+    dbUpdates.updated_at = new Date().toISOString();
+
+    try {
+      await supabase
+        .from("field_operations")
+        .update(dbUpdates)
+        .or(`id.eq.${id},op_id.eq.${id}`);
+    } catch (err) {
+      console.warn("Supabase field_operations update error", err);
+    }
+  };
+
+  const deleteFieldOperation = async (id: string): Promise<boolean> => {
+    const currentOp = fieldOperations.find((o) => o.id === id || o.opId === id);
+    queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) =>
+      old.filter((o) => o.id !== id && o.opId !== id)
+    );
+
+    try {
+      await supabase.from("field_operations").delete().or(`id.eq.${id},op_id.eq.${id}`);
+      if (currentOp?.opId) {
+        await supabase.from("announcements").delete().ilike("content", `%[OP_ID:${currentOp.opId}]%`);
+      }
+      if (currentOp?.barangay) {
+        await supabase.from("announcements").delete().ilike("title", `%Brgy. ${currentOp.barangay}%`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const deductInventoryStock = async (batchNumberOrId: string, quantity: number = 1): Promise<boolean> => {
@@ -1143,6 +1341,9 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       addAnimalControlCase,
       updateAnimalControlStatus,
       addFieldOperation,
+      updateFieldOperationStatus,
+      updateFieldOperation,
+      deleteFieldOperation,
       addOfflineRecord,
       syncOfflineRecords,
       addAuditLog,
@@ -1162,6 +1363,9 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       offlineRecords,
       activeRoleView,
       isRealtimeConnected,
+      updateFieldOperationStatus,
+      updateFieldOperation,
+      deleteFieldOperation,
       deductInventoryStock,
       addInventoryBatch,
       deleteInventoryBatch,

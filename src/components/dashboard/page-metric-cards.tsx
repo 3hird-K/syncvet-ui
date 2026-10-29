@@ -16,6 +16,7 @@ export type PageMetric = {
   badge: string;
   badgeClass: string;
   sub: string;
+  onClick?: () => void;
 };
 
 /**
@@ -26,7 +27,14 @@ export function PageMetricCards({ metrics }: { metrics: readonly PageMetric[] })
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 pt-4">
       {metrics.map((m) => (
-        <Card key={m.title} className="bg-card border-border shadow-md rounded-2xl overflow-hidden relative group py-0">
+        <Card
+          key={m.title}
+          onClick={m.onClick}
+          className={cn(
+            "bg-card border-border shadow-md rounded-2xl overflow-hidden relative group py-0",
+            m.onClick && "cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all"
+          )}
+        >
           <div className={cn("absolute inset-0 bg-gradient-to-br via-transparent to-transparent pointer-events-none", m.gradient)} />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 p-5 pb-2 relative z-10 mb-4">
             <div className="flex items-center gap-2">

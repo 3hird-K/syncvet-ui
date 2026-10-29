@@ -184,12 +184,24 @@ export interface CVOFieldOperation {
   id: string;
   opId: string;
   barangay: string;
+  venue?: string;
+  timeWindow?: string;
+  services?: ("consultation" | "vaccination" | "spay-neuter")[];
   type: string;
   lead: string;
+  vetProfile?: {
+    name: string;
+    role: string;
+    avatarUrl?: string | null;
+    licenseNo?: string;
+    contact?: string;
+    title?: string;
+  };
   date: string;
   petsTarget: number;
   petsVaccinated: number;
   status: "scheduled" | "in-progress" | "completed" | "cancelled";
+  announcementId?: string;
   notes?: string;
 }
 
