@@ -30,6 +30,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import type { CVOAnnouncement, AnnouncementCategory, AnnouncementPriority } from "@/types/announcement";
 import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { format, addDays } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +103,14 @@ export function EditAnnouncementDialog({
   );
 
   const editMutation = useMutation({
-    mutationFn: async (updates: Record<string, unknown>) => {
+    mutationFn: async (updates: {
+      title: string;
+      content: string;
+      category: AnnouncementCategory;
+      priority: AnnouncementPriority;
+      target_barangay?: string | null;
+      is_pinned: boolean;
+    }) => {
       if (!announcement) throw new Error("No announcement selected");
       const supabase = getPublicSupabaseClient();
 
@@ -108,44 +122,38 @@ export function EditAnnouncementDialog({
           .eq("is_pinned", true);
       }
 
+      const dbUpdates = {
+        title: updates.title,
+        content: updates.content,
+        category: updates.category,
+        priority: updates.priority,
+        target_barangay: updates.target_barangay || "All Cagayan de Oro",
+        is_pinned: updates.is_pinned,
+        updated_at: new Date().toISOString(),
+      };
+
       const { data, error } = await supabase
         .from("announcements")
-        .update(updates)
+        .update(dbUpdates)
         .eq("id", announcement.id)
         .select()
-        .maybeSingle();
+        .single();
 
-      if (error) throw error;
-      return (data as CVOAnnouncement) || ({ ...announcement, ...updates } as CVOAnnouncement);
+      if (error) {
+        console.error("Supabase announcement update error:", error);
+        throw error;
+      }
+      return data as CVOAnnouncement;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
-        old.map((item) => {
-          if (item.id === data.id) return data;
-          if (data.is_pinned) return { ...item, is_pinned: false };
-          return item;
-        })
-      );
       queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
       onAnnouncementUpdated?.(data);
       toast.success("Official CVO Announcement updated live.");
       onOpenChange(false);
     },
-    onError: (err: any, updates) => {
-      console.warn("Announcement update notice:", err?.message);
-      if (announcement) {
-        const fallbackUpdated: CVOAnnouncement = {
-          ...announcement,
-          ...updates,
-        } as CVOAnnouncement;
-        queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
-          old.map((item) => (item.id === fallbackUpdated.id ? fallbackUpdated : item))
-        );
-        queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-        onAnnouncementUpdated?.(fallbackUpdated);
-      }
-      toast.success("Announcement updated.");
-      onOpenChange(false);
+    onError: (err: any) => {
+      console.error("Supabase announcement update error:", err);
+      toast.error(err?.message || "Failed to update announcement. Please try again.");
     },
   });
 
@@ -184,23 +192,19 @@ export function EditAnnouncementDialog({
       return;
     }
 
-    const computedExpiresAt =
-      expiryMode !== "never" && expiresAt
-        ? new Date(expiresAt + "T23:59:59").toISOString()
-        : null;
+    let finalContent = content.trim();
+    if (expiryMode !== "never" && expiresAt && !finalContent.includes("[EXPIRES:")) {
+      finalContent = `${finalContent}\n\n[EXPIRES:${expiresAt}]`;
+    }
 
-    const updates = {
+    editMutation.mutate({
       title: title.trim(),
-      content: content.trim(),
+      content: finalContent,
       category,
       priority,
       target_barangay: "All Cagayan de Oro",
       is_pinned: isPinned,
-      expires_at: computedExpiresAt,
-      updated_at: new Date().toISOString(),
-    };
-
-    editMutation.mutate(updates);
+    });
   };
 
   return (
@@ -269,17 +273,20 @@ export function EditAnnouncementDialog({
               <Label htmlFor="edit-announcement-priority" className="text-xs font-bold text-foreground">
                 Priority Level
               </Label>
-              <select
-                id="edit-announcement-priority"
+              <Select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as AnnouncementPriority)}
-                className="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                onValueChange={(val) => setPriority(val as AnnouncementPriority)}
               >
-                <option value="normal">Normal Notice</option>
-                <option value="high">High Importance</option>
-                <option value="urgent">Urgent Alert</option>
-                <option value="low">Low / Informational</option>
-              </select>
+                <SelectTrigger id="edit-announcement-priority" className="h-9 w-full text-xs rounded-xl border-border bg-background cursor-pointer">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl text-xs">
+                  <SelectItem value="normal" className="text-xs">Normal Notice</SelectItem>
+                  <SelectItem value="high" className="text-xs">High Importance</SelectItem>
+                  <SelectItem value="urgent" className="text-xs">Urgent Alert</SelectItem>
+                  <SelectItem value="low" className="text-xs">Low / Informational</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">
@@ -291,18 +298,21 @@ export function EditAnnouncementDialog({
                   </span>
                 )}
               </Label>
-              <select
-                id="edit-announcement-expiry"
+              <Select
                 value={expiryMode}
-                onChange={(e) => handleExpiryChange(e.target.value as any)}
-                className="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                onValueChange={(val) => handleExpiryChange(val as any)}
               >
-                <option value="never">Never expires (Permanent)</option>
-                <option value="1day">Expires in 24 hours</option>
-                <option value="3days">Expires in 3 days</option>
-                <option value="1week">Expires in 1 week</option>
-                <option value="custom">Custom expiration date...</option>
-              </select>
+                <SelectTrigger id="edit-announcement-expiry" className="h-9 w-full text-xs rounded-xl border-border bg-background cursor-pointer">
+                  <SelectValue placeholder="Select expiration" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl text-xs">
+                  <SelectItem value="never" className="text-xs">Never expires (Permanent)</SelectItem>
+                  <SelectItem value="1day" className="text-xs">Expires in 24 hours</SelectItem>
+                  <SelectItem value="3days" className="text-xs">Expires in 3 days</SelectItem>
+                  <SelectItem value="1week" className="text-xs">Expires in 1 week</SelectItem>
+                  <SelectItem value="custom" className="text-xs">Custom expiration date...</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

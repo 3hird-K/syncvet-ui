@@ -246,17 +246,25 @@ export function PetOwnerConsultationDialog({
   const firstPet = initialPet || (pets.length > 0 ? pets[0] : undefined);
   const [selectedPetId, setSelectedPetId] = useState<string>(firstPet?.id || (pets.length > 0 ? pets[0].id : ""));
 
-  // Keep selectedPetId in sync if initialPet changes
+  // Only initialize selectedPetId when dialog opens or when initialPet prop explicitly changes
   useEffect(() => {
-    if (initialPet?.id) {
-      setSelectedPetId(initialPet.id);
-    } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => p.id === selectedPetId))) {
-      setSelectedPetId(pets[0].id);
+    if (open) {
+      if (initialPet?.id) {
+        setSelectedPetId(initialPet.id);
+      } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId)))) {
+        setSelectedPetId(pets[0].id);
+      }
     }
-  }, [initialPet?.id, pets, selectedPetId]);
+  }, [open, initialPet?.id]);
 
   // Selected registered pet object (if any)
-  const selectedPet = pets.find((p) => p.id === selectedPetId) || (pets.length > 0 ? pets[0] : undefined);
+  const selectedPet = useMemo(() => {
+    return (
+      pets.find((p) => String(p.id) === String(selectedPetId)) ||
+      pets.find((p) => p.name?.toLowerCase() === selectedPetId?.toLowerCase()) ||
+      (pets.length > 0 ? pets[0] : undefined)
+    );
+  }, [pets, selectedPetId]);
 
   // Owner details (defaults from user profile)
   const defaultOwnerName = ownerProfile?.name || "Kyle Urgentrouse";
@@ -583,10 +591,9 @@ export function PetOwnerConsultationDialog({
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 pt-0.5">
-                      <span>ℹ️ Pet details are linked from your registered profile. To update these, edit in the</span>
-                      <strong className="text-foreground font-semibold">My Pets & Passports</strong>
-                      <span>page.</span>
+                    <p className="text-[11px] text-muted-foreground pt-0.5 leading-relaxed">
+                      Pet details are linked from your registered profile. To update these, edit in the{" "}
+                      <strong className="text-foreground font-semibold">My Pets & Passports</strong> page.
                     </p>
                   </div>
                 )}

@@ -20,7 +20,6 @@ import {
   Syringe,
   MapPin,
   ShieldAlert,
-  Search,
   LayoutGrid,
   Bell,
   Sun,
@@ -33,6 +32,7 @@ import {
   Phone,
   ArrowRight,
   Shield,
+  CircleUser,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 import { cn } from "@/lib/utils";
 
 interface FacebookTopBarProps {
@@ -63,7 +64,7 @@ export function FacebookTopBar({
   const { unreadCount } = useCitizenChat();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -140,25 +141,24 @@ export function FacebookTopBar({
   };
 
   const navItems = [
-    { key: "feed", label: "Home / CVO Feed", icon: Home },
-    { key: "consultations", label: "Clinical Consultations", icon: Stethoscope },
-    { key: "procedures", label: "Procedure Appointments", icon: Calendar },
-    { key: "vaccinations", label: "Vaccination Ledger", icon: Syringe },
-    { key: "drives", label: "Barangay Drives", icon: MapPin },
-    { key: "protocols", label: "Bite Protocol", icon: ShieldAlert },
+    { key: "feed", label: "Home / CVO Feed", shortLabel: "Feed", icon: Home },
+    { key: "consultations", label: "Clinical Consultations", shortLabel: "Consultations", icon: Stethoscope },
+    { key: "procedures", label: "Procedure Appointments", shortLabel: "Appointments", icon: Calendar },
+    { key: "vaccinations", label: "Vaccination Ledger", shortLabel: "Vaccines", icon: Syringe },
   ];
 
   return (
-    <header className="sticky top-0 z-50 h-14 w-full bg-card/95 backdrop-blur-md border-b border-border/80 shadow-xs flex items-center justify-between px-3 sm:px-4 select-none">
-      {/* ── 1. Left Section: Logo & Search Pill ── */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-        <Link
-          href="/pet-owner?tab=feed"
-          onClick={() => handleTabClick("feed")}
-          className="group flex items-center gap-2 outline-none cursor-pointer"
-          title="SyncVet Home"
-        >
-          <div className="size-10 rounded-full flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-105">
+    <header className="sticky top-0 z-50 h-14 w-full bg-card/95 backdrop-blur-md border-b border-border/80 shadow-xs select-none px-3 sm:px-4">
+      <div className="max-w-[1140px] mx-auto h-full flex items-center justify-between">
+        {/* ── 1. Left Section: Circular Emblem Logo ── */}
+        <div className="flex items-center shrink-0">
+          <Link
+            href="/pet-owner?tab=feed"
+            onClick={() => handleTabClick("feed")}
+            className="group relative size-10 rounded-full flex items-center justify-center overflow-hidden transition-transform duration-200 hover:scale-105 outline-none cursor-pointer"
+            title="SyncVet Home"
+            aria-label="SyncVet Home"
+          >
             {mounted && (
               <Image
                 src={Logo}
@@ -167,30 +167,11 @@ export function FacebookTopBar({
                 priority
               />
             )}
-          </div>
-          <span className="hidden xl:inline-block font-extrabold text-sm tracking-tight text-foreground group-hover:text-primary transition-colors">
-            SYNCVET
-          </span>
-        </Link>
-
-        {/* Facebook-Style Search Input Pill */}
-        <div className="relative flex items-center">
-          <div className="flex items-center h-10 rounded-full bg-muted/60 hover:bg-muted/90 px-3 text-xs text-muted-foreground transition-colors border border-border/40 focus-within:ring-2 focus-within:ring-primary/40 focus-within:bg-card">
-            <Search className="size-4 text-muted-foreground shrink-0 mr-2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search SyncVet..."
-              className="bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none w-28 sm:w-44 md:w-56"
-            />
-          </div>
+          </Link>
         </div>
-      </div>
 
-      {/* ── 2. Center Section: Facebook Centered Iconic Navigation Tabs ── */}
-      <nav className="flex items-center justify-center flex-1 max-w-2xl mx-auto h-full px-1 sm:px-4">
-        <div className="flex items-center justify-center w-full h-full gap-1 sm:gap-1.5 md:gap-2">
+        {/* ── 2. Center Section: Integrated Themed Navigation Tabs ── */}
+        <nav className="flex items-center justify-center h-full gap-1 sm:gap-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.key && pathname.startsWith("/pet-owner");
@@ -201,35 +182,42 @@ export function FacebookTopBar({
                 type="button"
                 onClick={() => handleTabClick(item.key)}
                 className={cn(
-                  "relative flex items-center justify-center flex-1 h-full max-w-[100px] rounded-xl transition-all duration-150 cursor-pointer outline-none group",
+                  "relative flex items-center justify-center gap-2 h-full px-3 sm:px-4 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none select-none group",
                   isActive
-                    ? "text-[#1877F2]"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    ? "text-primary font-bold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl font-medium"
                 )}
                 title={item.label}
                 aria-label={item.label}
               >
-                <div className="flex items-center justify-center size-10 rounded-xl transition-transform group-hover:scale-105">
-                  <Icon
-                    className={cn(
-                      "size-5 sm:size-6 transition-colors",
-                      isActive ? "text-[#1877F2] stroke-[2.5]" : "stroke-[2]"
-                    )}
-                  />
-                </div>
+                <Icon
+                  className={cn(
+                    "size-4 sm:size-4.5 transition-transform group-hover:scale-105",
+                    isActive ? "text-primary stroke-[2.5]" : "text-muted-foreground stroke-[2]"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "tracking-tight text-xs transition-colors",
+                    isActive
+                      ? "text-primary font-bold inline-block"
+                      : "text-muted-foreground group-hover:text-foreground font-medium hidden sm:inline-block"
+                  )}
+                >
+                  {item.shortLabel}
+                </span>
 
-                {/* Facebook Active Bottom Indicator Bar */}
+                {/* Theme bottom active indicator bar */}
                 {isActive && (
-                  <span className="absolute bottom-0 inset-x-2 h-[3.5px] bg-[#1877F2] rounded-t-full shadow-xs" />
+                  <span className="absolute bottom-0 inset-x-2 sm:inset-x-3 h-[3px] bg-primary rounded-t-full shadow-[0_-1px_6px_hsl(var(--primary)/0.6)]" />
                 )}
               </button>
             );
           })}
-        </div>
-      </nav>
+        </nav>
 
-      {/* ── 3. Right Section: Facebook Utility Icons (Menu, Chat, Alerts, Profile) ── */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* ── 3. Right Section: Utility Icons (Menu, Chat, Profile) ── */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* CVO Services Quick Grid Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -271,6 +259,32 @@ export function FacebookTopBar({
               <div className="min-w-0">
                 <p className="font-semibold text-xs text-foreground">Book Procedure Quota</p>
                 <p className="text-[10px] text-muted-foreground">Free Spay/Neuter & Rabies slots</p>
+              </div>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={() => handleTabClick("vaccinations")}
+              className="cursor-pointer gap-2.5 py-2 rounded-xl"
+            >
+              <div className="size-7 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+                <Syringe className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-xs text-foreground">Vaccination Ledger</p>
+                <p className="text-[10px] text-muted-foreground">Certified rabies & immunization records</p>
+              </div>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={() => handleTabClick("drives")}
+              className="cursor-pointer gap-2.5 py-2 rounded-xl"
+            >
+              <div className="size-7 rounded-lg bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+                <MapPin className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-xs text-foreground">Barangay Outreach Drives</p>
+                <p className="text-[10px] text-muted-foreground">Free community rabies & deworming</p>
               </div>
             </DropdownMenuItem>
 
@@ -367,6 +381,15 @@ export function FacebookTopBar({
 
             <DropdownMenuSeparator />
 
+            {/* Edit Profile */}
+            <DropdownMenuItem
+              onClick={() => setProfileOpen(true)}
+              className="cursor-pointer gap-2.5 py-2 rounded-xl text-xs font-medium"
+            >
+              <CircleUser className="size-4 text-muted-foreground shrink-0" />
+              <span>Edit Profile</span>
+            </DropdownMenuItem>
+
             {/* Theme Switcher Toggle */}
             <DropdownMenuItem
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -412,6 +435,10 @@ export function FacebookTopBar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Custom Edit Profile Dialog */}
+        <EditProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      </div>
       </div>
     </header>
   );

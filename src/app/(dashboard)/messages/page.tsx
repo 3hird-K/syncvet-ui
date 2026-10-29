@@ -1288,9 +1288,23 @@ function MessagesContent() {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-68px)] bg-background text-foreground overflow-hidden">
+    <div
+      className={cn(
+        "flex flex-col bg-background text-foreground overflow-hidden",
+        !isVeterinarian
+          ? "h-[calc(100vh-56px)] max-w-[1140px] mx-auto w-full px-0 sm:px-4"
+          : "h-[calc(100vh-68px)]"
+      )}
+    >
       {/* ── Main Messenger Container (Exact Messenger Split-View Layout) ── */}
-      <div className="flex-1 flex overflow-hidden border-t border-border/50">
+      <div
+        className={cn(
+          "flex-1 flex overflow-hidden",
+          !isVeterinarian
+            ? "sm:border sm:border-border/60 sm:rounded-2xl sm:shadow-xs bg-card/40 sm:my-3 border-t border-border/50"
+            : "border-t border-border/50"
+        )}
+      >
         {/* ── 1. Left Sidebar: Chats List (Auto-shrinks on smaller screens & full-width on mobile list view) ── */}
         <aside
           className={cn(
@@ -1977,88 +1991,134 @@ function MessagesContent() {
                 <ChevronLeft className="size-5" />
               </button>
 
-              {/* Clickable Profile Header Trigger */}
-              <button
-                type="button"
-                onClick={() => setIsProfileOpen(true)}
-                className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left hover:bg-muted/60 transition-colors p-1 sm:p-1.5 -m-1 rounded-xl cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
-                title="Click to view profile info, registered pets & clinical history"
-                aria-label="View conversation profile info"
-              >
-                <div className="relative shrink-0">
-                  <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card group-hover:ring-2 group-hover:ring-primary/50 transition-all">
-                    {contactAvatarUrl && (
-                      <AvatarImage
-                        src={contactAvatarUrl}
-                        alt={contactName}
-                        className={
-                          !isVeterinarian && activeDesk === "admin"
-                            ? "object-contain p-1 bg-white"
-                            : "object-cover"
-                        }
-                      />
-                    )}
-                    <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-xs">
-                      {!isVeterinarian ? (
-                        activeDesk === "admin" ? <Building2 className="size-4.5" /> : <Stethoscope className="size-4.5" />
-                      ) : (
-                        getTwoLetterInitials(contactName)
+              {/* Profile Header Trigger (Only clickable for Veterinarian/Staff viewing Pet Owner profile) */}
+              {isVeterinarian ? (
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen(true)}
+                  className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left hover:bg-muted/60 transition-colors p-1 sm:p-1.5 -m-1 rounded-xl cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+                  title="Click to view profile info, registered pets & clinical history"
+                  aria-label="View conversation profile info"
+                >
+                  <div className="relative shrink-0">
+                    <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card group-hover:ring-2 group-hover:ring-primary/50 transition-all">
+                      {contactAvatarUrl && (
+                        <AvatarImage
+                          src={contactAvatarUrl}
+                          alt={contactName}
+                          className="object-cover"
+                        />
                       )}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span
-                    className={cn(
-                      "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card transition-colors",
-                      isCurrentActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
-                    )}
-                    title={activeStatusLabel}
-                  />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
-                      <span>{contactName}</span>
-                      <Info className="size-3 text-muted-foreground/60 group-hover:text-primary transition-colors shrink-0" />
-                    </h2>
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-xs">
+                        {getTwoLetterInitials(contactName)}
+                      </AvatarFallback>
+                    </Avatar>
                     <span
                       className={cn(
-                        "text-[10px] font-semibold flex items-center gap-1.5 transition-colors shrink-0",
-                        isCurrentActive
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-muted-foreground/80"
+                        "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card transition-colors",
+                        isCurrentActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
                       )}
-                    >
+                      title={activeStatusLabel}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                        <span>{contactName}</span>
+                        <Info className="size-3 text-muted-foreground/60 group-hover:text-primary transition-colors shrink-0" />
+                      </h2>
                       <span
                         className={cn(
-                          "size-1.5 rounded-full shrink-0",
-                          isCurrentActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                          "text-[10px] font-semibold flex items-center gap-1.5 transition-colors shrink-0",
+                          isCurrentActive
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-muted-foreground/80"
                         )}
-                      />
-                      {activeStatusLabel}
-                    </span>
+                      >
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full shrink-0",
+                            isCurrentActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                          )}
+                        />
+                        {activeStatusLabel}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate group-hover:text-muted-foreground/90 transition-colors">
+                      {contactSubtitle}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate group-hover:text-muted-foreground/90 transition-colors">
-                    {contactSubtitle}
-                  </p>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 p-1 sm:p-1.5 -m-1">
+                  <div className="relative shrink-0">
+                    <Avatar className="size-10 rounded-full border border-border/50 overflow-hidden bg-card">
+                      {contactAvatarUrl && (
+                        <AvatarImage
+                          src={contactAvatarUrl}
+                          alt={contactName}
+                          className={activeDesk === "admin" ? "object-contain p-1 bg-white" : "object-cover"}
+                        />
+                      )}
+                      <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-xs">
+                        {activeDesk === "admin" ? <Building2 className="size-4.5" /> : <Stethoscope className="size-4.5" />}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span
+                      className={cn(
+                        "absolute bottom-0 right-0 size-2.5 rounded-full ring-2 ring-card transition-colors",
+                        isCurrentActive ? "bg-emerald-500 shadow-2xs" : "bg-zinc-400 dark:bg-zinc-600"
+                      )}
+                      title={activeStatusLabel}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-bold text-sm text-foreground truncate">
+                        <span>{contactName}</span>
+                      </h2>
+                      <span
+                        className={cn(
+                          "text-[10px] font-semibold flex items-center gap-1.5 transition-colors shrink-0",
+                          isCurrentActive
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-muted-foreground/80"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full shrink-0",
+                            isCurrentActive ? "bg-emerald-500 animate-pulse" : "bg-zinc-400 dark:bg-zinc-600"
+                          )}
+                        />
+                        {activeStatusLabel}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {contactSubtitle}
+                    </p>
+                  </div>
                 </div>
-              </button>
+              )}
             </div>
 
-            {/* Header Right Actions */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsProfileOpen(true)}
-                className="h-8 px-2.5 sm:px-3 text-xs font-semibold gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg border border-border/60 shadow-2xs cursor-pointer group transition-all"
-                title="View Profile Information, Pets & History"
-                aria-label="View Profile Information, Pets & History"
-              >
-                <User className="size-3.5 text-primary group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">Profile</span>
-              </Button>
-            </div>
+            {/* Header Right Actions: Profile button only visible for Veterinarians/Staff */}
+            {isVeterinarian && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsProfileOpen(true)}
+                  className="h-8 px-2.5 sm:px-3 text-xs font-semibold gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg border border-border/60 shadow-2xs cursor-pointer group transition-all"
+                  title="View Profile Information, Pets & History"
+                  aria-label="View Profile Information, Pets & History"
+                >
+                  <User className="size-3.5 text-primary group-hover:scale-110 transition-transform" />
+                  <span className="hidden sm:inline">Profile</span>
+                </Button>
+              </div>
+            )}
           </header>
 
           {/* Message Stream */}
@@ -2119,43 +2179,58 @@ function MessagesContent() {
             )}
             {/* Friendly Conversation Header */}
             <div className="text-center py-6 space-y-2 border-b border-border/30 mb-4">
-              <button
-                type="button"
-                onClick={() => setIsProfileOpen(true)}
-                className="group cursor-pointer inline-block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 rounded-full"
-                title="Click to view profile info, registered pets & history"
-              >
-                <Avatar className="size-20 rounded-full mx-auto border-2 border-primary/20 shadow-md overflow-hidden bg-card group-hover:border-primary/60 group-hover:scale-105 transition-all">
-                  {contactAvatarUrl && (
-                    <AvatarImage
-                      src={contactAvatarUrl}
-                      alt={contactName}
-                      className={
-                        !isVeterinarian && activeDesk === "admin"
-                          ? "object-contain p-2.5 bg-white"
-                          : "object-cover"
-                      }
-                    />
-                  )}
-                  <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-lg">
-                    {!isVeterinarian ? (
-                      activeDesk === "admin" ? <Building2 className="size-8" /> : <Stethoscope className="size-8" />
-                    ) : (
-                      getTwoLetterInitials(contactName)
-                    )}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-              <div>
+              {isVeterinarian ? (
                 <button
                   type="button"
                   onClick={() => setIsProfileOpen(true)}
-                  className="font-extrabold text-base text-foreground hover:text-primary transition-colors cursor-pointer group inline-flex items-center gap-1.5"
+                  className="group cursor-pointer inline-block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 rounded-full"
                   title="Click to view profile info, registered pets & history"
                 >
-                  <span>{contactName}</span>
-                  <Info className="size-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <Avatar className="size-20 rounded-full mx-auto border-2 border-primary/20 shadow-md overflow-hidden bg-card group-hover:border-primary/60 group-hover:scale-105 transition-all">
+                    {contactAvatarUrl && (
+                      <AvatarImage
+                        src={contactAvatarUrl}
+                        alt={contactName}
+                        className="object-cover"
+                      />
+                    )}
+                    <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-lg">
+                      {getTwoLetterInitials(contactName)}
+                    </AvatarFallback>
+                  </Avatar>
                 </button>
+              ) : (
+                <div className="inline-block rounded-full">
+                  <Avatar className="size-20 rounded-full mx-auto border-2 border-primary/20 shadow-md overflow-hidden bg-card">
+                    {contactAvatarUrl && (
+                      <AvatarImage
+                        src={contactAvatarUrl}
+                        alt={contactName}
+                        className={activeDesk === "admin" ? "object-contain p-2.5 bg-white" : "object-cover"}
+                      />
+                    )}
+                    <AvatarFallback className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-bold text-lg">
+                      {activeDesk === "admin" ? <Building2 className="size-8" /> : <Stethoscope className="size-8" />}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              )}
+              <div>
+                {isVeterinarian ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileOpen(true)}
+                    className="font-extrabold text-base text-foreground hover:text-primary transition-colors cursor-pointer group inline-flex items-center gap-1.5"
+                    title="Click to view profile info, registered pets & history"
+                  >
+                    <span>{contactName}</span>
+                    <Info className="size-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </button>
+                ) : (
+                  <h3 className="font-extrabold text-base text-foreground inline-flex items-center justify-center">
+                    {contactName}
+                  </h3>
+                )}
                 <p className="text-xs text-muted-foreground">{contactSubtitle}</p>
                 <p className="text-[11px] text-muted-foreground/70 mt-0.5">
                   {!isVeterinarian
@@ -2164,18 +2239,20 @@ function MessagesContent() {
                       : "You're connected on City Veterinary Office Official Telemedicine Channel."
                     : `Official conversation record for registered pet owner ${contactName} • ${activeStatusLabel}.`}
                 </p>
-                <div className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsProfileOpen(true)}
-                    className="h-7 px-3 text-xs gap-1.5 rounded-full border-border/60 hover:bg-muted/70 hover:text-primary cursor-pointer text-muted-foreground shadow-2xs"
-                  >
-                    <User className="size-3 text-primary" />
-                    <span>View Profile & History</span>
-                  </Button>
-                </div>
+                {isVeterinarian && (
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsProfileOpen(true)}
+                      className="h-7 px-3 text-xs gap-1.5 rounded-full border-border/60 hover:bg-muted/70 hover:text-primary cursor-pointer text-muted-foreground shadow-2xs"
+                    >
+                      <User className="size-3 text-primary" />
+                      <span>View Profile & History</span>
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2929,9 +3006,9 @@ function MessagesContent() {
             </div>
           </aside>
         )}
-        {/* Profile & History Drawer */}
+        {/* Profile & History Drawer (Only for Veterinarians/Staff viewing Pet Owner profile) */}
         <ConversationProfileDrawer
-          isOpen={isProfileOpen}
+          isOpen={isProfileOpen && isVeterinarian}
           onOpenChange={setIsProfileOpen}
           activeThread={activeThread}
           isVeterinarian={isVeterinarian}

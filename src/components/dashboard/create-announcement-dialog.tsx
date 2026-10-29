@@ -31,6 +31,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import type { CVOAnnouncement, AnnouncementCategory, AnnouncementPriority } from "@/types/announcement";
 import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { format, addDays } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -73,8 +80,32 @@ export function CreateAnnouncementDialog({
 
   // TanStack mutation for instant realtime publishing
   const createMutation = useMutation({
-    mutationFn: async (payload: Partial<CVOAnnouncement>) => {
+    mutationFn: async (payload: {
+      title: string;
+      content: string;
+      category: AnnouncementCategory;
+      priority: AnnouncementPriority;
+      author_id?: string | null;
+      author_name: string;
+      author_role: string;
+      target_barangay?: string | null;
+      is_pinned: boolean;
+      is_active: boolean;
+    }) => {
       const supabase = getPublicSupabaseClient();
+
+      // Verify if author_id exists in users table to prevent FK constraint failure
+      let verifiedAuthorId: string | null = null;
+      if (payload.author_id) {
+        const { data: userRec } = await supabase
+          .from("users")
+          .select("id")
+          .eq("id", payload.author_id)
+          .maybeSingle();
+        if (userRec?.id) {
+          verifiedAuthorId = userRec.id;
+        }
+      }
 
       if (payload.is_pinned) {
         // Automatically switch pin: unpin all existing in DB
@@ -84,55 +115,41 @@ export function CreateAnnouncementDialog({
           .eq("is_pinned", true);
       }
 
+      // Explicitly send ONLY the columns that exist in the Supabase announcements table
+      const dbPayload = {
+        title: payload.title,
+        content: payload.content,
+        category: payload.category,
+        priority: payload.priority,
+        author_id: verifiedAuthorId,
+        author_name: payload.author_name || "City Veterinary Office",
+        author_role: payload.author_role || "Administrator",
+        target_barangay: payload.target_barangay || "All Cagayan de Oro",
+        is_pinned: payload.is_pinned,
+        is_active: payload.is_active,
+      };
+
       const { data, error } = await supabase
         .from("announcements")
-        .insert([payload])
+        .insert([dbPayload])
         .select()
         .single();
 
       if (error) {
+        console.error("Supabase announcement insert error:", error);
         throw error;
       }
       return data as CVOAnnouncement;
     },
     onSuccess: (data) => {
-      // Optimistically push to TanStack query cache for immediate realtime view
-      if (data.is_pinned) {
-        queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) => [
-          data,
-          ...old.filter((a) => a.id !== data.id).map((a) => ({ ...a, is_pinned: false })),
-        ]);
-      } else {
-        queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) => [data, ...old]);
-      }
       queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
       onAnnouncementCreated?.(data);
       toast.success("Official CVO Announcement broadcast published live!");
       resetAndClose();
     },
-    onError: (err: any, variables) => {
-      console.warn("Supabase announcement insert notice:", err?.message);
-      // Fallback optimistic record so UI stays responsive and functional
-      const fallbackCreated: CVOAnnouncement = {
-        id: `local-${Date.now()}`,
-        title: variables.title!,
-        content: variables.content!,
-        category: variables.category!,
-        priority: variables.priority!,
-        author_id: variables.author_id || null,
-        author_name: variables.author_name!,
-        author_role: variables.author_role!,
-        target_barangay: variables.target_barangay || "All Cagayan de Oro",
-        is_pinned: variables.is_pinned!,
-        is_active: true,
-        expires_at: variables.expires_at || null,
-        created_at: new Date().toISOString(),
-      };
-      queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) => [fallbackCreated, ...old]);
-      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-      onAnnouncementCreated?.(fallbackCreated);
-      toast.success("Announcement broadcast published!");
-      resetAndClose();
+    onError: (err: any) => {
+      console.error("Failed to publish announcement to Supabase:", err);
+      toast.error(err?.message || "Failed to publish announcement. Please try again.");
     },
   });
 
@@ -181,26 +198,23 @@ export function CreateAnnouncementDialog({
       return;
     }
 
-    const computedExpiresAt =
-      expiryMode !== "never" && expiresAt
-        ? new Date(expiresAt + "T23:59:59").toISOString()
-        : null;
+    let finalContent = content.trim();
+    if (expiryMode !== "never" && expiresAt) {
+      finalContent = `${finalContent}\n\n[EXPIRES:${expiresAt}]`;
+    }
 
-    const newAnnouncement: Partial<CVOAnnouncement> = {
+    createMutation.mutate({
       title: title.trim(),
-      content: content.trim(),
+      content: finalContent,
       category,
       priority,
       author_id: currentUserId || null,
-      author_name: currentUserName,
-      author_role: currentUserRole,
+      author_name: currentUserName || "City Veterinary Office",
+      author_role: currentUserRole || "Administrator",
       target_barangay: "All Cagayan de Oro",
       is_pinned: pinnedAnnouncement ? false : isPinned,
       is_active: true,
-      expires_at: computedExpiresAt,
-    };
-
-    createMutation.mutate(newAnnouncement);
+    });
   };
 
   return (
@@ -282,17 +296,20 @@ export function CreateAnnouncementDialog({
               <Label htmlFor="announcement-priority" className="text-xs font-bold text-foreground">
                 Priority Level
               </Label>
-              <select
-                id="announcement-priority"
+              <Select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as AnnouncementPriority)}
-                className="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                onValueChange={(val) => setPriority(val as AnnouncementPriority)}
               >
-                <option value="normal">Normal Notice</option>
-                <option value="high">High Importance</option>
-                <option value="urgent">Urgent Alert</option>
-                <option value="low">Low / Informational</option>
-              </select>
+                <SelectTrigger id="announcement-priority" className="h-9 w-full text-xs rounded-xl border-border bg-background cursor-pointer">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl text-xs">
+                  <SelectItem value="normal" className="text-xs">Normal Notice</SelectItem>
+                  <SelectItem value="high" className="text-xs">High Importance</SelectItem>
+                  <SelectItem value="urgent" className="text-xs">Urgent Alert</SelectItem>
+                  <SelectItem value="low" className="text-xs">Low / Informational</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">
@@ -304,18 +321,21 @@ export function CreateAnnouncementDialog({
                   </span>
                 )}
               </Label>
-              <select
-                id="announcement-expiry"
+              <Select
                 value={expiryMode}
-                onChange={(e) => handleExpiryChange(e.target.value as any)}
-                className="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                onValueChange={(val) => handleExpiryChange(val as any)}
               >
-                <option value="never">Never expires (Permanent)</option>
-                <option value="1day">Expires in 24 hours</option>
-                <option value="3days">Expires in 3 days</option>
-                <option value="1week">Expires in 1 week</option>
-                <option value="custom">Custom expiration date...</option>
-              </select>
+                <SelectTrigger id="announcement-expiry" className="h-9 w-full text-xs rounded-xl border-border bg-background cursor-pointer">
+                  <SelectValue placeholder="Select expiration" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl text-xs">
+                  <SelectItem value="never" className="text-xs">Never expires (Permanent)</SelectItem>
+                  <SelectItem value="1day" className="text-xs">Expires in 24 hours</SelectItem>
+                  <SelectItem value="3days" className="text-xs">Expires in 3 days</SelectItem>
+                  <SelectItem value="1week" className="text-xs">Expires in 1 week</SelectItem>
+                  <SelectItem value="custom" className="text-xs">Custom expiration date...</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

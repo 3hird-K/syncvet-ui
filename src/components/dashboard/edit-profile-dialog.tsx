@@ -94,7 +94,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       const supabase = getPublicSupabaseClient();
       const { data } = await supabase
         .from("users")
-        .select("role, avatar_url, full_name, first_name, last_name")
+        .select("role, avatar_url, full_name, first_name, last_name, phone_number, address")
         .eq("id", user.id)
         .maybeSingle();
       return data;
@@ -102,7 +102,13 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     enabled: isLoaded && !!user?.id,
   });
 
-  const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
+  const metadata = user?.unsafeMetadata as {
+    roleTitle?: string;
+    accountType?: string;
+    phoneNumber?: string;
+    mobileNumber?: string;
+    barangay?: string;
+  } | undefined;
   const initialRole = normalizeSyncVetRole(
     dbUser?.role ||
     metadata?.roleTitle ||
@@ -112,6 +118,8 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [address, setAddress] = useState("");
   const [role, setRole] = useState<SyncVetRole>(initialRole);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -123,6 +131,17 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       if (user) {
         setFirstName(user.firstName || dbUser?.first_name || "");
         setLastName(user.lastName || dbUser?.last_name || "");
+        setPhoneNumber(
+          dbUser?.phone_number ||
+          (user.unsafeMetadata?.phoneNumber as string) ||
+          (user.unsafeMetadata?.mobileNumber as string) ||
+          ""
+        );
+        setAddress(
+          dbUser?.address ||
+          (user.unsafeMetadata?.barangay as string) ||
+          ""
+        );
       }
       setRole(initialRole);
       setSelectedFile(null);
@@ -202,22 +221,25 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       } = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-      };
-
-      if (isAdmin) {
-        clerkUpdates.unsafeMetadata = {
+        unsafeMetadata: {
           ...user.unsafeMetadata,
-          roleTitle: targetRole,
-          accountType: targetRole === "Pet Owner" ? "pet_owner" : targetRole.toLowerCase(),
-        };
-      }
+          phoneNumber: phoneNumber.trim(),
+          barangay: address.trim(),
+          ...(isAdmin
+            ? {
+                roleTitle: targetRole,
+                accountType: targetRole === "Pet Owner" ? "pet_owner" : targetRole.toLowerCase(),
+              }
+            : {}),
+        },
+      };
 
       await user.update(clerkUpdates);
 
       // 3. Reload user to refresh cached resources
       await user.reload();
 
-      // 4. Synchronize updated avatar, name (and role only if Administrator) to Supabase immediately
+      // 4. Synchronize updated avatar, name, phone, address (and role only if Administrator) to Supabase immediately
       const supabase = getPublicSupabaseClient();
       const updatedFullName = `${firstName.trim()} ${lastName.trim()}`.trim() || user.fullName || "";
       const updatedAvatarUrl = user.imageUrl || null;
@@ -227,6 +249,8 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
         last_name: lastName.trim(),
         full_name: updatedFullName,
         avatar_url: updatedAvatarUrl,
+        phone_number: phoneNumber.trim() || null,
+        address: address.trim() || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -265,7 +289,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px] rounded-3xl border border-border/80 bg-card p-6 shadow-2xl overflow-hidden">
+      <DialogContent className="sm:max-w-[580px] w-full rounded-3xl border border-border/80 bg-card p-6 shadow-2xl overflow-hidden">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -388,6 +412,34 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   placeholder="e.g. Dime"
                   className="h-10 rounded-xl text-xs"
                   required
+                />
+              </div>
+            </div>
+
+            {/* Contact Number & Barangay / Address */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="phoneNumber" className="text-xs font-semibold text-foreground">
+                  Contact Number
+                </Label>
+                <Input
+                  id="phoneNumber"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="e.g. 0917 123 4567"
+                  className="h-10 rounded-xl text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="address" className="text-xs font-semibold text-foreground">
+                  Barangay / Address
+                </Label>
+                <Input
+                  id="address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. Carmen, CDO"
+                  className="h-10 rounded-xl text-xs"
                 />
               </div>
             </div>

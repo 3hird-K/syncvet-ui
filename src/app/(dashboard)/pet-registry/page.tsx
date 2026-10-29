@@ -193,13 +193,13 @@ export default function PetRegistryPage() {
           ownerAvatarUrl: p.users?.avatar_url || (p.owner_id === user?.id ? user?.imageUrl : undefined),
           barangay: "Cagayan de Oro",
           address: p.users?.address || "District Proper",
-          vaccinated: Boolean(p.is_vaccinated),
+          vaccinated: Boolean(p.is_vaccinated || p.rabies_vaccinated),
           qr: true,
           sterilized: Boolean(p.is_neutered || p.is_spayed_neutered),
           microchip: p.microchip_number || p.id,
           classification: "Domestic" as const,
-          lastVaccinationDate: p.is_vaccinated ? "2026-05-10" : undefined,
-          nextVaccinationDate: p.is_vaccinated ? "2027-05-10" : undefined,
+          lastVaccinationDate: p.last_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2026-05-10" : undefined),
+          nextVaccinationDate: p.next_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2027-05-10" : undefined),
         }));
       } catch {
         return [];

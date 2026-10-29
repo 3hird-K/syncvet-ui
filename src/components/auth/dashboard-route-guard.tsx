@@ -11,6 +11,7 @@ import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 // Routes reserved exclusively for City Veterinary Office Staff (Admin, Veterinarian)
 const STAFF_ONLY_ROUTES = [
   "/dashboard",
+  "/announcements",
   "/vaccination-records",
   "/consultations",
   "/pet-registry",

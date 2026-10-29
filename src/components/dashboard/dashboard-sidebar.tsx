@@ -16,6 +16,7 @@ import {
   Moon,
   Sun,
   PanelLeft,
+  Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,6 +63,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         serviceCategoryTitle: "CVO Administrative Ops",
         items: [
           { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+          { label: "Public Bulletins", icon: Megaphone, href: "/announcements" },
           { label: "Citizen Inquiries & Chat", icon: MessengerIcon, href: "/messages" },
           { label: "Manage Users", icon: Users, href: "/users" },
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "City Veterinary Services" },
@@ -76,6 +78,7 @@ function getNavItemsForRole(role: SyncVetRole): { serviceCategoryTitle: string; 
         serviceCategoryTitle: "Clinical Veterinary Care",
         items: [
           { label: "Clinical Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+          { label: "Public Bulletins", icon: Megaphone, href: "/announcements" },
           { label: "Telemedicine & Chat", icon: MessengerIcon, href: "/messages" },
           { label: "Consultations & EMR", icon: Stethoscope, href: "/consultations", section: "Clinical Procedures" },
           { label: "Vaccination Records", icon: Syringe, href: "/vaccination-records" },

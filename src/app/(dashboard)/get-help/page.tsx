@@ -31,8 +31,9 @@ import {
 
 export default function GetHelpPage() {
   return (
-    <div className="flex-1 space-y-3 p-6 pt-6 bg-background min-h-screen text-foreground">
-      <PageHeader
+    <div className="flex-1 bg-background min-h-screen text-foreground py-4 px-3 sm:px-4">
+      <div className="max-w-[1140px] mx-auto space-y-5">
+        <PageHeader
         supertitle="SUPPORT CENTER"
         title="Get Help & Documentation"
         subtitle="Learn how to navigate SyncVet and maximize the impact of your veterinary operations."
@@ -193,5 +194,6 @@ export default function GetHelpPage() {
         </div>
       </div>
     </div>
+  </div>
   );
 }

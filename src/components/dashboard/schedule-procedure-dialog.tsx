@@ -311,7 +311,13 @@ export function ScheduleProcedureDialog({
 
   // Selected pet object
   const currentPet = useMemo(() => {
-    return pets.find((p) => p.id === selectedPetId) || initialPet || pets[0];
+    return (
+      pets.find((p) => String(p.id) === String(selectedPetId)) ||
+      pets.find((p) => p.name?.toLowerCase() === selectedPetId?.toLowerCase()) ||
+      pets.find((p) => String(p.id) === String(initialPet?.id)) ||
+      initialPet ||
+      pets[0]
+    );
   }, [pets, selectedPetId, initialPet]);
 
   // Annual vaccination validity & 2-week reminder rule check
@@ -579,15 +585,29 @@ export function ScheduleProcedureDialog({
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen);
     if (isOpen) {
-      if (initialPet?.id) setSelectedPetId(initialPet.id);
-      else if (pets.length > 0 && !selectedPetId) setSelectedPetId(pets[0].id);
+      if (initialPet?.id) {
+        setSelectedPetId(initialPet.id);
+      } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId)))) {
+        setSelectedPetId(pets[0].id);
+      }
       if (ownerProfile?.contact && !ownerContact) setOwnerContact(ownerProfile.contact);
     }
   };
 
+  // Sync initial pet when dialog opens
+  useEffect(() => {
+    if (open) {
+      if (initialPet?.id) {
+        setSelectedPetId(initialPet.id);
+      } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId)))) {
+        setSelectedPetId(pets[0].id);
+      }
+    }
+  }, [open, initialPet?.id]);
+
   const isPetAlreadySterilized =
     service === "spay-neuter" &&
-    Boolean(currentPet?.is_spayed_neutered || currentPet?.sterilized);
+    Boolean(currentPet?.is_spayed_neutered || currentPet?.sterilized || currentPet?.isSpayedNeutered);
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

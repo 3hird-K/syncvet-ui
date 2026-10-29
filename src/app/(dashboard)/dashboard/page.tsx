@@ -27,7 +27,6 @@ import Link from "next/link";
 import { NewConsultationDialog } from "@/components/dashboard/new-consultation-dialog";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { LogVaccinationDialog } from "@/components/dashboard/log-vaccination-dialog";
-import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
 import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
 import { useCVO } from "@/lib/cvo-context";
 
@@ -205,19 +204,9 @@ export default function DashboardHomePage() {
         </div>
       </div>
 
-      {/* ── 4. Row 1: Clinical Queue & Live Bulletins ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
-        <div className="lg:col-span-7 min-w-0 flex flex-col">
-          <TodaysOperationsCard />
-        </div>
-        <div className="lg:col-span-5 min-w-0 flex flex-col">
-          <CVOAnnouncementsCard
-            currentUserId={user?.id}
-            currentUserName={user?.fullName || dbUser?.full_name || "City Veterinary Staff"}
-            currentUserRole={userRole}
-            isStaff={true}
-          />
-        </div>
+      {/* ── 4. Row 1: Clinical Queue & Daily Operations ── */}
+      <div>
+        <TodaysOperationsCard />
       </div>
 
       {/* ── 5. Row 2: Public Health & Disease Surveillance Metric Dashboard ── */}

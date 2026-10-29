@@ -17,17 +17,11 @@ import {
   CheckCircle2,
   Clock,
   User,
-  Heart,
-  Share2,
-  Bookmark,
-  MessageSquare,
   Sparkles,
   ExternalLink,
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
-  ThumbsUp,
-  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,28 +106,8 @@ export function CVOSocialFeed({
   const queryClient = useQueryClient();
 
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
-  const [savedPosts, setSavedPosts] = useState<Record<string, boolean>>({});
-  const [hiddenPosts, setHiddenPosts] = useState<Record<string, boolean>>({});
   const [announcementToEdit, setAnnouncementToEdit] = useState<CVOAnnouncement | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-
-  // Initialize reactions from localStorage
-  useEffect(() => {
-    try {
-      const storedLikes = localStorage.getItem("cvo-fb-likes");
-      if (storedLikes) setLikedPosts(JSON.parse(storedLikes));
-
-      const storedCounts = localStorage.getItem("cvo-fb-like-counts");
-      if (storedCounts) setLikeCounts(JSON.parse(storedCounts));
-
-      const storedSaves = localStorage.getItem("cvo-fb-saves");
-      if (storedSaves) setSavedPosts(JSON.parse(storedSaves));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   // Fetch real users from Supabase
   const { data: staffProfiles } = useQuery({
@@ -202,10 +176,9 @@ export function CVOSocialFeed({
   }, [announcements]);
 
   const filteredAnnouncements = useMemo(() => {
-    let list = announcements.filter((a) => !hiddenPosts[a.id]);
-    if (selectedCategory === "All") return list;
-    return list.filter((a) => a.category === selectedCategory);
-  }, [announcements, selectedCategory, hiddenPosts]);
+    if (selectedCategory === "All") return announcements;
+    return announcements.filter((a) => a.category === selectedCategory);
+  }, [announcements, selectedCategory]);
 
   const categories = useMemo(() => {
     return ["All", "Vaccination Drive", "Clinic Schedule", "Public Health", "Urgent Advisory"];
@@ -229,22 +202,7 @@ export function CVOSocialFeed({
     return null;
   };
 
-  // Helper to map photos to post topics like Facebook
-  const getPostImage = (item: CVOAnnouncement) => {
-    if (item.category === "Vaccination Drive") {
-      return "/gallery/real_cvo_carmen.jpg";
-    }
-    if (item.category === "Clinic Schedule" && item.title.toLowerCase().includes("spay")) {
-      return "/gallery/clinic-care.jpg";
-    }
-    if (item.target_barangay?.includes("Lapasan") || item.title.toLowerCase().includes("lapasan")) {
-      return "/gallery/real_cvo_balulang.jpg";
-    }
-    if (item.priority === "urgent" || item.category === "Urgent Advisory") {
-      return "/gallery/barangay-drive.jpg";
-    }
-    return "/gallery/clean_cvo_dogday.jpg";
-  };
+
 
   // Relative time format like Facebook
   const formatFacebookTime = (dateStr: string) => {
@@ -255,61 +213,6 @@ export function CVOSocialFeed({
     } catch {
       return "Just now";
     }
-  };
-
-  // Toggle Like reaction
-  const handleToggleLike = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const isLiked = !likedPosts[id];
-    const baseCount = id === "seed-1" ? 42 : id === "seed-2" ? 28 : 53;
-    const currentCount = likeCounts[id] ?? baseCount;
-    const newCount = isLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
-
-    const newLiked = { ...likedPosts, [id]: isLiked };
-    const newCounts = { ...likeCounts, [id]: newCount };
-
-    setLikedPosts(newLiked);
-    setLikeCounts(newCounts);
-
-    try {
-      localStorage.setItem("cvo-fb-likes", JSON.stringify(newLiked));
-      localStorage.setItem("cvo-fb-like-counts", JSON.stringify(newCounts));
-    } catch {
-      // ignore
-    }
-  };
-
-  // Share post
-  const handleShare = (item: CVOAnnouncement, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const shareText = `[Cagayan de Oro CVO Bulletin]\n${item.title}\n${item.content}\n\nShared via SyncVet CVO Portal`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareText);
-      toast.success("Broadcast bulletin link copied to clipboard!");
-    } else {
-      toast.info("Notice ready to share");
-    }
-  };
-
-  // Save post
-  const handleToggleSave = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const isSaved = !savedPosts[id];
-    const newSaves = { ...savedPosts, [id]: isSaved };
-    setSavedPosts(newSaves);
-    try {
-      localStorage.setItem("cvo-fb-saves", JSON.stringify(newSaves));
-    } catch {
-      // ignore
-    }
-    toast.success(isSaved ? "Saved to your bookmarks" : "Removed from bookmarks");
-  };
-
-  // Hide post from view
-  const handleHidePost = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setHiddenPosts((prev) => ({ ...prev, [id]: true }));
-    toast.info("Post hidden from your feed");
   };
 
   // Staff Pin toggle
@@ -387,14 +290,9 @@ export function CVOSocialFeed({
           </div>
         ) : (
           filteredAnnouncements.map((item) => {
-            const isLiked = !!likedPosts[item.id];
-            const baseLike = item.id === "seed-1" ? 42 : item.id === "seed-2" ? 28 : 53;
-            const likeCount = likeCounts[item.id] ?? baseLike;
-            const isSaved = !!savedPosts[item.id];
             const isUrgent = item.priority === "urgent" || item.priority === "high";
 
             const avatarUrl = getAuthorAvatar(item.author_name, item.author_id);
-            const postImage = getPostImage(item);
             const isVeterinarian = item.author_role.toLowerCase().includes("vet");
 
             // Format hashtags cleanly
@@ -466,79 +364,51 @@ export function CVOSocialFeed({
                     </div>
                   </div>
 
-                  {/* Header Actions (3-dots & Close) */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                          title="More options"
-                        >
-                          <MoreHorizontal className="size-4.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 rounded-xl text-xs">
-                        <DropdownMenuItem
-                          onClick={(e) => handleToggleSave(item.id, e)}
-                          className="cursor-pointer gap-2 py-2"
-                        >
-                          <Bookmark className={cn("size-4", isSaved && "fill-primary text-primary")} />
-                          <span>{isSaved ? "Remove from Saved" : "Save post"}</span>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          onClick={(e) => handleHidePost(item.id, e)}
-                          className="cursor-pointer gap-2 py-2"
-                        >
-                          <X className="size-4" />
-                          <span>Hide post</span>
-                        </DropdownMenuItem>
-
-                        {isStaff && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => handleTogglePin(item, e)}
-                              className="cursor-pointer gap-2 py-2"
-                            >
-                              <Pin className="size-4 text-amber-500" />
-                              <span>{item.is_pinned ? "Unpin Post" : "Pin to Top"}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAnnouncementToEdit(item);
-                                setEditDialogOpen(true);
-                              }}
-                              className="cursor-pointer gap-2 py-2"
-                            >
-                              <Pencil className="size-4 text-muted-foreground" />
-                              <span>Edit Post</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => handleDelete(item.id, e)}
-                              className="cursor-pointer gap-2 py-2 text-destructive focus:text-destructive focus:bg-destructive/10"
-                            >
-                              <Trash2 className="size-4 text-destructive" />
-                              <span>Delete Post</span>
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => handleHidePost(item.id, e)}
-                      className="size-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                      title="Hide post"
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  </div>
+                  {/* Header Actions (Only visible for CVO Staff to Pin, Edit, or Delete) */}
+                  {isStaff && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                            title="Manage announcement"
+                          >
+                            <MoreHorizontal className="size-4.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44 rounded-xl text-xs">
+                          <DropdownMenuItem
+                            onClick={(e) => handleTogglePin(item, e)}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Pin className="size-4 text-amber-500" />
+                            <span>{item.is_pinned ? "Unpin Post" : "Pin to Top"}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAnnouncementToEdit(item);
+                              setEditDialogOpen(true);
+                            }}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Pencil className="size-4 text-muted-foreground" />
+                            <span>Edit Post</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={(e) => handleDelete(item.id, e)}
+                            className="cursor-pointer gap-2 py-2 text-destructive focus:text-destructive focus:bg-destructive/10"
+                          >
+                            <Trash2 className="size-4 text-destructive" />
+                            <span>Delete Post</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── 2. Post Text Content ── */}
@@ -558,30 +428,11 @@ export function CVOSocialFeed({
                   )}
                 </div>
 
-                {/* ── 3. Facebook Full-Width Media Image ── */}
-                {postImage && (
-                  <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] bg-muted overflow-hidden cursor-pointer group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={postImage}
-                      alt={item.title}
-                      className="size-full object-cover transition-transform duration-300 group-hover:scale-102"
-                      loading="lazy"
-                    />
 
-                    {/* Target Barangay Pill Overlay */}
-                    {item.target_barangay && (
-                      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/75 backdrop-blur-md text-white text-xs font-semibold shadow-md">
-                        <MapPin className="size-3.5 text-primary shrink-0" />
-                        <span>{item.target_barangay}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* ── 4. Rich Event Box (if drive or outreach) ── */}
                 {item.target_barangay && (
-                  <div className="p-3.5 mx-3.5 my-2.5 rounded-xl border border-border/80 bg-muted/30 flex items-center justify-between gap-3">
+                  <div className="p-3.5 mx-3.5 my-2.5 mb-3.5 rounded-xl border border-border/80 bg-muted/30 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="size-11 rounded-xl bg-card border border-border flex flex-col items-center justify-center font-bold text-center shrink-0 shadow-2xs">
                         <span className="text-[9px] uppercase font-bold text-rose-600 leading-none">CVO</span>
@@ -609,83 +460,6 @@ export function CVOSocialFeed({
                     )}
                   </div>
                 )}
-
-                {/* ── 5. Facebook Reaction Counts Bar ── */}
-                <div className="px-3.5 sm:px-4 py-2 flex items-center justify-between text-xs text-muted-foreground border-b border-border/40">
-                  <div className="flex items-center gap-1.5">
-                    {/* Overlapping Like & Love circles */}
-                    <div className="flex items-center -space-x-1">
-                      <div className="size-5 rounded-full bg-[#1877F2] text-white flex items-center justify-center shadow-2xs ring-1 ring-card">
-                        <ThumbsUp className="size-2.5 fill-white" />
-                      </div>
-                      <div className="size-5 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-2xs ring-1 ring-card">
-                        <Heart className="size-2.5 fill-white" />
-                      </div>
-                    </div>
-                    <span className="font-medium text-[11px] text-foreground/80">{likeCount}</span>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => onOpenChatWithNotice?.(item.title)}
-                      className="hover:underline cursor-pointer"
-                    >
-                      {item.id === "seed-1" ? "14 citizen inquiries" : "8 inquiries"}
-                    </button>
-                    <span>·</span>
-                    <button
-                      type="button"
-                      onClick={(e) => handleShare(item, e)}
-                      className="hover:underline cursor-pointer"
-                    >
-                      {item.id === "seed-1" ? "21 shares" : "12 shares"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── 6. Facebook 3-Button Action Bar (Like, Comment/Ask, Share) ── */}
-                <div className="px-2 py-1 grid grid-cols-3 gap-1">
-                  {/* Like Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleToggleLike(item.id, e)}
-                    className={cn(
-                      "flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-colors duration-150 cursor-pointer",
-                      isLiked
-                        ? "text-[#1877F2] font-bold bg-[#1877F2]/10"
-                        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                    )}
-                  >
-                    <ThumbsUp
-                      className={cn(
-                        "size-4 transition-transform",
-                        isLiked ? "fill-[#1877F2] scale-110" : ""
-                      )}
-                    />
-                    <span>Like</span>
-                  </button>
-
-                  {/* Comment / Ask City Vet Button */}
-                  <button
-                    type="button"
-                    onClick={() => onOpenChatWithNotice?.(item.title)}
-                    className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors duration-150 cursor-pointer"
-                  >
-                    <MessageSquare className="size-4" />
-                    <span>Inquire</span>
-                  </button>
-
-                  {/* Share Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleShare(item, e)}
-                    className="flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors duration-150 cursor-pointer"
-                  >
-                    <Share2 className="size-4" />
-                    <span>Share</span>
-                  </button>
-                </div>
               </article>
             );
           })
