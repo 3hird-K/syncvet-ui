@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,8 @@ import {
   ClipboardCheck,
   Lock,
   Clock,
+  Save,
+  X,
 } from "lucide-react";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { useCVO } from "@/lib/cvo-context";
@@ -61,7 +64,7 @@ import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, isClinicDateDisabled, getNextAvailableClinicDate } from "@/lib/utils";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format } from "date-fns";
 
@@ -229,7 +232,7 @@ export function ClinicalExaminationDialog({
   const [followUp, setFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>(undefined);
   const [status, setStatus] = useState<CVOConsultation["status"]>("completed");
-  const [attendingVet, setAttendingVet] = useState(HELEN_VET.name);
+  const [attendingVet, setAttendingVet] = useState("");
 
   // Compute active vet object for avatar and role display
   const selectedVetObj = useMemo(() => {
@@ -244,12 +247,12 @@ export function ClinicalExaminationDialog({
       );
     }
 
-    const targetName = (attendingVet || HELEN_VET.name).toLowerCase();
+    if (!attendingVet) return null;
+    const targetName = attendingVet.toLowerCase();
     return (
       allAvailableVets.find((v) => v.name.toLowerCase() === targetName) ||
       allAvailableVets.find((v) => targetName.includes(v.name.toLowerCase()) || v.name.toLowerCase().includes(targetName)) ||
-      allAvailableVets[0] ||
-      HELEN_VET
+      null
     );
   }, [allAvailableVets, attendingVet, isAdmin, isVet, currentUserName, currentUserAvatar, user]);
 
@@ -320,7 +323,7 @@ export function ClinicalExaminationDialog({
       });
     }
 
-    // Vet name priority: If veterinarian role, locked to current user. If admin, consultation vet or default to Ms. Helen.
+    // Vet name priority: If veterinarian role, locked to current user. If admin, consultation vet if recognized, else empty.
     if (!isAdmin && isVet && currentUserName) {
       setAttendingVet(currentUserName);
     } else if (isAdmin) {
@@ -328,27 +331,27 @@ export function ClinicalExaminationDialog({
         consultation.vetName &&
         !consultation.vetName.includes("Queue Assignment") &&
         !consultation.vetName.includes("Attending CVO Vet") &&
-        !consultation.vetName.toLowerCase().includes("elena santos")
+        !consultation.vetName.toLowerCase().includes("elena santos") &&
+        (consultation.vetName.toLowerCase().includes("helen") ||
+          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
       ) {
         setAttendingVet(consultation.vetName);
       } else {
-        setAttendingVet(HELEN_VET.name);
+        setAttendingVet("");
       }
     } else if (currentUserName) {
       setAttendingVet(currentUserName);
     }
-  }, [consultation, user, isAdmin, isVet, currentUserName]);
+  }, [consultation, user, isAdmin, isVet, currentUserName, allAvailableVets]);
 
   // Enforce role assignment whenever dialog opens
   useEffect(() => {
     if (open) {
       if (!isAdmin && isVet && currentUserName) {
         setAttendingVet(currentUserName);
-      } else if (isAdmin && (!attendingVet || attendingVet.toLowerCase().includes("elena santos"))) {
-        setAttendingVet(HELEN_VET.name);
       }
     }
-  }, [open, isAdmin, isVet, currentUserName, attendingVet]);
+  }, [open, isAdmin, isVet, currentUserName]);
 
   const toggleSign = (category: string, sign: string) => {
     setObservedSigns((prev) => {
@@ -379,12 +382,24 @@ export function ClinicalExaminationDialog({
     setObservedSigns({});
   };
 
+  const canSubmit = useMemo(() => {
+    const hasWeight = Boolean(weightKg && Number(weightKg) > 0);
+    const hasTemp = Boolean(temperatureC && Number(temperatureC) > 0);
+    const hasDiag = Boolean(diagnosis && diagnosis.trim().length > 0);
+    const hasTreat = Boolean(treatment && treatment.trim().length > 0);
+    const hasFollowUpDate = !followUp || Boolean(followUpDate);
+    const hasVet = Boolean((!isAdmin && isVet && currentUserName) || attendingVet);
+    return hasWeight && hasTemp && hasDiag && hasTreat && hasFollowUpDate && hasVet;
+  }, [weightKg, temperatureC, diagnosis, treatment, followUp, followUpDate, isAdmin, isVet, currentUserName, attendingVet]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!consultation) return;
 
-    if (!diagnosis.trim()) {
-      toast.error("Please enter a clinical diagnosis.");
+    if (!canSubmit) {
+      toast.error("Required fields incomplete", {
+        description: "Please fill in Weight, Temperature, Diagnosis, and Treatment Administered.",
+      });
       return;
     }
 
@@ -407,7 +422,7 @@ export function ClinicalExaminationDialog({
         recommendations: recommendations.trim(),
         followUp,
         followUpDate: followUp && followUpDate ? format(followUpDate, "yyyy-MM-dd") : undefined,
-        vetName: (!isAdmin && isVet && currentUserName) ? currentUserName : attendingVet,
+        vetName: (!isAdmin && isVet && currentUserName) ? currentUserName : (attendingVet || ""),
         status,
         clinicalSystems: observedSigns,
         symptoms: allSymptomsList,
@@ -442,44 +457,85 @@ export function ClinicalExaminationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[96vw] max-h-[92vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-2xl pointer-events-auto">
-        <DialogHeader className="border-b pb-3.5 pr-10 sm:pr-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">
-                <Stethoscope className="size-5" />
-              </div>
-              <div>
-                <DialogTitle className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
-                  <span>Clinical Examination & Treatment Intake</span>
-                  <Badge variant="outline" className="font-mono text-[10px]">
-                    {consultation.encounterNo}
-                  </Badge>
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Official CVO Examination Form • Patient: {consultation.petName} ({consultation.species}) • Owner: {consultation.ownerName}
-                </DialogDescription>
-              </div>
+      <DialogContent 
+        showCloseButton={false}
+        className="sm:max-w-3xl lg:max-w-4xl w-[96vw] max-h-[90vh] p-0 flex flex-col bg-background rounded-2xl shadow-2xl border border-border pointer-events-auto overflow-hidden"
+      >
+        {/* Pinned Top Header */}
+        <div className="shrink-0 px-5 sm:px-6 py-3.5 border-b bg-card/60 backdrop-blur-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 border border-blue-500/20">
+              <Stethoscope className="size-5" />
             </div>
-
-            <div className="flex items-center gap-2 self-start sm:self-center">
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-xs font-bold capitalize px-3 py-1",
-                  status === "completed" && "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-                  status === "treatment" && "bg-purple-500/15 text-purple-600 border-purple-500/30",
-                  status === "in-consultation" && "bg-blue-500/15 text-blue-600 border-blue-500/30",
-                  status === "waiting" && "bg-amber-500/15 text-amber-600 border-amber-500/30"
-                )}
-              >
-                {status.replace("-", " ")}
-              </Badge>
+            <div className="min-w-0">
+              <DialogTitle className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2 truncate">
+                <span>Clinical Examination & Treatment Intake</span>
+                <Badge variant="outline" className="font-mono text-[10px] shrink-0">
+                  {consultation.encounterNo}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground truncate">
+                Official CVO Examination Form • Patient: {consultation.petName} ({consultation.species}) • Owner: {consultation.ownerName}
+              </DialogDescription>
             </div>
           </div>
-        </DialogHeader>
 
-        <form onSubmit={handleSave} className="space-y-4 pt-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge
+              variant="outline"
+              className={cn(
+                "hidden sm:inline-flex text-xs font-bold capitalize px-2.5 py-1",
+                status === "completed" && "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+                status === "treatment" && "bg-purple-500/15 text-purple-600 border-purple-500/30",
+                status === "in-consultation" && "bg-blue-500/15 text-blue-600 border-blue-500/30",
+                status === "waiting" && "bg-amber-500/15 text-amber-600 border-amber-500/30"
+              )}
+            >
+              {status.replace("-", " ")}
+            </Badge>
+
+            {/* Save Icon Button beside Close (X) Icon */}
+            <button
+              type="submit"
+              form="clinical-examination-form"
+              disabled={!canSubmit || loading}
+              className={cn(
+                "flex size-8 items-center justify-center rounded-full border shadow-xs transition-all",
+                canSubmit && !loading
+                  ? "bg-primary text-primary-foreground border-primary/40 hover:bg-primary/90 hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
+                  : "bg-muted/60 text-muted-foreground/40 border-border/60 cursor-not-allowed opacity-50"
+              )}
+              title={
+                !canSubmit
+                  ? "Please fill in all required fields (*Weight, *Temp, *Diagnosis, *Treatment) to save"
+                  : "Save Examination & Update Record"
+              }
+            >
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              <span className="sr-only">Save Examination & Update Record</span>
+            </button>
+
+            {/* Close Button */}
+            <DialogClose asChild>
+              <button
+                type="button"
+                className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+                title="Close"
+              >
+                <X className="size-4" />
+                <span className="sr-only">Close</span>
+              </button>
+            </DialogClose>
+          </div>
+        </div>
+
+        {/* Scrollable Form Body */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4">
+          <form id="clinical-examination-form" onSubmit={handleSave} className="space-y-4 pb-2">
           {/* Update Encounter Lifecycle */}
           <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2">
             <div className="flex items-center justify-between">
@@ -785,7 +841,13 @@ export function ClinicalExaminationDialog({
                 <input
                   type="checkbox"
                   checked={followUp}
-                  onChange={(e) => setFollowUp(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFollowUp(checked);
+                    if (checked && (!followUpDate || isClinicDateDisabled(followUpDate))) {
+                      setFollowUpDate(getNextAvailableClinicDate());
+                    }
+                  }}
                   className="size-4 rounded accent-primary cursor-pointer"
                 />
                 <span>Follow-Up Required (Schedule Check)</span>
@@ -795,21 +857,16 @@ export function ClinicalExaminationDialog({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <Label className="text-[11px] font-semibold text-muted-foreground">Follow-Up Date</Label>
-                    <span className="text-[10px] text-muted-foreground font-medium">Mon – Fri only</span>
+                    <span className="text-[10px] text-muted-foreground font-medium">
+                      Mon – Fri, 8 AM – 5 PM only {new Date().getHours() >= 17 ? "(Today closed)" : ""}
+                    </span>
                   </div>
                   <DatePicker
                     date={followUpDate}
                     setDate={setFollowUpDate}
                     placeholder="Select follow-up date (Mon – Fri)"
                     className="h-8 text-xs rounded-lg bg-background font-normal"
-                    fromDate={new Date()}
-                    disabled={(date) => {
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const day = date.getDay();
-                      // Only available Monday-Friday (exclude past dates, Sundays [0] and Saturdays [6])
-                      return date < today || day === 0 || day === 6;
-                    }}
+                    disabled={isClinicDateDisabled}
                   />
                 </div>
               )}
@@ -907,36 +964,8 @@ export function ClinicalExaminationDialog({
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-3 border-t flex flex-row items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="h-8.5 px-3 text-xs font-semibold rounded-lg cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={loading}
-              className="h-8.5 px-4 text-xs font-bold bg-primary text-primary-foreground gap-1.5 rounded-lg cursor-pointer shadow-xs hover:bg-primary/90"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span>Saving Clinical Findings...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="size-3.5" />
-                  <span>Save Examination & Update Record</span>
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, isClinicDateDisabled, getNextAvailableClinicDate } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,7 @@ import { cvoBarangays } from "@/data/cvo-store";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format } from "date-fns";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
+import { checkInPetOwnerToQueue, getTodayDateStr } from "@/lib/cvo-queue";
 
 export const CVO_CLINICAL_SYSTEMS = [
   {
@@ -332,16 +333,9 @@ export function PetOwnerConsultationDialog({
     consultation: true,
   });
 
-  // Step 3: Preferred consultation appointment date (Monday-Friday only)
+  // Step 3: Preferred consultation appointment date (Monday-Friday, 8 AM - 5 PM only)
   const getDefaultConsultationDate = () => {
-    const d = new Date();
-    const day = d.getDay();
-    if (day === 0) {
-      d.setDate(d.getDate() + 1); // Sunday -> Monday
-    } else if (day === 6) {
-      d.setDate(d.getDate() + 2); // Saturday -> Monday
-    }
-    return d;
+    return getNextAvailableClinicDate();
   };
 
   const [consultationDate, setConsultationDate] = useState<Date | undefined>(getDefaultConsultationDate());
@@ -433,6 +427,26 @@ export function PetOwnerConsultationDialog({
         recommendations: "",
         followUp: false,
       });
+
+      // Include consultation in today's clinic queue if scheduled for today (without consuming procedure slots)
+      if (scheduledDateStr === getTodayDateStr()) {
+        try {
+          checkInPetOwnerToQueue({
+            appointmentId: newRecord.encounterNo || newRecord.id,
+            ownerId: ownerName.trim(),
+            ownerName: ownerName.trim(),
+            ownerContact: ownerContact.trim(),
+            ownerBarangay,
+            petId: selectedPet ? selectedPet.id : undefined,
+            petName: effectivePetName,
+            species: effectiveSpecies,
+            breed: effectiveBreed,
+            serviceId: "consultation",
+            serviceTitle: "Clinical Consultation",
+            dateStr: scheduledDateStr,
+          });
+        } catch {}
+      }
 
       setLoading(false);
       setOpen(false);
@@ -731,14 +745,7 @@ export function PetOwnerConsultationDialog({
                   setDate={setConsultationDate}
                   placeholder="Choose consultation date (Mon – Fri)"
                   className="h-10 text-xs sm:text-sm rounded-xl bg-background font-normal"
-                  fromDate={new Date()}
-                  disabled={(date) => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const day = date.getDay();
-                    // Exclude past dates, Sundays (0) and Saturdays (6)
-                    return date < today || day === 0 || day === 6;
-                  }}
+                  disabled={isClinicDateDisabled}
                 />
               </div>
 
@@ -747,6 +754,11 @@ export function PetOwnerConsultationDialog({
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                   The CVO clinic is open for walk-in consultations Monday through Friday, 8:00 AM to 5:00 PM. Weekend consultations are unavailable.
                 </p>
+                {new Date().getHours() >= 17 && (
+                  <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    Consultation hours for today have closed (after 5:00 PM). Same-day booking is disabled.
+                  </p>
+                )}
               </div>
             </div>
           </div>

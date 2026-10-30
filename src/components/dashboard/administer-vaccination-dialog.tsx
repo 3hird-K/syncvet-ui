@@ -256,7 +256,7 @@ export function AdministerVaccinationDialog({
   const [batchNo, setBatchNo] = useState(activeVaccineBatches[0]?.batchNumber || "");
   const [expiryDate, setExpiryDate] = useState(activeVaccineBatches[0]?.expirationDate || "");
   const [tagNumber, setTagNumber] = useState("");
-  const [attendingVet, setAttendingVet] = useState(HELEN_VET.name);
+  const [attendingVet, setAttendingVet] = useState("");
 
   // Next Booster Date: 1 Year later under RA 9482 (Aligned with CDO local time / consultation date)
   const baseAdminDate = consultation?.date ? consultation.date.split("T")[0] : getTodayDateString();
@@ -279,7 +279,7 @@ export function AdministerVaccinationDialog({
   }, [activeVaccineBatches, batchNo]);
 
   // If Veterinarian: automatically locked to the logged-in user ("you").
-  // If Admin: can choose who will be the administering vet (defaults to Ms. Helen).
+  // If Admin: only select if already assigned to a recognized vet (Helen, vet, admin account), else leave empty.
   useEffect(() => {
     if (!isAdmin && isVet && currentUserName) {
       setAttendingVet(currentUserName);
@@ -287,16 +287,19 @@ export function AdministerVaccinationDialog({
       if (
         consultation?.vetName &&
         consultation.vetName !== "Attending CVO Vet" &&
-        !consultation.vetName.toLowerCase().includes("elena santos")
+        !consultation.vetName.toLowerCase().includes("queue assignment") &&
+        !consultation.vetName.toLowerCase().includes("elena santos") &&
+        (consultation.vetName.toLowerCase().includes("helen") ||
+          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
       ) {
         setAttendingVet(consultation.vetName);
       } else {
-        setAttendingVet(HELEN_VET.name);
+        setAttendingVet("");
       }
     } else if (currentUserName) {
       setAttendingVet(currentUserName);
     }
-  }, [isAdmin, isVet, currentUserName, consultation]);
+  }, [isAdmin, isVet, currentUserName, consultation, allAvailableVets]);
 
   // Sync state whenever consultation changes
   useEffect(() => {
@@ -314,14 +317,17 @@ export function AdministerVaccinationDialog({
       } else if (
         consultation.vetName &&
         consultation.vetName !== "Attending CVO Vet" &&
-        !consultation.vetName.toLowerCase().includes("elena santos")
+        !consultation.vetName.toLowerCase().includes("queue assignment") &&
+        !consultation.vetName.toLowerCase().includes("elena santos") &&
+        (consultation.vetName.toLowerCase().includes("helen") ||
+          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
       ) {
         setAttendingVet(consultation.vetName);
       } else if (isAdmin) {
-        setAttendingVet(HELEN_VET.name);
+        setAttendingVet("");
       }
     }
-  }, [consultation, isAdmin, isVet, currentUserName]);
+  }, [consultation, isAdmin, isVet, currentUserName, allAvailableVets]);
 
   // Reset/enforce whenever dialog opens
   useEffect(() => {
@@ -355,10 +361,9 @@ export function AdministerVaccinationDialog({
         email: user?.primaryEmailAddress?.emailAddress,
       };
     }
+    if (!attendingVet) return null;
     return (
       allAvailableVets.find((v) => v.name.toLowerCase() === attendingVet.toLowerCase()) ||
-      allAvailableVets.find((v) => v.name.toLowerCase() === currentUserName.toLowerCase()) ||
-      allAvailableVets[0] ||
       null
     );
   }, [allAvailableVets, attendingVet, isAdmin, isVet, currentUserName, currentUserAvatar, user]);
@@ -410,7 +415,13 @@ export function AdministerVaccinationDialog({
     const rawAppointmentId = consultation.id.startsWith("proc-") ? consultation.id.replace("proc-", "") : consultation.id;
     const finalVetName = (!isAdmin && isVet && currentUserName)
       ? currentUserName
-      : (attendingVet || selectedVetObj?.name || "Attending Veterinarian");
+      : (attendingVet || selectedVetObj?.name || "");
+
+    if (!finalVetName) {
+      toast.error("Please assign an Administering Veterinarian before completing vaccination.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       // 1. Update Pet Record in Supabase to mark verified vaccination

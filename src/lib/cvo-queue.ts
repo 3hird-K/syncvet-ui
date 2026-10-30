@@ -26,6 +26,8 @@ export interface QueueTicket {
   consultationRoom?: string;
   calledAt?: string;
   completedAt?: string;
+  notes?: string;
+  encounterNo?: string;
 }
 
 export interface DailyQueueState {
@@ -189,6 +191,119 @@ export async function syncQueueFromSupabase(
     }
   } catch (err) {
     console.warn("Notice: Error syncing queue from Supabase:", err);
+  }
+
+  return current;
+}
+
+/**
+ * Sync active CVO consultations into today's queue without consuming procedure slots
+ */
+export function syncConsultationsToQueue(
+  consultations: any[],
+  dateStr: string = getTodayDateStr()
+): DailyQueueState {
+  const current = getDailyQueue(dateStr);
+  if (!Array.isArray(consultations) || consultations.length === 0) return current;
+
+  let updated = false;
+  const tickets = [...current.activeTickets];
+
+  consultations.forEach((c) => {
+    // Only include consultations scheduled for today
+    const cDate = c.date || "";
+    if (cDate !== dateStr && !cDate.startsWith(dateStr)) return;
+
+    const encounterId = c.encounterNo || c.id;
+
+    if (c.status === "completed" || c.status === "cancelled") {
+      const idx = tickets.findIndex(
+        (t) => t.appointmentId === encounterId || (t.encounterNo && t.encounterNo === encounterId)
+      );
+      if (idx >= 0 && tickets[idx].status !== "completed") {
+        tickets[idx] = { ...tickets[idx], status: "completed" };
+        updated = true;
+      }
+      return;
+    }
+
+    const existingIdx = tickets.findIndex(
+      (t) =>
+        t.appointmentId === encounterId ||
+        (t.encounterNo && t.encounterNo === encounterId) ||
+        (t.serviceId === "consultation" &&
+          t.petName.toLowerCase().trim() === (c.petName || "").toLowerCase().trim() &&
+          t.ownerName.toLowerCase().trim() === (c.ownerName || "").toLowerCase().trim())
+    );
+
+    const ticketStatus: QueueTicket["status"] =
+      c.status === "in-consultation" || c.status === "treatment"
+        ? "in-consultation"
+        : "waiting";
+
+    if (existingIdx >= 0) {
+      if (tickets[existingIdx].status !== ticketStatus) {
+        tickets[existingIdx] = {
+          ...tickets[existingIdx],
+          status: ticketStatus,
+          servingVet:
+            c.attendingVet ||
+            tickets[existingIdx].servingVet ||
+            (ticketStatus === "in-consultation" ? "Dr. Helen Ann P. Tacandong, DVM" : undefined),
+          consultationRoom:
+            tickets[existingIdx].consultationRoom ||
+            (ticketStatus === "in-consultation" ? "Consultation Desk 1" : undefined),
+        };
+        updated = true;
+      }
+    } else {
+      const seq = tickets.length + 1;
+      const assignedNum = `Q-${String(seq).padStart(3, "0")}`;
+      const now = new Date();
+      tickets.push({
+        id: `ticket_consultation_${encounterId}`,
+        ticketNumber: assignedNum,
+        queueSequence: seq,
+        appointmentId: encounterId,
+        encounterNo: c.encounterNo,
+        notes: c.chiefComplaint || (c.symptoms && c.symptoms.length > 0 ? c.symptoms.join(", ") : undefined),
+        date: dateStr,
+        checkInTime: c.time || format(now, "h:mm a"),
+        checkedInAt: c.createdAt || now.toISOString(),
+        ownerId: c.ownerId || c.owner_id || c.ownerName,
+        ownerName: c.ownerName || "Pet Owner",
+        ownerContact: c.ownerContact,
+        ownerBarangay: c.ownerBarangay || "Cagayan de Oro City",
+        petId: c.petId,
+        petName: c.petName || "Pet",
+        species: c.species || "Dog",
+        breed: c.breed || "",
+        serviceId: "consultation",
+        serviceTitle: "Clinical Consultation",
+        status: ticketStatus,
+        servingVet:
+          ticketStatus === "in-consultation"
+            ? c.attendingVet || "Dr. Helen Ann P. Tacandong, DVM"
+            : undefined,
+        consultationRoom:
+          ticketStatus === "in-consultation" ? "Consultation Desk 1" : undefined,
+      });
+      updated = true;
+    }
+  });
+
+  if (updated || tickets.length !== current.activeTickets.length) {
+    // If any ticket is actively in consultation, set nowServingTicketNumber to it
+    const activeInConsultation = tickets.find((t) => t.status === "in-consultation");
+    const newState: DailyQueueState = {
+      ...current,
+      activeTickets: tickets,
+      nowServingTicketNumber: activeInConsultation ? activeInConsultation.ticketNumber : current.nowServingTicketNumber,
+      servingVet: activeInConsultation ? activeInConsultation.servingVet || "Dr. Helen Ann P. Tacandong, DVM" : current.servingVet,
+      servingRoom: activeInConsultation ? activeInConsultation.consultationRoom || "Consultation Desk 1" : current.servingRoom,
+    };
+    saveDailyQueue(newState);
+    return newState;
   }
 
   return current;
@@ -456,27 +571,62 @@ export function resetPetOwnerQueue(
   return updatedState;
 }
 
+export type PetOwnerQueueLookup =
+  | string
+  | {
+      ownerId?: string;
+      userName?: string;
+      userEmail?: string;
+      petNames?: string[];
+      encounterNos?: string[];
+      appointmentIds?: string[];
+    };
+
 /**
  * Get the active ticket information for a pet owner
  */
 export function getPetOwnerQueueStatus(
-  ownerId: string,
+  lookup: PetOwnerQueueLookup,
   dateStr: string = getTodayDateStr()
 ): {
   myTicket: QueueTicket | null;
   nowServing: QueueTicket | null;
   ticketsAhead: number;
   isMyTurn: boolean;
+  isInConsultation: boolean;
   totalWaiting: number;
 } {
   const queue = getDailyQueue(dateStr);
 
-  // Find pet owner's active ticket for today (prioritizing waiting or in-consultation)
+  const ownerId = typeof lookup === "string" ? lookup : lookup.ownerId || "";
+  const userName = typeof lookup === "string" ? "" : lookup.userName || "";
+  const petNames = typeof lookup === "string" ? [] : (lookup.petNames || []).map((n) => n.toLowerCase().trim());
+  const encounterNos = typeof lookup === "string" ? [] : (lookup.encounterNos || []).map((e) => e.toLowerCase().trim());
+  const appointmentIds = typeof lookup === "string" ? [] : (lookup.appointmentIds || []).map((a) => a.toLowerCase().trim());
+
+  const cleanOwnerId = (ownerId || "").toLowerCase().trim();
+  const cleanUserName = (userName || "").toLowerCase().trim();
+
+  const matchesTicket = (t: QueueTicket) => {
+    const tOwnerId = (t.ownerId || "").toLowerCase().trim();
+    const tOwnerName = (t.ownerName || "").toLowerCase().trim();
+    const tPetName = (t.petName || "").toLowerCase().trim();
+    const tEncounter = (t.encounterNo || "").toLowerCase().trim();
+    const tAppointment = (t.appointmentId || "").toLowerCase().trim();
+
+    if (cleanOwnerId && (tOwnerId === cleanOwnerId || tOwnerName.includes(cleanOwnerId) || cleanOwnerId.includes(tOwnerName))) return true;
+    if (cleanUserName && (tOwnerName === cleanUserName || tOwnerName.includes(cleanUserName) || cleanUserName.includes(tOwnerName))) return true;
+    if (encounterNos.length > 0 && (encounterNos.includes(tEncounter) || encounterNos.includes(tAppointment))) return true;
+    if (appointmentIds.length > 0 && appointmentIds.includes(tAppointment)) return true;
+    if (petNames.length > 0 && petNames.includes(tPetName)) return true;
+    return false;
+  };
+
+  // Find pet owner's active ticket for today (prioritizing in-consultation, then waiting, then non-completed)
   const myTicket =
-    queue.activeTickets.find(
-      (t) => t.ownerId === ownerId && (t.status === "in-consultation" || t.status === "waiting")
-    ) ||
-    queue.activeTickets.find((t) => t.ownerId === ownerId) ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "in-consultation") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "waiting") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status !== "completed") ||
     null;
 
   const nowServing =
@@ -484,9 +634,14 @@ export function getPetOwnerQueueStatus(
 
   let ticketsAhead = 0;
   let isMyTurn = false;
+  let isInConsultation = false;
 
   if (myTicket) {
-    if (myTicket.status === "in-consultation" || queue.nowServingTicketNumber === myTicket.ticketNumber) {
+    if (myTicket.status === "in-consultation") {
+      isInConsultation = true;
+      isMyTurn = true;
+      ticketsAhead = 0;
+    } else if (queue.nowServingTicketNumber === myTicket.ticketNumber) {
       isMyTurn = true;
       ticketsAhead = 0;
     } else if (myTicket.status === "waiting") {
@@ -506,6 +661,7 @@ export function getPetOwnerQueueStatus(
     nowServing,
     ticketsAhead,
     isMyTurn,
+    isInConsultation,
     totalWaiting,
   };
 }

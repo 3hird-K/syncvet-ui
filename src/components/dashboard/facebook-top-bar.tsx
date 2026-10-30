@@ -17,7 +17,10 @@ import {
   Home,
   Stethoscope,
   Calendar,
+  CalendarCheck,
   Syringe,
+  HeartPulse,
+  Newspaper,
   MapPin,
   ShieldAlert,
   LayoutGrid,
@@ -143,10 +146,10 @@ export function FacebookTopBar({
   };
 
   const navItems = [
-    { key: "feed", label: "Home / CVO Feed", shortLabel: "Feed", icon: Home },
+    { key: "feed", label: "CVO Public Bulletins & Announcements", shortLabel: "Bulletins", icon: Newspaper },
     { key: "consultations", label: "Clinical Consultations", shortLabel: "Consultations", icon: Stethoscope },
-    { key: "procedures", label: "Procedure Appointments", shortLabel: "Appointments", icon: Calendar },
-    { key: "vaccinations", label: "Vaccination Ledger", shortLabel: "Vaccines", icon: Syringe },
+    { key: "procedures", label: "Procedure Appointments", shortLabel: "Appointments", icon: CalendarCheck },
+    { key: "vaccinations", label: "Vaccination Ledger", shortLabel: "Vaccines", icon: HeartPulse },
   ];
 
   return (

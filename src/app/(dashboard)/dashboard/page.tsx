@@ -4,7 +4,6 @@ import { MetricCards } from "@/components/dashboard/metric-cards";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { TodaysOperationsCard } from "@/components/dashboard/todays-operations-card";
-import { PublicHealthOverview } from "@/components/dashboard/public-health-overview";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -209,10 +208,7 @@ export default function DashboardHomePage() {
         <TodaysOperationsCard />
       </div>
 
-      {/* ── 5. Row 2: Public Health & Disease Surveillance Metric Dashboard ── */}
-      <PublicHealthOverview />
-
-      {/* ── 6. Row 3: Real-Time Office Activity Timeline ── */}
+      {/* ── 5. Row 2: Real-Time Office Activity Timeline ── */}
       <ActivityFeed />
     </div>
   );

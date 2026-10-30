@@ -41,3 +41,60 @@ export function isTodayDate(dateStr?: string | null): boolean {
   const normalized = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
   return normalized === today;
 }
+
+/**
+ * Operating rule for all CVO clinic bookings & schedules
+ * (Consultations, Spay/Neuter, Vaccinations, Follow-ups):
+ * - Operating Schedule: Monday – Friday, 8:00 AM – 5:00 PM.
+ * - Weekends (Saturday & Sunday) are disabled.
+ * - Past dates are disabled.
+ * - If date is today, and the current local time has reached or exceeded 5:00 PM (17:00)
+ *   or is before 8:00 AM, same-day scheduling is closed and today must be disabled.
+ */
+export function isClinicDateDisabled(date: Date): boolean {
+  const now = new Date();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const checkDate = new Date(date);
+  checkDate.setHours(0, 0, 0, 0);
+
+  // 1. Disable past dates
+  if (checkDate < today) return true;
+
+  // 2. Disable weekends (Sunday = 0, Saturday = 6)
+  const day = checkDate.getDay();
+  if (day === 0 || day === 6) return true;
+
+  // 3. Same-day check: If checkDate is today, disable if current time exceeded 5:00 PM (17:00) or before 8:00 AM
+  if (checkDate.getTime() === today.getTime()) {
+    const currentHour = now.getHours();
+    if (currentHour >= 17 || currentHour < 8) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Returns the next available valid clinic booking date (skipping weekends and past 5:00 PM cutoff).
+ */
+export function getNextAvailableClinicDate(): Date {
+  const now = new Date();
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+
+  // If today is past 5:00 PM (17:00), advance to tomorrow
+  if (now.getHours() >= 17) {
+    d.setDate(d.getDate() + 1);
+  }
+
+  // Advance past any weekends (Saturday or Sunday)
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+
+  return d;
+}
+

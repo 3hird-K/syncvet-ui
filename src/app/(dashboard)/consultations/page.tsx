@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Stethoscope,
   Clock,
@@ -23,6 +24,7 @@ import {
   Lock,
   ArrowDown,
   ArrowUp,
+  Loader2,
 } from "lucide-react";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -85,9 +87,17 @@ export interface QueueEncounter extends CVOConsultation {
   vetAvatarUrl?: string;
 }
 
-export default function ConsultationsPage() {
+function ConsultationsContent() {
   const { consultations: allConsultations, updateConsultationStatus, activeRoleView, inventory } = useCVO();
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const targetEncounterNo = searchParams?.get("encounterNo");
+  const targetAction = searchParams?.get("action");
+  const targetCategory = searchParams?.get("category");
+  const targetPet = searchParams?.get("pet");
+  const targetTicket = searchParams?.get("ticket");
+
+  const autoOpenedRef = useRef<string | null>(null);
 
   const availableVaccineStock = useMemo(() => {
     return (inventory || []).filter((i: any) => i.category === "Vaccines" && i.stock > 0).reduce((sum: number, i: any) => sum + i.stock, 0);
@@ -330,6 +340,41 @@ export default function ConsultationsPage() {
     staleTime: 60000,
   });
 
+  // Check if attending vet is recognized (Dr. Helen, or a registered Vet/Admin account)
+  const isRecognizedAttendingVet = useCallback(
+    (name?: string) => {
+      if (!name || !name.trim()) return false;
+      const lower = name.toLowerCase().trim();
+      if (
+        lower.includes("attending cvo") ||
+        lower.includes("queue assignment") ||
+        lower.includes("cvo duty") ||
+        lower.includes("unassigned") ||
+        lower.includes("pending") ||
+        lower.includes("elena santos")
+      ) {
+        return false;
+      }
+      // 1. Dr. Helen Ann P. Tacandong
+      if (lower.includes("helen")) return true;
+
+      // 2. Current user if vet or admin
+      const currentFullName = user?.fullName?.toLowerCase().trim();
+      if (currentFullName && (lower === currentFullName || lower.includes(currentFullName))) {
+        return true;
+      }
+
+      // 3. Registered Vet or Admin in DB
+      return dbUsers.some((u: any) => {
+        const uRole = (u.role || "").toLowerCase();
+        if (!uRole.includes("vet") && !uRole.includes("admin")) return false;
+        const uName = (u.full_name || "").toLowerCase().trim();
+        return uName && (uName === lower || lower.includes(uName) || uName.includes(lower));
+      });
+    },
+    [user?.fullName, dbUsers]
+  );
+
   // Consolidate consultations into QueueEncounter[]
   const consultationItems = useMemo<QueueEncounter[]>(() => {
     return allConsultations.map((c) => {
@@ -338,22 +383,26 @@ export default function ConsultationsPage() {
           (u.full_name && c.ownerName && u.full_name.trim().toLowerCase() === c.ownerName.trim().toLowerCase()) ||
           u.id === c.ownerContact
       );
+
+      const validVetName = isRecognizedAttendingVet(c.vetName) ? c.vetName : "";
+
       const matchedVet = dbUsers.find((u: any) => {
-        if (!c.vetName) return false;
+        if (!validVetName) return false;
         const uName = (u.full_name || "").toLowerCase().trim();
-        const vName = c.vetName.toLowerCase().trim();
+        const vName = validVetName.toLowerCase().trim();
         return uName === vName || vName.includes(uName) || uName.includes(vName);
       });
 
       return {
         ...c,
+        vetName: validVetName,
         category: "consultation" as const,
         isOverdue: isItemOverdue(c.date, c.status),
         ownerAvatarUrl: matchedUser?.avatar_url,
         vetAvatarUrl: matchedVet?.avatar_url,
       };
     });
-  }, [allConsultations, dbUsers]);
+  }, [allConsultations, dbUsers, isRecognizedAttendingVet]);
 
   // Consolidate procedure appointments into QueueEncounter[]
   const appointmentItems = useMemo<QueueEncounter[]>(() => {
@@ -434,14 +483,14 @@ export default function ConsultationsPage() {
           }
         }
 
-        // 4. Default fallback
-        if (!resolvedVet) {
-          resolvedVet = "Attending CVO Vet";
+        // 4. Validate attending veterinarian: Only keep if recognized vet (Helen, vet, or admin account)
+        if (resolvedVet && !isRecognizedAttendingVet(resolvedVet)) {
+          resolvedVet = "";
         }
 
         // Match vet user to fetch their profile picture/avatar
         const matchedVetUser = dbUsers.find((u: any) => {
-          if (!resolvedVet || resolvedVet === "Attending CVO Vet") return false;
+          if (!resolvedVet) return false;
           const uName = (u.full_name || "").toLowerCase().trim();
           const vName = resolvedVet.toLowerCase().trim();
           return uName === vName || vName.includes(uName) || uName.includes(vName);
@@ -560,6 +609,92 @@ export default function ConsultationsPage() {
     });
   }, [allUnifiedQueue, isPetOwner, user]);
 
+  // Auto-open requested encounter from URL parameters (e.g. redirected from Today's Clinic Queue)
+  useEffect(() => {
+    if (!targetEncounterNo && !targetPet && !targetTicket) return;
+    if (allUnifiedQueue.length === 0) return;
+
+    const targetKey = `${targetEncounterNo || ""}-${targetPet || ""}-${targetTicket || ""}-${targetAction || ""}`;
+    if (autoOpenedRef.current === targetKey) return;
+
+    const encLower = targetEncounterNo?.toLowerCase().trim();
+    const petLower = targetPet?.toLowerCase().trim();
+    const ticketLower = targetTicket?.toLowerCase().trim();
+
+    let found = allUnifiedQueue.find((item) => {
+      const itemEnc = (item.encounterNo || "").toLowerCase().trim();
+      const itemId = (item.id || "").toLowerCase().trim();
+      const itemPet = (item.petName || "").toLowerCase().trim();
+
+      if (encLower && (itemEnc === encLower || itemId === encLower || itemId.includes(encLower) || encLower.includes(itemId))) {
+        return true;
+      }
+      if (ticketLower && (itemEnc === ticketLower || itemId === ticketLower)) {
+        return true;
+      }
+      if (petLower && itemPet === petLower) {
+        return true;
+      }
+      return false;
+    });
+
+    if (!found && (targetPet || targetEncounterNo)) {
+      // Fallback synthetic QueueEncounter so dialog opens immediately
+      const cat = (targetCategory as QueueCategory) || "consultation";
+      found = {
+        id: `enc-${Date.now()}`,
+        encounterNo: targetEncounterNo || `ENC-${Date.now().toString().slice(-5)}`,
+        petId: "",
+        petName: targetPet || "Patient",
+        species: "Dog",
+        breed: "Aspin",
+        ownerName: "Pet Owner",
+        ownerContact: "N/A",
+        ownerBarangay: "Carmen",
+        vetName: "Dr. Helen Ann P. Tacandong, DVM",
+        date: format(new Date(), "yyyy-MM-dd"),
+        time: format(new Date(), "hh:mm a"),
+        chiefComplaint: "Clinical checkup / procedure",
+        symptoms: [],
+        vitals: { weightKg: 0, temperatureC: 0 },
+        diagnosis:
+          cat === "vaccination"
+            ? "Anti-Rabies Prophylaxis Protocol"
+            : cat === "spay-neuter"
+            ? "Elective Gonadectomy / Kapon"
+            : "Clinical Consultation",
+        treatment: "",
+        medication: "",
+        dosageInstructions: "",
+        status: "waiting",
+        serviceType: "Field Treatment/Consultation",
+        category: cat,
+        isOverdue: false,
+      };
+    }
+
+    if (found) {
+      autoOpenedRef.current = targetKey;
+      setSelectedConsultation(found);
+
+      if (targetCategory && ["consultation", "vaccination", "spay-neuter"].includes(targetCategory)) {
+        setCategoryFilter(targetCategory);
+      }
+
+      const cat = found.category || (targetCategory as QueueCategory) || "consultation";
+      if (cat === "consultation") {
+        setExamDialogOpen(true);
+        toast.info(`Opening Clinical Examination form for ${found.petName} (${found.encounterNo})`);
+      } else if (cat === "vaccination") {
+        setVaxDialogOpen(true);
+        toast.info(`Opening Vaccination Administration form for ${found.petName}`);
+      } else if (cat === "spay-neuter") {
+        setSurgeryDialogOpen(true);
+        toast.info(`Opening Surgical Protocol form for ${found.petName}`);
+      }
+    }
+  }, [allUnifiedQueue, targetEncounterNo, targetPet, targetTicket, targetAction, targetCategory]);
+
   // Helpers to clean and shorten verbose text for compact responsive layout
   const formatEncounterDate = (dateStr?: string) => {
     if (!dateStr) return "N/A";
@@ -588,8 +723,7 @@ export default function ConsultationsPage() {
   };
 
   const cleanVetName = (name?: string) => {
-    if (!name) return "CVO Duty Vet";
-    if (name.includes("Attending CVO Veterinarian")) return "Attending CVO Vet";
+    if (!name || !isRecognizedAttendingVet(name)) return "";
     return name.split(",")[0].trim();
   };
 
@@ -1066,17 +1200,21 @@ export default function ConsultationsPage() {
                     {/* 5. Attending Veterinarian */}
                     {visibleColumns.includes("vet") && (
                       <TableCell className="py-3 align-middle">
-                        <div className="flex items-center gap-2 text-xs max-w-[160px]">
-                          <div
-                            className="size-6 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/25 shadow-2xs"
-                            title={cleanVetName(c.vetName)}
-                          >
-                            <Stethoscope className="size-3" />
+                        {isRecognizedAttendingVet(c.vetName) ? (
+                          <div className="flex items-center gap-2 text-xs max-w-[160px]">
+                            <div
+                              className="size-6 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/25 shadow-2xs"
+                              title={cleanVetName(c.vetName)}
+                            >
+                              <Stethoscope className="size-3" />
+                            </div>
+                            <span className="font-medium text-foreground truncate" title={c.vetName}>
+                              {cleanVetName(c.vetName)}
+                            </span>
                           </div>
-                          <span className="font-medium text-foreground truncate" title={c.vetName}>
-                            {cleanVetName(c.vetName)}
-                          </span>
-                        </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/50 font-medium select-none">—</span>
+                        )}
                       </TableCell>
                     )}
 
@@ -1556,10 +1694,18 @@ export default function ConsultationsPage() {
 
               <div className="pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between">
                 <span className="flex items-center gap-1.5 truncate">
-                  <div className="size-5 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/20 shadow-2xs">
-                    <Stethoscope className="size-2.5" />
-                  </div>
-                  Attending: <strong className="text-foreground ml-0.5">{cleanVetName(selectedConsultation.vetName)}</strong>
+                  {isRecognizedAttendingVet(selectedConsultation.vetName) ? (
+                    <>
+                      <div className="size-5 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/20 shadow-2xs">
+                        <Stethoscope className="size-2.5" />
+                      </div>
+                      Attending: <strong className="text-foreground ml-0.5">{cleanVetName(selectedConsultation.vetName)}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Attending: <span className="text-muted-foreground/60 italic ml-0.5">Unassigned</span>
+                    </>
+                  )}
                 </span>
                 <span className="shrink-0 text-[11px]">City Veterinary Office — CDO</span>
               </div>
@@ -1595,6 +1741,20 @@ export default function ConsultationsPage() {
         onCompleted={(updated) => setSelectedConsultation(updated)}
       />
     </div>
+  );
+}
+
+export default function ConsultationsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-full w-full flex items-center justify-center p-12">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <ConsultationsContent />
+    </Suspense>
   );
 }
 

@@ -118,6 +118,7 @@ import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
 import { PetOwnerQueueTracker } from "@/components/dashboard/pet-owner-queue-tracker";
 import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
+import { syncConsultationsToQueue } from "@/lib/cvo-queue";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -653,6 +654,23 @@ export default function PetOwnerPortalPage() {
     );
   }, [consultations, pets]);
 
+  // Today's active consultations for this pet owner
+  const todayConsultations = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return ownerConsultations.filter((c: any) => {
+      const isToday = c.date === todayStr || (c.date && c.date.startsWith(todayStr));
+      const isActive = c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment";
+      return isToday && isActive;
+    });
+  }, [ownerConsultations]);
+
+  // Keep today's consultations synced into the queue so pet owner has a live queue ticket
+  useEffect(() => {
+    if (todayConsultations.length > 0) {
+      syncConsultationsToQueue(todayConsultations);
+    }
+  }, [todayConsultations]);
+
   // Primary pet for dynamic greetings and initial selections
   const primaryPetName = pets.length > 0 ? pets[0].name : "your pet";
 
@@ -936,6 +954,7 @@ export default function PetOwnerPortalPage() {
         userContact={ownerContact}
         userBarangay={ownerBarangay}
         todayAppointments={todayAppointments}
+        todayConsultations={todayConsultations}
       />
 
       {/* ── Annual Rabies Vaccination Reminder Alert ── */}
@@ -982,76 +1001,96 @@ export default function PetOwnerPortalPage() {
         </div>
       )}
 
-      {/* ── 2. Pet Registry Carousel ── */}
-      <div className="space-y-2">
+      {/* ── 2. Pet Registry ── */}
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <PawPrint className="size-3.5 text-primary" />
               <span>Pet Registry</span>
             </span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-bold rounded-full">
-              {pets.length}
-            </Badge>
+            {pets.length > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-bold rounded-full">
+                {pets.length}
+              </Badge>
+            )}
           </div>
         </div>
 
-        {/* Pet Registry Strip */}
-        <div className="relative group/stories">
-          <div
-            ref={petsScrollRef}
-            className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-1.5 pt-1 no-scrollbar scroll-smooth snap-x snap-mandatory"
-          >
-            {/* 1. Register Pet Card */}
-            <RegisterPetDialog
-              trigger={
-                <div
-                  className="w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl bg-card border-2 border-dashed border-primary/30 hover:border-primary overflow-hidden relative flex flex-col items-center justify-center p-2.5 sm:p-3 text-center shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 select-none group/story bg-gradient-to-b from-primary/10 via-primary/5 to-card snap-start"
-                  title="Register a new pet into CVO database"
-                >
-                  <div className="size-10 sm:size-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md shadow-primary/25 mb-2 sm:mb-3 group-hover/story:scale-110 transition-transform">
-                    <Plus className="size-5 sm:size-6 stroke-[3]" />
-                  </div>
-                  <p className="text-xs sm:text-sm font-extrabold text-foreground group-hover/story:text-primary transition-colors leading-tight">
-                    Register Pet
-                  </p>
-                  <p className="text-[9px] sm:text-xs text-muted-foreground leading-tight mt-0.5 sm:mt-1">
-                    Pet Registry
-                  </p>
-                  <span className="mt-2 text-[8.5px] sm:text-[10px] font-bold text-primary bg-primary/10 px-2 sm:px-2.5 py-0.5 rounded-full border border-primary/20">
-                    + Add Pet
-                  </span>
-                </div>
-              }
-            />
+        {pets.length === 0 ? (
+          /* Empty State: Premium, elegant full-width onboarding card */
+          <RegisterPetDialog
+            trigger={
+              <div className="w-full rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.06] via-card to-card hover:border-emerald-500/40 hover:shadow-xs transition-all duration-200 p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer group shadow-2xs select-none relative overflow-hidden">
+                {/* Decorative background glow */}
+                <div className="absolute -top-12 -right-12 size-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Welcoming Companion Guide Card when resident has 0 pets */}
-            {pets.length === 0 && (
-              <div className="flex-1 min-w-[260px] sm:min-w-[340px] h-44 sm:h-48 md:h-52 rounded-2xl bg-gradient-to-br from-card via-card to-emerald-500/[0.04] border border-border/80 p-3.5 sm:p-4.5 flex flex-col justify-between shadow-2xs relative overflow-hidden select-none">
-                <div className="absolute -top-10 -right-10 size-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-
-                <div className="space-y-1.5 relative z-10">
-                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                    <ShieldCheck className="size-3.5 sm:size-4" />
-                    <span className="text-[9.5px] sm:text-[10.5px] font-bold uppercase tracking-wider">
-                      Official CVO Pet Registry
-                    </span>
+                <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0 flex-1 relative z-10">
+                  <div className="size-11 sm:size-13 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200 shadow-sm shadow-emerald-500/25">
+                    <PawPrint className="size-5 sm:size-6" />
                   </div>
-                  <h3 className="text-xs sm:text-sm font-bold text-foreground">
-                    Register Your Companion Animals
-                  </h3>
-                  <p className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-3">
-                    Generate official digital QR passports, receive annual rabies vaccination reminders, and access municipal clinical care for your pets.
-                  </p>
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        Official CVO Pet Registry
+                      </span>
+                    </div>
+                    <h3 className="text-xs sm:text-sm font-bold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      Register Your Companion Animals
+                    </h3>
+                    <p className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed max-w-xl">
+                      Generate official digital QR passports, receive annual rabies vaccination reminders, and access municipal clinical care for your pets.
+                    </p>
+                    <div className="flex items-center gap-2.5 pt-0.5 flex-wrap text-[10.5px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <QrCode className="size-3 text-emerald-600 dark:text-emerald-400" /> Digital Passport
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" /> Rabies Records
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Stethoscope className="size-3 text-emerald-600 dark:text-emerald-400" /> Free Clinical Care
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1 relative z-10">
-                  <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                    <CheckCircle2 className="size-3 text-emerald-500" /> Free for Cagayan de Oro Residents
-                  </span>
+                <div className="shrink-0 relative z-10 flex items-center justify-center pl-2">
+                  <div className="size-12 sm:size-14 md:size-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs group-hover:shadow-md transition-all flex items-center justify-center">
+                    <Plus className="size-6 sm:size-7 stroke-[2.5] group-hover:scale-110 transition-transform" />
+                  </div>
                 </div>
               </div>
-            )}
+            }
+          />
+        ) : (
+          /* Pet Registry Strip (When 1 or more pets are registered) */
+          <div className="relative group/stories">
+            <div
+              ref={petsScrollRef}
+              className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto pb-1.5 pt-1 no-scrollbar scroll-smooth snap-x snap-mandatory"
+            >
+              {/* 1. Register Pet Card */}
+              <RegisterPetDialog
+                trigger={
+                  <div
+                    className="w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl bg-card border border-primary/25 hover:border-primary/60 hover:bg-primary/5 overflow-hidden relative flex flex-col items-center justify-center p-2.5 sm:p-3 text-center shrink-0 cursor-pointer shadow-2xs hover:shadow-xs hover:scale-[1.02] transition-all duration-200 select-none group/story snap-start"
+                    title="Register a new pet into CVO database"
+                  >
+                    <div className="size-10 sm:size-11 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shadow-xs mb-2.5 group-hover/story:scale-110 transition-transform">
+                      <Plus className="size-5 stroke-[2.5]" />
+                    </div>
+                    <p className="text-xs sm:text-sm font-bold text-foreground group-hover/story:text-primary transition-colors leading-tight">
+                      Register Pet
+                    </p>
+                    <p className="text-[10px] text-muted-foreground leading-tight mt-1">
+                      Add Companion
+                    </p>
+                  </div>
+                }
+              />
 
             {/* 2..N: Each Pet's Digital Passport Card */}
             {pets.map((pet, idx) => {
@@ -1154,6 +1193,7 @@ export default function PetOwnerPortalPage() {
             </button>
           )}
         </div>
+      )}
 
         {/* ── 3. Quick Citizen Healthcare Services ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
@@ -1348,15 +1388,33 @@ export default function PetOwnerPortalPage() {
                                 Encounter #{c.encounterNo}
                               </span>
                               <Badge
-                                className={`text-[10px] font-bold ${
+                                variant="outline"
+                                className={`text-[10px] font-bold pointer-events-none select-none shadow-none gap-1 ${
                                   isCompleted
-                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
                                     : isWaiting
-                                    ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                                    : "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700"
+                                    : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
                                 }`}
                               >
-                                {c.status.toUpperCase()}
+                                {c.status === "in-consultation" ? (
+                                  <>
+                                    <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                    IN CONSULTATION
+                                  </>
+                                ) : isWaiting ? (
+                                  <>
+                                    <Clock className="size-2.5 text-amber-600" />
+                                    WAITING
+                                  </>
+                                ) : isCompleted ? (
+                                  <>
+                                    <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                    COMPLETED
+                                  </>
+                                ) : (
+                                  c.status.replace(/-/g, " ").toUpperCase()
+                                )}
                               </Badge>
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Calendar className="size-3" />
