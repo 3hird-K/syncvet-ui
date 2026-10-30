@@ -89,6 +89,7 @@ import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { parsePetWeightKg } from "@/lib/pet-weight";
 
 interface PetRecord {
   id: string;
@@ -187,7 +188,7 @@ export default function PetRegistryPage() {
           breed: p.breed || (p.species?.toLowerCase() === "cat" ? "Persian" : "Aspin"),
           sex: (p.gender === "Female" || p.gender === "female" ? "Female" : "Male") as "Male" | "Female",
           age: p.birth_year ? `${Math.max(1, new Date().getFullYear() - p.birth_year)} years` : "2 years",
-          weightKg: p.weight_category === "large" ? 22 : p.weight_category === "small" ? 4.5 : 14.2,
+          weightKg: parsePetWeightKg(p.weight_category, p.species),
           color: "Standard",
           ownerId: p.owner_id || p.users?.id || "",
           owner: p.users?.full_name || (p.owner_id === user?.id ? (user?.fullName || "Kyle Urgentrouse") : "Registered Citizen"),

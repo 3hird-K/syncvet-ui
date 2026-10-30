@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
+import { PetPassportHeroCard } from "@/components/dashboard/pet-passport-hero-card";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +69,9 @@ interface ScheduleProcedureDialogProps {
   };
   trigger?: React.ReactNode;
   onSuccess?: () => void;
+  embedded?: boolean;
+  onCancel?: () => void;
+  hidePetSelector?: boolean;
 }
 
 export function ScheduleProcedureDialog({
@@ -78,6 +82,9 @@ export function ScheduleProcedureDialog({
   ownerProfile,
   trigger,
   onSuccess,
+  embedded = false,
+  onCancel,
+  hidePetSelector = false,
 }: ScheduleProcedureDialogProps) {
   const [open, setOpen] = useState(false);
   const [service, setService] = useState<ProcedureServiceType>(initialService);
@@ -285,13 +292,13 @@ export function ScheduleProcedureDialog({
 
       return items;
     },
-    enabled: open,
-    refetchInterval: open ? 15000 : false, // Poll every 15s while modal is open
+    enabled: open || embedded,
+    refetchInterval: (open || embedded) ? 15000 : false, // Poll every 15s while modal is open
   });
 
   // Realtime subscription for live appointments & procedure slots
   useEffect(() => {
-    if (!open) return;
+    if (!open && !embedded) return;
     const channel = supabase
       .channel("realtime-procedure-slots")
       .on(
@@ -307,7 +314,7 @@ export function ScheduleProcedureDialog({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [open, supabase, queryClient]);
+  }, [open, embedded, supabase, queryClient]);
 
   // Selected pet object
   const currentPet = useMemo(() => {
@@ -594,16 +601,16 @@ export function ScheduleProcedureDialog({
     }
   };
 
-  // Sync initial pet when dialog opens
+  // Sync initial pet when dialog opens or when embedded
   useEffect(() => {
-    if (open) {
+    if (open || embedded) {
       if (initialPet?.id) {
         setSelectedPetId(initialPet.id);
       } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId)))) {
         setSelectedPetId(pets[0].id);
       }
     }
-  }, [open, initialPet?.id]);
+  }, [open, embedded, initialPet?.id]);
 
   const isPetAlreadySterilized =
     service === "spay-neuter" &&
@@ -855,223 +862,201 @@ export function ScheduleProcedureDialog({
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
-          <Button className="gap-2 bg-primary text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer">
-            <Calendar className="size-3.5" />
-            <span>Schedule Procedure</span>
-          </Button>
-        )}
-      </DialogTrigger>
-
-      <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
-          <div className="flex items-center gap-2">
-            <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
-              {service === "vaccination" ? (
-                <Syringe className="size-5" />
-              ) : (
-                <Scissors className="size-5" />
-              )}
-            </div>
-            <div>
-              <DialogTitle className="text-lg font-bold text-foreground">
-                {rescheduleAppointmentId
-                  ? "Reschedule Procedure Appointment"
-                  : "City Veterinary Office Procedure Scheduler"}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                {rescheduleAppointmentId
-                  ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
-                  : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <form onSubmit={handleBookingSubmit} className="space-y-5 pt-3">
-          {/* ── SECTION 1: Service Selection ── */}
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              1. Select Municipal Veterinary Service *
-            </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Vaccination Card */}
-              <div
-                onClick={() => !isVaccinationScheduled && handleServiceChange("vaccination")}
-                className={cn(
-                  "p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between space-y-2 relative select-none",
-                  isVaccinationScheduled
-                    ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
-                    : service === "vaccination"
-                    ? "border-primary bg-primary/5 shadow-2xs cursor-pointer ring-2 ring-primary/20"
-                    : "border-border/80 bg-card hover:border-border hover:bg-muted/30 cursor-pointer"
-                )}
-                title={
-                  isVaccinationScheduled
-                    ? `${currentPet?.name || "Pet"} already has an active vaccination appointment on ${existingVaccinationDateFormatted}`
-                    : undefined
-                }
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "size-8 rounded-xl flex items-center justify-center shrink-0",
-                        isVaccinationScheduled
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-emerald-500/10 text-emerald-600"
-                      )}
-                    >
-                      <Syringe className="size-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="font-bold text-sm text-foreground">Vaccination</h4>
-                        {isVaccinationScheduled && (
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                          >
-                            Already Scheduled
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">Anti-Rabies & Core Immunization</p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] font-bold",
-                      isVaccinationScheduled
-                        ? "bg-muted text-muted-foreground border-border/60"
-                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                    )}
-                  >
-                    10 Slots / Day
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  {isVaccinationScheduled
-                    ? `Confirmed on ${existingVaccinationDateFormatted}. Double booking is disabled.`
-                    : "Annual rabies vaccine & health certificate validation."}
-                </p>
-              </div>
-
-              {/* Spay & Neuter Card */}
-              <div
-                onClick={() => !isSpayNeuterScheduled && handleServiceChange("spay-neuter")}
-                className={cn(
-                  "p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between space-y-2 relative select-none",
-                  isSpayNeuterScheduled
-                    ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
-                    : service === "spay-neuter"
-                    ? "border-primary bg-primary/5 shadow-2xs cursor-pointer ring-2 ring-primary/20"
-                    : "border-border/80 bg-card hover:border-border hover:bg-muted/30 cursor-pointer"
-                )}
-                title={
-                  isSpayNeuterScheduled
-                    ? `${currentPet?.name || "Pet"} already has an active spay & neuter appointment on ${existingSpayNeuterDateFormatted}`
-                    : undefined
-                }
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "size-8 rounded-xl flex items-center justify-center shrink-0",
-                        isSpayNeuterScheduled
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-indigo-500/10 text-indigo-600"
-                      )}
-                    >
-                      <Scissors className="size-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="font-bold text-sm text-foreground">Spay & Neuter</h4>
-                        {isSpayNeuterScheduled ? (
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                          >
-                            Already Scheduled
-                          </Badge>
-                        ) : isVaccinationScheduled && service === "spay-neuter" ? (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] px-1.5 py-0 h-4 font-bold bg-primary/15 text-primary border-primary/20"
-                          >
-                            Active Procedure
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">Kapon / Sterilization Surgery</p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] font-bold",
-                      isSpayNeuterScheduled
-                        ? "bg-muted text-muted-foreground border-border/60"
-                        : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30"
-                    )}
-                  >
-                    5 Slots / Day
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  {isSpayNeuterScheduled
-                    ? `Confirmed on ${existingSpayNeuterDateFormatted}. Double booking is disabled.`
-                    : "Surgical procedure with licensed veterinary anesthesia team."}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── SECTION 2: Pet Selection ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                2. Select Pet for Procedure *
-              </Label>
-              {pets.length > 0 && (
-                <span className="text-[11px] text-muted-foreground">
-                  {pets.length} registered pet{pets.length === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-
-            {pets.length === 0 ? (
-              <div className="p-4 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-xs text-amber-800 dark:text-amber-200">
-                You have no registered pets yet. Please register your pet in the Pet Registry tab first before scheduling.
-              </div>
-            ) : (
-              <Select value={selectedPetId} onValueChange={setSelectedPetId}>
-                <SelectTrigger className="h-9 rounded-lg bg-background border-input/80 text-xs font-medium">
-                  <SelectValue placeholder="Choose a registered pet" />
-                </SelectTrigger>
-                <SelectContent className="z-[90] rounded-lg text-xs">
-                  {pets.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
-                      <div className="flex items-center gap-2 text-xs">
-                        <PawPrint className="size-3.5 text-primary shrink-0" />
-                        <span className="font-semibold text-xs">{p.name}</span>
-                        <span className="text-muted-foreground text-[11px]">
-                          ({p.species} • {p.breed} • {p.weightKg || p.weight_kg || "?"} kg)
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+  const formContent = (
+    <form onSubmit={handleBookingSubmit} className="space-y-5 pt-1">
+      {/* ── SECTION 1: Service Selection ── */}
+      <div className="space-y-2">
+        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          1. Select Municipal Veterinary Service *
+        </Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Vaccination Card */}
+          <div
+            onClick={() => !isVaccinationScheduled && handleServiceChange("vaccination")}
+            className={cn(
+              "p-2.5 sm:p-3 rounded-xl border-2 transition-all flex flex-col justify-between space-y-1.5 relative select-none",
+              isVaccinationScheduled
+                ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
+                : service === "vaccination"
+                ? "border-primary bg-primary/5 shadow-2xs cursor-pointer ring-2 ring-primary/20"
+                : "border-border/80 bg-card hover:border-border hover:bg-muted/30 cursor-pointer"
             )}
+            title={
+              isVaccinationScheduled
+                ? `${currentPet?.name || "Pet"} already has an active vaccination appointment on ${existingVaccinationDateFormatted}`
+                : undefined
+            }
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    "size-7 rounded-lg flex items-center justify-center shrink-0",
+                    isVaccinationScheduled
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-emerald-500/10 text-emerald-600"
+                  )}
+                >
+                  <Syringe className="size-3.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-bold text-xs sm:text-sm text-foreground">Vaccination</h4>
+                    {isVaccinationScheduled && (
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                      >
+                        Already Scheduled
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Anti-Rabies & Core Immunization</p>
+                </div>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[9px] font-bold px-1.5 py-0 h-4",
+                  isVaccinationScheduled
+                    ? "bg-muted text-muted-foreground border-border/60"
+                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                )}
+              >
+                10 Slots / Day
+              </Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              {isVaccinationScheduled
+                ? `Confirmed on ${existingVaccinationDateFormatted}. Double booking is disabled.`
+                : "Annual rabies vaccine & health certificate validation."}
+            </p>
+          </div>
+
+          {/* Spay & Neuter Card */}
+          <div
+            onClick={() => !isSpayNeuterScheduled && handleServiceChange("spay-neuter")}
+            className={cn(
+              "p-2.5 sm:p-3 rounded-xl border-2 transition-all flex flex-col justify-between space-y-1.5 relative select-none",
+              isSpayNeuterScheduled
+                ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
+                : service === "spay-neuter"
+                ? "border-primary bg-primary/5 shadow-2xs cursor-pointer ring-2 ring-primary/20"
+                : "border-border/80 bg-card hover:border-border hover:bg-muted/30 cursor-pointer"
+            )}
+            title={
+              isSpayNeuterScheduled
+                ? `${currentPet?.name || "Pet"} already has an active spay & neuter appointment on ${existingSpayNeuterDateFormatted}`
+                : undefined
+            }
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn(
+                    "size-7 rounded-lg flex items-center justify-center shrink-0",
+                    isSpayNeuterScheduled
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-indigo-500/10 text-indigo-600"
+                  )}
+                >
+                  <Scissors className="size-3.5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-bold text-xs sm:text-sm text-foreground">Spay & Neuter</h4>
+                    {isSpayNeuterScheduled ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                      >
+                        Already Scheduled
+                      </Badge>
+                    ) : isVaccinationScheduled && service === "spay-neuter" ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-primary/15 text-primary border-primary/20"
+                      >
+                        Active Procedure
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Kapon / Sterilization Surgery</p>
+                </div>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[9px] font-bold px-1.5 py-0 h-4",
+                  isSpayNeuterScheduled
+                    ? "bg-muted text-muted-foreground border-border/60"
+                    : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30"
+                )}
+              >
+                5 Slots / Day
+              </Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              {isSpayNeuterScheduled
+                ? `Confirmed on ${existingSpayNeuterDateFormatted}. Double booking is disabled.`
+                : "Surgical procedure with licensed veterinary anesthesia team."}
+            </p>
+          </div>
+        </div>
+      </div>
+
+          {/* ── SECTION 2: Pet Selection (Hidden if hidePetSelector is true) ── */}
+          {!hidePetSelector && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  2. Select Pet for Procedure *
+                </Label>
+                {pets.length > 0 && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {pets.length} registered pet{pets.length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+
+              {pets.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 text-xs text-amber-800 dark:text-amber-200">
+                  You have no registered pets yet. Please register your pet in the Pet Registry tab first before scheduling.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Select value={selectedPetId} onValueChange={setSelectedPetId}>
+                    <SelectTrigger className="h-9 rounded-lg bg-background border-input/80 text-xs font-medium">
+                      <SelectValue placeholder="Choose a registered pet" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[90] rounded-lg text-xs">
+                      {pets.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
+                          <div className="flex items-center gap-2 text-xs">
+                            <PawPrint className="size-3.5 text-primary shrink-0" />
+                            <span className="font-semibold text-xs">{p.name}</span>
+                            <span className="text-muted-foreground text-[11px]">
+                              ({p.species} • {p.breed} • {p.weightKg || p.weight_kg || "?"} kg)
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {currentPet && (
+                    <div className="pt-1">
+                      <PetPassportHeroCard
+                        pet={currentPet}
+                        allPets={pets}
+                        onSelectPet={(id) => setSelectedPetId(id)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
             {/* Warning if pet is already neutered */}
             {isPetAlreadySterilized && (
@@ -1161,7 +1146,6 @@ export function ScheduleProcedureDialog({
                 </p>
               </div>
             )}
-          </div>
 
           {/* ── SECTION 3: Date & Slot Selection ── */}
           <div className="space-y-2">
@@ -1284,14 +1268,19 @@ export function ScheduleProcedureDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setOpen(false)}
-                className="w-full sm:w-auto text-xs rounded-xl"
+                size="sm"
+                onClick={() => {
+                  setOpen(false);
+                  onCancel?.();
+                }}
+                className="w-full sm:w-auto text-xs rounded-lg h-8 px-3 cursor-pointer"
               >
                 Cancel
               </Button>
 
               <Button
                 type="submit"
+                size="sm"
                 disabled={
                   submitting ||
                   !checklistConfirmed ||
@@ -1302,7 +1291,7 @@ export function ScheduleProcedureDialog({
                   isAlreadyScheduled ||
                   isSameDayConflict
                 }
-                className="w-full sm:w-auto text-xs font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto text-xs font-bold rounded-lg h-8 px-4 gap-1.5 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {submitting ? (
                   <>
@@ -1344,6 +1333,51 @@ export function ScheduleProcedureDialog({
             </div>
           </div>
         </form>
+  );
+
+  if (embedded) {
+    return formContent;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        {trigger ? (
+          trigger
+        ) : (
+          <Button className="gap-2 bg-primary text-primary-foreground font-bold text-xs rounded-xl shadow-xs cursor-pointer">
+            <Calendar className="size-3.5" />
+            <span>Schedule Procedure</span>
+          </Button>
+        )}
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
+        <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
+          <div className="flex items-center gap-2">
+            <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+              {service === "vaccination" ? (
+                <Syringe className="size-5" />
+              ) : (
+                <Scissors className="size-5" />
+              )}
+            </div>
+            <div>
+              <DialogTitle className="text-lg font-bold text-foreground">
+                {rescheduleAppointmentId
+                  ? "Reschedule Procedure Appointment"
+                  : "City Veterinary Office Procedure Scheduler"}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                {rescheduleAppointmentId
+                  ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
+                  : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {formContent}
       </DialogContent>
     </Dialog>
   );

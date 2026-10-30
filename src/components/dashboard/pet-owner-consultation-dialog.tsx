@@ -44,6 +44,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { format } from "date-fns";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
+import { PetPassportHeroCard } from "@/components/dashboard/pet-passport-hero-card";
 import { checkInPetOwnerToQueue, getTodayDateStr } from "@/lib/cvo-queue";
 
 export const CVO_CLINICAL_SYSTEMS = [
@@ -226,14 +227,18 @@ export interface PetItem {
 }
 
 interface PetOwnerConsultationDialogProps {
-  pets?: PetItem[];
-  initialPet?: PetItem;
+  pets?: any[];
+  initialPet?: any;
   ownerProfile?: {
     name: string;
     contact: string;
     barangay: string;
   };
   trigger?: React.ReactNode;
+  embedded?: boolean;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+  hidePetSelector?: boolean;
 }
 
 export function PetOwnerConsultationDialog({
@@ -241,6 +246,10 @@ export function PetOwnerConsultationDialog({
   initialPet,
   ownerProfile,
   trigger,
+  embedded = false,
+  onSuccess,
+  onCancel,
+  hidePetSelector = false,
 }: PetOwnerConsultationDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -249,16 +258,16 @@ export function PetOwnerConsultationDialog({
   const firstPet = initialPet || (pets.length > 0 ? pets[0] : undefined);
   const [selectedPetId, setSelectedPetId] = useState<string>(firstPet?.id || (pets.length > 0 ? pets[0].id : ""));
 
-  // Only initialize selectedPetId when dialog opens or when initialPet prop explicitly changes
+  // Only initialize selectedPetId when dialog opens or in embedded mode, or when initialPet prop explicitly changes
   useEffect(() => {
-    if (open) {
+    if (open || embedded) {
       if (initialPet?.id) {
         setSelectedPetId(initialPet.id);
       } else if (pets.length > 0 && (!selectedPetId || !pets.some((p) => String(p.id) === String(selectedPetId)))) {
         setSelectedPetId(pets[0].id);
       }
     }
-  }, [open, initialPet?.id]);
+  }, [open, embedded, initialPet?.id]);
 
   // Selected registered pet object (if any)
   const selectedPet = useMemo(() => {
@@ -460,40 +469,15 @@ export function PetOwnerConsultationDialog({
           duration: 6000,
         }
       );
+      onSuccess?.();
     }, 600);
   };
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button className="h-9 gap-2 text-xs font-bold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 cursor-pointer">
-            <Plus className="size-4" />
-            <span>Request Consultation / Treatment</span>
-          </Button>
-        )}
-      </DialogTrigger>
-
-      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="border-b pb-3.5">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
-              <Stethoscope className="size-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
-                City Veterinary Office Consultation Request Form
-              </DialogTitle>
-              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
-                Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Section 1: Patient & Owner Information */}
-          <div className="space-y-3.5 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
+  const formContent = (
+    <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+      {/* Section 1: Patient & Owner Information */}
+      {!hidePetSelector && (
+        <div className="space-y-3.5 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Heart className="size-3.5 text-primary" />
@@ -559,61 +543,12 @@ export function PetOwnerConsultationDialog({
                 </div>
 
                 {selectedPet && (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <PetAvatar
-                          photoUrl={selectedPet.photo_url}
-                          species={selectedPet.species}
-                          name={selectedPet.name}
-                          size="md"
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h5 className="font-bold text-sm text-foreground">{selectedPet.name}</h5>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
-                              {selectedPet.species}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {selectedPet.breed || (selectedPet.species === "Cat" ? "Puspin" : "Aspin")}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground bg-background/80 border border-border/60 px-2 py-1 rounded-lg">
-                        <Lock className="size-3 text-muted-foreground/70" />
-                        <span>Loaded from pet passport</span>
-                      </div>
-                    </div>
-
-                    {/* Pet Attributes Display Pills (Uneditable) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-emerald-500/20 text-xs">
-                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Gender</span>
-                        <span className="font-semibold text-foreground text-xs">{selectedPet.gender || "Male"}</span>
-                      </div>
-                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Age</span>
-                        <span className="font-semibold text-foreground text-xs">{selectedPet.age || "1 yr"}</span>
-                      </div>
-                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Weight</span>
-                        <span className="font-semibold text-foreground text-xs">
-                          {selectedPet.weightKg || (selectedPet as any).weight_kg
-                            ? `${selectedPet.weightKg || (selectedPet as any).weight_kg} kg`
-                            : "N/A"}
-                        </span>
-                      </div>
-                      <div className="bg-background/80 rounded-lg p-2 border border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold block">Color / Markings</span>
-                        <span className="font-semibold text-foreground text-xs truncate block">{selectedPet.color || "Standard"}</span>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-muted-foreground pt-0.5 leading-relaxed">
-                      Pet details are linked from your registered profile. To update these, edit in the{" "}
-                      <strong className="text-foreground font-semibold">My Pets & Passports</strong> page.
-                    </p>
+                  <div className="pt-1">
+                    <PetPassportHeroCard
+                      pet={selectedPet}
+                      allPets={pets}
+                      onSelectPet={handleSelectPet}
+                    />
                   </div>
                 )}
               </div>
@@ -688,41 +623,45 @@ export function PetOwnerConsultationDialog({
               </div>
             )}
           </div>
+        )}
 
           {/* Section 2: Services Requested */}
-          <div className="space-y-2.5 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <FileCheck2 className="size-3.5 text-emerald-600" />
+          <div className="space-y-2 rounded-xl border border-border/70 p-3 sm:p-3.5 bg-card/60 shadow-2xs">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <FileCheck2 className="size-3 text-emerald-600" />
               2. Services Requested (Select All That Apply)
             </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 pt-0.5">
               {[
                 { id: "healthy", label: "HEALTHY", desc: "Routine wellness check" },
-                { id: "vitamins", label: "VITAMINS", desc: "Injectable/oral supplements" },
-                { id: "deworming", label: "DEWORMING", desc: "Free anti-parasitic dose" },
+                { id: "vitamins", label: "VITAMINS", desc: "Supplements" },
+                { id: "deworming", label: "DEWORMING", desc: "Anti-parasitic dose" },
                 { id: "farmManagement", label: "FARM MGMT", desc: "Livestock guidance" },
-                { id: "consultation", label: "CONSULTATION", desc: "Illness or injury check" },
+                { id: "consultation", label: "CONSULTATION", desc: "Illness or injury" },
               ].map((svc) => (
                 <label
                   key={svc.id}
-                  className={`flex flex-col justify-between p-3 rounded-xl border text-xs cursor-pointer transition-all duration-150 ${
+                  title={svc.label}
+                  className={`flex flex-col justify-between p-2 rounded-lg border cursor-pointer transition-all duration-150 min-w-0 ${
                     services[svc.id as keyof typeof services]
                       ? "border-primary bg-primary/10 text-primary font-bold shadow-2xs"
                       : "border-border/70 bg-card hover:bg-muted/40 text-muted-foreground hover:border-border"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <input
                       type="checkbox"
                       checked={Boolean(services[svc.id as keyof typeof services])}
                       onChange={(e) =>
                         setServices({ ...services, [svc.id]: e.target.checked })
                       }
-                      className="size-4 rounded accent-primary cursor-pointer shrink-0"
+                      className="size-3 rounded accent-primary cursor-pointer shrink-0"
                     />
-                    <span className="font-extrabold text-xs text-foreground tracking-wide">{svc.label}</span>
+                    <span className="font-bold text-[9px] sm:text-[9.5px] text-foreground tracking-tight truncate">
+                      {svc.label}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground font-normal mt-1.5 leading-snug">
+                  <p className="text-[8.5px] sm:text-[9px] text-muted-foreground font-normal mt-1 leading-tight line-clamp-2">
                     {svc.desc}
                   </p>
                 </label>
@@ -731,37 +670,37 @@ export function PetOwnerConsultationDialog({
           </div>
 
           {/* Section 3: Preferred Consultation Schedule */}
-          <div className="space-y-3 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Calendar className="size-3.5 text-primary" />
+          <div className="space-y-2 rounded-xl border border-border/70 p-3 sm:p-3.5 bg-card/60 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-0.5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Calendar className="size-3 text-primary" />
                 3. Preferred Consultation Schedule (Monday – Friday) *
               </h4>
-              <Badge variant="outline" className="text-[10px] font-semibold border-primary/30 text-primary w-fit">
-                CVO Clinic: Mon – Fri • 8:00 AM – 5:00 PM
+              <Badge variant="outline" className="text-[9px] font-semibold border-primary/30 text-primary px-2 py-0.5 whitespace-nowrap shrink-0">
+                Mon – Fri • 8:00 AM – 5:00 PM
               </Badge>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-foreground">Select Consultation Date</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-foreground">Select Consultation Date</Label>
                 <DatePicker
                   date={consultationDate}
                   setDate={setConsultationDate}
                   placeholder="Choose consultation date (Mon – Fri)"
-                  className="h-10 text-xs sm:text-sm rounded-xl bg-background font-normal"
+                  className="h-8.5 text-xs rounded-lg bg-background font-normal"
                   disabled={isClinicDateDisabled}
                 />
               </div>
 
-              <div className="p-3 rounded-xl border border-border/60 bg-muted/20 text-xs space-y-1">
-                <p className="font-semibold text-foreground">Walk-in Clinical Operating Hours</p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  The CVO clinic is open for walk-in consultations Monday through Friday, 8:00 AM to 5:00 PM. Weekend consultations are unavailable.
+              <div className="p-2 rounded-lg border border-border/60 bg-muted/20 text-[11px] space-y-0.5">
+                <p className="font-bold text-foreground text-[11px]">Walk-in Clinical Operating Hours</p>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Open Monday through Friday, 8:00 AM to 5:00 PM. Weekend consultations are unavailable.
                 </p>
                 {new Date().getHours() >= 17 && (
-                  <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                    Consultation hours for today have closed (after 5:00 PM). Same-day booking is disabled.
+                  <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                    Hours for today closed (after 5:00 PM). Same-day booking disabled.
                   </p>
                 )}
               </div>
@@ -769,48 +708,51 @@ export function PetOwnerConsultationDialog({
           </div>
 
           {/* Section 4: Symptoms / Reason for Consultation */}
-          <div className="space-y-3 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
-            <div className="space-y-1.5">
+          <div className="space-y-2 rounded-xl border border-border/70 p-3 sm:p-3.5 bg-card/60 shadow-2xs">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Stethoscope className="size-3.5 text-primary" />
+                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Stethoscope className="size-3 text-primary" />
                   4. Symptoms Observed / Reason for Consultation *
                 </Label>
-                <span className="text-[11px] text-muted-foreground">Citizen description</span>
+                <span className="text-[10px] text-muted-foreground">Citizen description</span>
               </div>
               <Textarea
                 value={chiefComplaint}
                 onChange={(e) => setChiefComplaint(e.target.value)}
-                placeholder="Describe your pet's condition, observed symptoms (e.g. vomiting, lethargy, coughing, loss of appetite), or reason for requesting care..."
+                placeholder="Describe your pet's condition, observed symptoms (e.g. vomiting, lethargy, coughing, loss of appetite)..."
                 rows={2}
-                className="text-xs leading-relaxed rounded-xl p-2.5 resize-y min-h-[64px] bg-background"
+                className="text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 resize-y min-h-[50px] bg-background"
                 required
               />
             </div>
 
             {/* Informational Advisory on Clinical Exam being handled by the Vet */}
-            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 dark:bg-blue-950/20 p-3.5 flex items-start gap-3">
-              <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                <Stethoscope className="size-4.5" />
+            <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 dark:bg-blue-950/20 p-2.5 flex items-start gap-2">
+              <div className="size-6 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                <Stethoscope className="size-3.5" />
               </div>
-              <div className="text-xs space-y-1">
-                <p className="font-bold text-foreground">
+              <div className="text-[11px] space-y-0.5 min-w-0">
+                <p className="font-bold text-foreground text-[11px] leading-tight">
                   Clinical Examination & Findings Conducted by Attending Veterinarian
                 </p>
-                <p className="text-muted-foreground leading-relaxed text-[11px]">
-                  Official patient vitals (weight, temperature), the 12-system clinical examination checklist, medical diagnosis, treatment administered, prescriptions, and follow-up care recommendations will be assessed and filled out by the City Veterinarian upon your clinic or field visit.
+                <p className="text-muted-foreground leading-snug text-[10px]">
+                  Official patient vitals, 12-system clinical examination, medical diagnosis, treatment administered, and prescriptions are assessed and recorded by the City Veterinarian upon your clinic visit.
                 </p>
               </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2.5 pt-3 border-t flex flex-row items-center justify-end">
+          <div className="gap-2 pt-2 border-t flex flex-row items-center justify-end">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setOpen(false)}
-              className="h-9 px-4 text-xs font-semibold rounded-xl cursor-pointer"
+              onClick={() => {
+                setOpen(false);
+                onCancel?.();
+              }}
+              className="h-8 px-3 text-xs font-semibold rounded-lg cursor-pointer"
             >
               Cancel
             </Button>
@@ -818,32 +760,67 @@ export function PetOwnerConsultationDialog({
               type="submit"
               size="sm"
               disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
-              className="h-9 px-5 text-xs font-bold bg-primary text-primary-foreground gap-2 rounded-xl cursor-pointer shadow-xs hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="h-8 px-4 text-xs font-bold bg-primary text-primary-foreground gap-1.5 rounded-lg cursor-pointer shadow-xs hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Loader2 className="size-3 animate-spin" />
                   <span>Submitting to CVO Queue...</span>
                 </>
               ) : pets.length === 0 ? (
                 <>
-                  <PawPrint className="size-3.5 text-amber-300" />
+                  <PawPrint className="size-3 text-amber-300" />
                   <span>Register a Pet First</span>
                 </>
               ) : isConsultationAlreadyScheduled ? (
                 <>
-                  <AlertCircle className="size-3.5 text-amber-500" />
+                  <AlertCircle className="size-3 text-amber-500" />
                   <span>Consultation Already in Queue</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="size-3.5" />
+                  <CheckCircle2 className="size-3" />
                   <span>Submit Consultation Request</span>
                 </>
               )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
+  );
+
+  if (embedded) {
+    return formContent;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button className="h-9 gap-2 text-xs font-bold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 cursor-pointer">
+            <Plus className="size-4" />
+            <span>Request Consultation / Treatment</span>
+          </Button>
+        )}
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
+        <DialogHeader className="border-b pb-3.5">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
+              <Stethoscope className="size-5" />
+            </div>
+            <div>
+              <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+                City Veterinary Office Consultation Request Form
+              </DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+                Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {formContent}
       </DialogContent>
     </Dialog>
   );
