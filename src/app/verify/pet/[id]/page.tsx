@@ -14,22 +14,19 @@ import {
   MapPin,
   Calendar,
   Syringe,
-  Building2,
-  AlertTriangle,
   Heart,
   Printer,
-  Dog,
-  Cat,
   Copy,
   Check,
   QrCode,
   Tag,
   Scale,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
+import { getPetAvatarUrl } from "@/lib/pet-avatars";
 
 export default function PublicPetVerificationPage() {
   const params = useParams();
@@ -47,6 +44,8 @@ export default function PublicPetVerificationPage() {
   const queryVax = searchParams.get("vax");
   const queryLastVax = searchParams.get("lastVax") || "";
   const queryNextVax = searchParams.get("nextVax") || "";
+  const queryPhoto = searchParams.get("photo") || searchParams.get("avatar") || "";
+  const queryContact = searchParams.get("contact") || searchParams.get("phone") || searchParams.get("tel") || "";
 
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
@@ -79,6 +78,7 @@ export default function PublicPetVerificationPage() {
   const breed = dbPet?.breed || queryBreed || (species === "Cat" ? "Domestic Shorthair" : "Aspin (Asong Pinoy)");
   const tagId = dbPet?.microchip_number || queryTag || dbPet?.id || petId || "CDO-REG-VERIFIED";
   const ownerName = dbPet?.users?.full_name || queryOwner || "Registered Pet Guardian";
+  const ownerContact = dbPet?.users?.phone_number || queryContact || "0991-855-2236";
   const ownerAddress = dbPet?.users?.address || queryBgy || "Carmen, Cagayan de Oro City";
 
   const isVaccinated =
@@ -104,6 +104,9 @@ export default function PublicPetVerificationPage() {
   const weightCategory = dbPet?.weight_category
     ? dbPet.weight_category.charAt(0).toUpperCase() + dbPet.weight_category.slice(1)
     : "Medium (10–25 kg)";
+
+  // Resolve pet avatar image URL
+  const petPhotoUrl = dbPet?.photo_url || queryPhoto || getPetAvatarUrl(dbPet?.photo_url, species);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === "None Recorded" || dateStr === "Due for Booster") return dateStr;
@@ -148,13 +151,13 @@ export default function PublicPetVerificationPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-foreground flex flex-col justify-start items-center py-4 sm:py-8 px-3 sm:px-6 print:p-0 print:m-0 print:min-h-0 print:bg-white">
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-100 via-slate-50 to-emerald-50/40 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950/20 text-foreground flex flex-col justify-center items-center p-2.5 sm:p-4 print:p-0 print:bg-white overflow-hidden sm:overflow-auto">
       {/* Strict 1-Page Print Stylesheet */}
       <style jsx global>{`
         @media print {
           @page {
             size: A4 portrait;
-            margin: 8mm 10mm;
+            margin: 6mm 8mm;
           }
           html, body {
             background: #ffffff !important;
@@ -181,74 +184,13 @@ export default function PublicPetVerificationPage() {
         }
       `}</style>
 
-      {/* Screen-Only Top Navigation Bar */}
-      <div className="w-full max-w-2xl mx-auto mb-3 flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-border/80 shadow-xs print:hidden">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-            <Image
-              src={Logo}
-              alt="SyncVet Logo"
-              className="size-6 object-contain"
-              priority
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black tracking-tight text-foreground">
-                SYNCVET CDO
-              </span>
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-full">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Verification
-              </span>
-            </div>
-            <p className="text-[10px] text-muted-foreground truncate">
-              City Veterinary Office · Official Municipal Animal Passport
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyLink}
-            className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-border hover:bg-muted rounded-lg cursor-pointer"
-            title="Share verification link"
-          >
-            {copied ? (
-              <>
-                <Check className="size-3 text-emerald-600" />
-                <span className="hidden sm:inline">Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy className="size-3 text-muted-foreground" />
-                <span className="hidden sm:inline">Share</span>
-              </>
-            )}
-          </Button>
-
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handlePrint}
-            className="h-8 px-3 text-xs font-semibold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg cursor-pointer shadow-xs"
-            title="Print official one-page document"
-          >
-            <Printer className="size-3.5" />
-            <span>Print 1-Page Pass</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Official Government Animal Passport (Strictly 1 Page) ── */}
-      <div className="passport-card w-full max-w-2xl mx-auto rounded-2xl border-2 border-emerald-600/30 bg-white dark:bg-slate-900 shadow-xl overflow-hidden print:border-emerald-600 print:shadow-none">
-        {/* Certificate Header Banner (Light Official Municipal Seal) */}
-        <div className="p-4 sm:p-5 border-b border-border/70 bg-gradient-to-b from-emerald-500/10 via-emerald-500/5 to-transparent">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="size-12 rounded-xl bg-white dark:bg-slate-800 p-1.5 border border-emerald-500/30 shadow-xs flex items-center justify-center shrink-0">
+      {/* ── Official Municipal Pet Tagging & Animal Passport (Single 1-Page Guaranteed) ── */}
+      <div className="passport-card w-full max-w-xl mx-auto rounded-2xl border-2 border-emerald-600/35 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden print:border-emerald-600 print:shadow-none flex flex-col">
+        {/* Certificate Header Banner */}
+        <div className="p-3.5 sm:p-4 border-b border-border/70 bg-gradient-to-b from-emerald-500/10 via-emerald-500/5 to-transparent">
+          <div className="flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-11 sm:size-12 rounded-xl bg-white dark:bg-slate-800 p-1.5 border border-emerald-500/30 shadow-xs flex items-center justify-center shrink-0">
                 <Image
                   src={Logo}
                   alt="City Government Seal"
@@ -257,78 +199,99 @@ export default function PublicPetVerificationPage() {
                 />
               </div>
               <div className="space-y-0.5 min-w-0">
-                <p className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                <p className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
                   Republic of the Philippines · City of Cagayan de Oro
                 </p>
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-foreground uppercase">
+                <h1 className="text-sm sm:text-base font-black tracking-tight text-foreground uppercase truncate">
                   City Veterinary Office
                 </h1>
-                <p className="text-[10px] text-muted-foreground">
-                  Animal Health, Public Safety & Rabies Elimination Services
+                <p className="text-[9.5px] text-muted-foreground truncate">
+                  Municipal Companion Animal Tagging & Health Identification
                 </p>
               </div>
             </div>
 
-            {/* Top Right: Scannable Mini QR / Verification Seal */}
-            <div className="flex flex-col items-center justify-center shrink-0 text-center pl-2">
-              {qrDataUrl ? (
-                <div className="p-1 bg-white rounded-lg border border-emerald-500/30 shadow-2xs">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qrDataUrl} alt="Verify QR" className="size-12 rounded" />
-                </div>
-              ) : (
-                <div className="size-12 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                  <QrCode className="size-6 text-emerald-600" />
-                </div>
-              )}
-              <span className="text-[8px] font-mono font-bold text-emerald-700 dark:text-emerald-400 mt-0.5 tracking-tight">
-                SCAN TO VERIFY
-              </span>
+            {/* Top Right: Scannable Mini QR & Action Shortcuts */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-col items-center justify-center text-center">
+                {qrDataUrl ? (
+                  <div className="p-0.5 bg-white rounded-md border border-emerald-500/30 shadow-2xs">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={qrDataUrl} alt="Verify QR" className="size-10 sm:size-11 rounded" />
+                  </div>
+                ) : (
+                  <div className="size-10 sm:size-11 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <QrCode className="size-5 text-emerald-600" />
+                  </div>
+                )}
+                <span className="text-[7px] font-mono font-bold text-emerald-700 dark:text-emerald-400 mt-0.5 tracking-tight">
+                  SCAN TO VERIFY
+                </span>
+              </div>
+
+              {/* Action Buttons (Print & Share) */}
+              <div className="flex flex-col gap-1 print:hidden">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="size-6 sm:size-7 rounded-lg border border-border/80 bg-background hover:bg-muted text-foreground flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title="Copy verification link"
+                >
+                  {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3 text-muted-foreground" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="size-6 sm:size-7 rounded-lg border border-border/80 bg-background hover:bg-muted text-foreground flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title="Print official pass"
+                >
+                  <Printer className="size-3 text-muted-foreground" />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Official Document Sub-Bar */}
-          <div className="mt-3 pt-2.5 border-t border-emerald-600/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="mt-2.5 pt-2 border-t border-emerald-600/20 flex flex-wrap items-center justify-between gap-1.5 text-xs">
             <div className="flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider">
-                Official Animal Passport
+              <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1">
+                <Tag className="size-2.5" /> Tag ID
               </span>
               <span className="text-[11px] font-mono font-bold text-foreground">
-                ID #{tagId}
+                #{tagId}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="size-3.5" />
-              <span>Certified Tamper-Resistant Municipal Record</span>
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-3" />
+              <span>Certified Tamper-Resistant Municipal Tag</span>
             </div>
           </div>
         </div>
 
-        {/* Certificate Body (Compact & High-Density for 1-Page Guarantee) */}
-        <div className="p-4 sm:p-5 space-y-3.5 text-xs">
-          {/* Pet Identity & Biological Profile Row */}
-          <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div
-                className={cn(
-                  "size-14 rounded-xl flex items-center justify-center shrink-0 border shadow-xs",
-                  isDog
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                    : "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30"
-                )}
-              >
-                {isDog ? <Dog className="size-8" /> : <Cat className="size-8" />}
+        {/* Certificate Body (Strictly 1-Page Layout) */}
+        <div className="p-3.5 sm:p-4 space-y-2.5 text-xs">
+          {/* Pet Identity & Profile Row (with Pet Avatar) */}
+          <div className="p-3 rounded-xl border border-border/80 bg-muted/20 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Pet Profile Avatar Image */}
+              <div className="shrink-0">
+                <PetAvatar
+                  photoUrl={petPhotoUrl}
+                  species={species}
+                  name={petName}
+                  size="xl"
+                />
               </div>
 
               <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight truncate">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-lg sm:text-xl font-black text-foreground tracking-tight truncate">
                     {petName}
                   </h2>
                   <Badge
                     className={cn(
-                      "text-[9px] font-bold border-0 py-0.2 px-2",
+                      "text-[9px] font-extrabold border-0 py-0 px-1.5",
                       isVaccinated
                         ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                         : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
@@ -337,38 +300,32 @@ export default function PublicPetVerificationPage() {
                     {isVaccinated ? "Rabies Vaccinated" : "Unvaccinated"}
                   </Badge>
                 </div>
-                <p className="text-xs font-semibold text-muted-foreground truncate">
+                <p className="text-xs font-semibold text-foreground/90 truncate">
                   {breed} · {formattedGender}
                 </p>
-                <p className="text-[11px] text-muted-foreground font-mono">
-                  Municipal Tag: <strong className="text-foreground">{tagId}</strong>
+                <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+                  <span>{ageDisplay}</span>
+                  <span className="text-border">•</span>
+                  <span>{weightCategory}</span>
                 </p>
               </div>
             </div>
 
-            {/* Quick Vitals Column */}
-            <div className="grid grid-cols-3 sm:grid-cols-1 gap-2 sm:gap-1 text-[11px] sm:text-right border-t sm:border-t-0 sm:border-l border-border/60 pt-2 sm:pt-0 sm:pl-4 shrink-0">
-              <div>
-                <span className="text-muted-foreground block text-[9px] uppercase font-bold">Age</span>
-                <span className="font-bold text-foreground">{ageDisplay}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[9px] uppercase font-bold">Physique / Weight</span>
-                <span className="font-bold text-foreground">{weightCategory}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[9px] uppercase font-bold">Sterilization</span>
-                <span className="font-bold text-cyan-600 dark:text-cyan-400">
-                  {isSterilized ? (species === "Dog" ? "Kapon (Neutered)" : "Spayed/Neutered") : "Intact (Not Sterilized)"}
-                </span>
-              </div>
+            {/* Sterilization Badge */}
+            <div className="text-right shrink-0">
+              <span className="text-muted-foreground block text-[9px] uppercase font-bold tracking-wider">
+                Sterilization
+              </span>
+              <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+                {isSterilized ? (species === "Dog" ? "Kapon (Neutered)" : "Spayed/Neutered") : "Intact (Not Sterilized)"}
+              </span>
             </div>
           </div>
 
-          {/* Anti-Rabies Core Immunization Certificate Section */}
+          {/* Anti-Rabies Core Immunization Status */}
           <div
             className={cn(
-              "p-3.5 rounded-xl border space-y-2",
+              "p-2.5 rounded-xl border space-y-1.5",
               isVaccinated
                 ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-950 dark:text-emerald-100"
                 : "border-amber-500/30 bg-amber-500/5 text-amber-950 dark:text-amber-100"
@@ -378,21 +335,21 @@ export default function PublicPetVerificationPage() {
               <div className="flex items-center gap-2">
                 <div
                   className={cn(
-                    "size-7 rounded-lg flex items-center justify-center shrink-0 border",
+                    "size-6 rounded-md flex items-center justify-center shrink-0 border",
                     isVaccinated
                       ? "bg-emerald-600 text-white border-emerald-700"
                       : "bg-amber-600 text-white border-amber-700"
                   )}
                 >
-                  <Syringe className="size-3.5" />
+                  <Syringe className="size-3" />
                 </div>
                 <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-foreground leading-tight">
+                  <h3 className="text-xs font-bold text-foreground leading-tight">
                     {isVaccinated
                       ? "Anti-Rabies Core Immunization (RA 9482 Certified)"
                       : "Anti-Rabies Vaccination Pending / Verification Needed"}
                   </h3>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[9.5px] text-muted-foreground">
                     Administered under City Veterinary Office Rabies Elimination Program
                   </p>
                 </div>
@@ -400,22 +357,22 @@ export default function PublicPetVerificationPage() {
 
               <Badge
                 className={cn(
-                  "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 shrink-0",
+                  "text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 shrink-0",
                   isVaccinated
                     ? "bg-emerald-600 text-white hover:bg-emerald-700"
                     : "bg-amber-600 text-white hover:bg-amber-700"
                 )}
               >
-                {isVaccinated ? "Protected & Compliant" : "Booster Due"}
+                {isVaccinated ? "Compliant" : "Booster Due"}
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50 text-xs">
+            <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/50 text-xs">
               <div>
                 <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">
                   Last Vaccination Date
                 </span>
-                <span className="font-bold text-foreground text-xs">
+                <span className="font-bold text-foreground text-[11px]">
                   {formatDate(lastVaccination)}
                 </span>
               </div>
@@ -423,7 +380,7 @@ export default function PublicPetVerificationPage() {
                 <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">
                   Next Booster Due Date
                 </span>
-                <span className="font-bold text-foreground text-xs">
+                <span className="font-bold text-foreground text-[11px]">
                   {formatDate(nextVaccination)}
                 </span>
               </div>
@@ -431,76 +388,98 @@ export default function PublicPetVerificationPage() {
           </div>
 
           {/* Registered Guardian & Community Jurisdiction (2-Column Grid) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div className="p-3 rounded-xl border border-border/70 bg-muted/20 space-y-0.5">
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">
-                Registered Pet Guardian
-              </span>
-              <p className="font-bold text-foreground text-xs truncate flex items-center gap-1.5">
-                <span>{ownerName}</span>
-                <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="p-2.5 rounded-xl border border-border/70 bg-muted/20 space-y-0.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[8.5px] font-bold text-muted-foreground uppercase tracking-wider block">
+                  Registered Pet Guardian
+                </span>
+                <span className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-2.5" /> Verified
+                </span>
+              </div>
+              <p className="font-bold text-foreground text-xs truncate">
+                {ownerName}
               </p>
-              <p className="text-[10px] text-muted-foreground">Verified Citizen Account</p>
+              {ownerContact && (
+                <p className="text-[10px] font-mono font-semibold text-foreground/90 flex items-center gap-1 pt-0.5">
+                  <Phone className="size-2.5 text-primary shrink-0" />
+                  <a
+                    href={`tel:${ownerContact.replace(/\D/g, "")}`}
+                    className="hover:underline text-primary"
+                    title="Call Pet Guardian"
+                  >
+                    {ownerContact}
+                  </a>
+                </p>
+              )}
             </div>
 
-            <div className="p-3 rounded-xl border border-border/70 bg-muted/20 space-y-0.5">
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">
+            <div className="p-2.5 rounded-xl border border-border/70 bg-muted/20 space-y-0.5">
+              <span className="text-[8.5px] font-bold text-muted-foreground uppercase tracking-wider block">
                 Municipal Jurisdiction
               </span>
               <p className="font-bold text-foreground text-xs truncate flex items-center gap-1">
                 <MapPin className="size-3 text-primary shrink-0" />
                 <span>{ownerAddress}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground">Cagayan de Oro City, Misamis Oriental</p>
+              <p className="text-[9.5px] text-muted-foreground">Cagayan de Oro City, Misamis Oriental</p>
             </div>
           </div>
 
           {/* Lost & Found Community Rescue Beacon */}
-          <div className="p-3 rounded-xl border border-border/80 bg-slate-100/80 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="p-2.5 rounded-xl border border-border/80 bg-slate-100/80 dark:bg-slate-800/40 flex items-center justify-between gap-2">
             <div className="space-y-0.5 min-w-0">
               <div className="flex items-center gap-1.5 font-bold text-foreground text-xs">
-                <Heart className="size-3.5 text-rose-500 fill-rose-500 shrink-0" />
+                <Heart className="size-3 text-rose-500 fill-rose-500 shrink-0" />
                 <span>Found this companion animal in Cagayan de Oro?</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Please contact the City Veterinary Office to coordinate safe reunion with the registered guardian.
+              <p className="text-[9.5px] text-muted-foreground truncate">
+                Contact owner directly or call City Veterinary Office for coordination.
               </p>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
+              {ownerContact && (
+                <a
+                  href={`tel:${ownerContact.replace(/\D/g, "")}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-bold shadow-2xs hover:bg-emerald-700 transition-colors shrink-0"
+                  title="Call Pet Guardian Directly"
+                >
+                  <Phone className="size-2.5" />
+                  <span>Call Owner</span>
+                </a>
+              )}
               <a
                 href="tel:0888573180"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-[11px] font-bold shadow-2xs hover:bg-primary/90 transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 text-primary border border-primary/20 text-[10px] font-bold shadow-2xs hover:bg-primary/20 transition-colors shrink-0"
+                title="Call City Veterinary Office"
               >
-                <Phone className="size-3" />
-                <span>(088) 857-3180</span>
+                <span>CVO (088) 857-3180</span>
               </a>
-              <span className="text-[10px] text-muted-foreground hidden sm:inline">
-                CVO Complex, Carmen
-              </span>
             </div>
           </div>
 
-          {/* Official Signatures & Verification Seal */}
-          <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+          {/* Official Signatures & Footnote */}
+          <div className="pt-1.5 border-t border-border/60 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
             <div>
               <p className="font-semibold text-foreground">
-                City Veterinary Office Central Clinic
+                CVO Central Clinic
               </p>
-              <p>CVO Complex, J.V. Seriña St., Carmen, Cagayan de Oro City</p>
+              <p>J.V. Seriña St., Carmen, Cagayan de Oro City</p>
             </div>
 
             <div className="text-right">
               <p className="font-bold text-foreground">
                 Dr. Helen Ann P. Tacandong, DVM
               </p>
-              <p>City Government Department Head II · City Veterinarian</p>
+              <p>City Veterinarian · CVO Head II</p>
             </div>
           </div>
         </div>
 
         {/* Certificate Footnote */}
-        <div className="px-5 py-2 bg-muted/30 border-t border-border/50 text-center text-[9px] text-muted-foreground">
+        <div className="px-4 py-1.5 bg-muted/30 border-t border-border/50 text-center text-[8.5px] text-muted-foreground">
           Official Municipal Record • Republic Act No. 9482 (Anti-Rabies Act) & Republic Act No. 10173 (Data Privacy Act of 2012)
         </div>
       </div>

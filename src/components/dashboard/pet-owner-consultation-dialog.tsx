@@ -43,6 +43,7 @@ import { cvoBarangays } from "@/data/cvo-store";
 import { DatePicker } from "@/components/ui/date-picker";
 import { format } from "date-fns";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { checkInPetOwnerToQueue, getTodayDateStr } from "@/lib/cvo-queue";
 
 export const CVO_CLINICAL_SYSTEMS = [
@@ -221,6 +222,7 @@ export interface PetItem {
   gender?: string;
   color?: string;
   weightKg?: number;
+  photo_url?: string | null;
 }
 
 interface PetOwnerConsultationDialogProps {
@@ -560,9 +562,12 @@ export function PetOwnerConsultationDialog({
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20 p-3.5 space-y-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5">
-                        <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
-                          <PawPrint className="size-5" />
-                        </div>
+                        <PetAvatar
+                          photoUrl={selectedPet.photo_url}
+                          species={selectedPet.species}
+                          name={selectedPet.name}
+                          size="md"
+                        />
                         <div>
                           <div className="flex items-center gap-2">
                             <h5 className="font-bold text-sm text-foreground">{selectedPet.name}</h5>

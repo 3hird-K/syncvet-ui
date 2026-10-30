@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, PawPrint, Scale, Calendar, QrCode, Check, Lock, X } from "lucide-react";
+import { Loader2, PawPrint, Scale, Calendar, QrCode, Check, Lock, X, Camera } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { DOG_BREEDS, CAT_BREEDS, WEIGHT_CATEGORIES } from "./register-pet-dialog";
+import { PetAvatarPickerDialog } from "./pet-avatar-picker-dialog";
+import { PetAvatar } from "./pet-avatar";
 import { cn } from "@/lib/utils";
 
 const currentYear = new Date().getFullYear();
@@ -43,11 +45,13 @@ export function EditPetDialog({
   onDeleteRequest,
 }: EditPetDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
 
   // Form states matching database.types.ts
   const [petName, setPetName] = useState("");
+  const [photoUrl, setPhotoUrl] = useState<string>("");
   const [species, setSpecies] = useState<"Dog" | "Cat">("Dog");
   const [breed, setBreed] = useState<string>("Aspin (Asong Pinoy)");
   const [gender, setGender] = useState<"Male" | "Female">("Male");
@@ -89,6 +93,7 @@ export function EditPetDialog({
 
       setMicrochipNumber(pet.microchip_number || pet.microchip || "");
       setNotes(pet.notes || "");
+      setPhotoUrl(pet.photo_url || "");
     }
   }, [pet]);
 
@@ -103,6 +108,11 @@ export function EditPetDialog({
     setLoading(true);
 
     try {
+      const defaultAvatar = species === "Cat"
+        ? "/assets/cat-profiles/image-removebg-preview (2).png"
+        : "/assets/dog-profiles/image-removebg-preview (5).png";
+      const resolvedPhotoUrl = (photoUrl && photoUrl.trim() !== "") ? photoUrl.trim() : defaultAvatar;
+
       const { error } = await supabase
         .from("pets")
         .update({
@@ -110,6 +120,7 @@ export function EditPetDialog({
           species,
           breed: breed.trim(),
           gender,
+          photo_url: resolvedPhotoUrl,
           birth_year: birthYear ? Number(birthYear) : null,
           weight_category: weightCategory || null,
           notes: notes.trim() || null,
@@ -200,6 +211,40 @@ export function EditPetDialog({
           </DialogHeader>
 
           <div className="grid gap-3 py-3.5 max-h-[68vh] overflow-y-auto pr-1">
+            {/* Pet Profile Picture Picker */}
+            <div className="p-3 rounded-xl border border-border/70 bg-muted/30 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <PetAvatar
+                  photoUrl={photoUrl}
+                  species={species}
+                  name={petName}
+                  size="md"
+                />
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-bold">
+                    Profile Picture
+                  </p>
+                  <p className="text-xs font-semibold text-foreground">
+                    {photoUrl ? "Custom Avatar Selected" : "Default Species Crest"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Used on digital passport, queues & clinic cards
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAvatarPickerOpen(true)}
+                className="h-8 px-3 text-xs font-medium rounded-lg gap-1.5 shrink-0 bg-background hover:bg-muted"
+              >
+                <Camera className="size-3.5 text-primary" />
+                <span>{photoUrl ? "Change Photo" : "Choose Photo"}</span>
+              </Button>
+            </div>
+
             {/* Pet Name */}
             <div className="grid gap-1">
               <Label htmlFor="edit-name" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -215,46 +260,50 @@ export function EditPetDialog({
               />
             </div>
 
-            {/* Species & Gender */}
+            {/* Species & Gender (Locked Municipal Biological Records) */}
             <div className="grid grid-cols-2 gap-2.5">
               <div className="grid gap-1">
-                <Label htmlFor="edit-species" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Species *
-                </Label>
-                <Select
-                  value={species}
-                  onValueChange={(val: "Dog" | "Cat") => {
-                    setSpecies(val);
-                    if (val === "Cat") {
-                      setBreed("Puspin (Pusang Pinoy)");
-                    } else {
-                      setBreed("Aspin (Asong Pinoy)");
-                    }
-                  }}
-                >
-                  <SelectTrigger id="edit-species" className="h-8.5 text-xs rounded-lg">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Dog">🐶 Dog (Canine)</SelectItem>
-                    <SelectItem value="Cat">🐱 Cat (Feline)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Species
+                  </Label>
+                  <span className="text-[9px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Lock className="size-2.5" /> Locked
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    value={species === "Cat" ? "🐱 Cat (Feline)" : "🐶 Dog (Canine)"}
+                    readOnly
+                    disabled
+                    className="h-8.5 text-xs rounded-lg bg-muted/60 text-muted-foreground cursor-not-allowed select-none pr-8 font-medium"
+                  />
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none">
+                    <Lock className="size-3" />
+                  </div>
+                </div>
               </div>
 
               <div className="grid gap-1">
-                <Label htmlFor="edit-gender" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Gender
-                </Label>
-                <Select value={gender} onValueChange={(val: "Male" | "Female") => setGender(val)}>
-                  <SelectTrigger id="edit-gender" className="h-8.5 text-xs rounded-lg">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Gender
+                  </Label>
+                  <span className="text-[9px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Lock className="size-2.5" /> Locked
+                  </span>
+                </div>
+                <div className="relative">
+                  <Input
+                    value={gender === "Female" ? "Female ♀" : "Male ♂"}
+                    readOnly
+                    disabled
+                    className="h-8.5 text-xs rounded-lg bg-muted/60 text-muted-foreground cursor-not-allowed select-none pr-8 font-medium"
+                  />
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none">
+                    <Lock className="size-3" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -364,6 +413,18 @@ export function EditPetDialog({
           </div>
         </form>
       </DialogContent>
+
+      <PetAvatarPickerDialog
+        open={avatarPickerOpen}
+        onOpenChange={setAvatarPickerOpen}
+        petId={pet?.id}
+        petName={petName}
+        species={species}
+        breed={breed}
+        currentPhotoUrl={photoUrl}
+        speciesStrict={true}
+        onSelectAvatar={(url) => setPhotoUrl(url)}
+      />
     </Dialog>
   );
 }

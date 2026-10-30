@@ -2,8 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, Scale, Calendar } from "lucide-react";
+import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, Scale, Calendar, Camera } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
+import { PetAvatarPickerDialog } from "./pet-avatar-picker-dialog";
+import { PetAvatar } from "./pet-avatar";
+import { PET_DOG_AVATARS, PET_CAT_AVATARS, getDefaultPetAvatar } from "@/lib/pet-avatars";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -143,6 +146,8 @@ export function RegisterPetDialog({
   // Form states based on database.types.ts `pets` table
   const [petName, setPetName] = useState("");
   const [species, setSpecies] = useState<"Dog" | "Cat">("Dog");
+  const [photoUrl, setPhotoUrl] = useState<string>(PET_DOG_AVATARS[0].url);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [breed, setBreed] = useState<string>("Aspin (Asong Pinoy)");
   const [gender, setGender] = useState<"Male" | "Female">("Male");
   const [birthYear, setBirthYear] = useState<string>(String(currentYear - 1));
@@ -203,6 +208,12 @@ export function RegisterPetDialog({
     try {
       const finalMicrochip = `pet-${Date.now().toString().slice(-9)}`;
 
+      // Put the pet avatar URL directly if not specified (for cats: Persian Whiskers default)
+      const defaultAvatar = species === "Cat"
+        ? (PET_CAT_AVATARS[0]?.url || "/assets/cat-profiles/image-removebg-preview (2).png")
+        : (PET_DOG_AVATARS[0]?.url || "/assets/dog-profiles/image-removebg-preview (5).png");
+      const resolvedPhotoUrl = (photoUrl && photoUrl.trim() !== "") ? photoUrl.trim() : defaultAvatar;
+
       // Insert directly into Supabase `pets` table adhering strictly to database.types.ts
       const { data: insertedPet, error } = await supabase
         .from("pets")
@@ -211,6 +222,7 @@ export function RegisterPetDialog({
           species,
           breed: breed.trim() || (species === "Cat" ? "Puspin" : "Aspin"),
           gender,
+          photo_url: resolvedPhotoUrl,
           birth_year: birthYear ? Number(birthYear) : null,
           weight_category: weightCategory || null,
           is_spayed_neutered: false,
@@ -253,6 +265,7 @@ export function RegisterPetDialog({
 
       // Reset form
       setPetName("");
+      setPhotoUrl(PET_DOG_AVATARS[0].url);
       setSpecies("Dog");
       setBreed("Aspin (Asong Pinoy)");
       setGender("Male");
@@ -295,6 +308,40 @@ export function RegisterPetDialog({
           </DialogHeader>
 
           <div className="grid gap-3.5 py-1">
+            {/* Pet Profile Picture Picker */}
+            <div className="p-3 rounded-xl border border-border/70 bg-muted/30 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <PetAvatar
+                  photoUrl={photoUrl}
+                  species={species}
+                  name={petName}
+                  size="md"
+                />
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-bold">
+                    Profile Picture (Optional)
+                  </p>
+                  <p className="text-xs font-semibold text-foreground">
+                    {photoUrl ? "Custom Avatar Chosen" : "Default Species Avatar"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Choose from official SyncVet pet avatars
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAvatarPickerOpen(true)}
+                className="h-8 px-3 text-xs font-medium rounded-lg gap-1.5 shrink-0 bg-background hover:bg-muted"
+              >
+                <Camera className="size-3.5 text-primary" />
+                <span>{photoUrl ? "Change" : "Choose Photo"}</span>
+              </Button>
+            </div>
+
             {/* Pet Name */}
             <div className="grid gap-1">
               <Label htmlFor="pet-name" className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -322,8 +369,16 @@ export function RegisterPetDialog({
                     setSpecies(val);
                     if (val === "Cat") {
                       setBreed("Puspin (Pusang Pinoy)");
+                      // Automatically switch to feline avatar
+                      if (!photoUrl || PET_DOG_AVATARS.some((d) => d.url === photoUrl)) {
+                        setPhotoUrl(PET_CAT_AVATARS[0].url);
+                      }
                     } else {
                       setBreed("Aspin (Asong Pinoy)");
+                      // Automatically switch to canine avatar
+                      if (!photoUrl || PET_CAT_AVATARS.some((c) => c.url === photoUrl)) {
+                        setPhotoUrl(PET_DOG_AVATARS[0].url);
+                      }
                     }
                   }}
                 >
@@ -539,6 +594,17 @@ export function RegisterPetDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <PetAvatarPickerDialog
+        open={avatarPickerOpen}
+        onOpenChange={setAvatarPickerOpen}
+        petName={petName || "New Pet"}
+        species={species}
+        breed={breed}
+        currentPhotoUrl={photoUrl}
+        speciesStrict={true}
+        onSelectAvatar={(url) => setPhotoUrl(url)}
+      />
     </Dialog>
   );
 }

@@ -85,6 +85,7 @@ import { TablePagination } from "@/components/dashboard/table-pagination";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { EditPetDialog } from "@/components/dashboard/edit-pet-dialog";
 import { DeletePetDialog } from "@/components/dashboard/delete-pet-dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
@@ -109,6 +110,7 @@ interface PetRecord {
   sterilized: boolean;
   microchip: string;
   classification: "Domestic" | "Livestock";
+  photo_url?: string | null;
   lastVaccinationDate?: string;
   nextVaccinationDate?: string;
 }
@@ -198,6 +200,7 @@ export default function PetRegistryPage() {
           sterilized: Boolean(p.is_neutered || p.is_spayed_neutered),
           microchip: p.microchip_number || p.id,
           classification: "Domestic" as const,
+          photo_url: p.photo_url || null,
           lastVaccinationDate: p.last_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2026-05-10" : undefined),
           nextVaccinationDate: p.next_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2027-05-10" : undefined),
         }));
@@ -693,7 +696,17 @@ export default function PetRegistryPage() {
                       </TableCell>
                     )}
                     {visibleColumns.includes("name") && (
-                      <TableCell className="text-xs font-medium text-foreground">{pet.name}</TableCell>
+                      <TableCell className="text-xs font-medium text-foreground py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <PetAvatar
+                            photoUrl={pet.photo_url}
+                            species={pet.species}
+                            name={pet.name}
+                            size="sm"
+                          />
+                          <span className="font-semibold text-foreground">{pet.name}</span>
+                        </div>
+                      </TableCell>
                     )}
                     {visibleColumns.includes("species") && (
                       <TableCell>
@@ -877,20 +890,12 @@ export default function PetRegistryPage() {
               {/* Profile Hero Header Card */}
               <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-4.5 sm:p-5 shadow-xs">
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div
-                    className={cn(
-                      "size-13 rounded-2xl flex items-center justify-center shrink-0 border shadow-xs",
-                      selectedPet.species === "Dog"
-                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
-                        : "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25"
-                    )}
-                  >
-                    {selectedPet.species === "Dog" ? (
-                      <Dog className="size-6.5" />
-                    ) : (
-                      <Cat className="size-6.5" />
-                    )}
-                  </div>
+                  <PetAvatar
+                    photoUrl={selectedPet.photo_url}
+                    species={selectedPet.species}
+                    name={selectedPet.name}
+                    size="lg"
+                  />
                   <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-xl font-bold tracking-tight text-foreground truncate">

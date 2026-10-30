@@ -59,6 +59,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Camera,
+  Check,
+  Save,
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
@@ -105,9 +108,12 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PetOwnerConsultationDialog } from "@/components/dashboard/pet-owner-consultation-dialog";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
-import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
+import { RegisterPetDialog, DOG_BREEDS, CAT_BREEDS } from "@/components/dashboard/register-pet-dialog";
 import { EditPetDialog } from "@/components/dashboard/edit-pet-dialog";
 import { DeletePetDialog } from "@/components/dashboard/delete-pet-dialog";
+import { PetAvatarPickerDialog } from "@/components/dashboard/pet-avatar-picker-dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
+import { PET_CAT_AVATARS, PET_DOG_AVATARS, getPetAvatarUrl } from "@/lib/pet-avatars";
 import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 import { DeleteConsultationDialog } from "@/components/dashboard/delete-consultation-dialog";
 import { ScheduleProcedureDialog } from "@/components/dashboard/schedule-procedure-dialog";
@@ -173,6 +179,110 @@ export default function PetOwnerPortalPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [petToDelete, setPetToDelete] = useState<any>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [avatarPickerPet, setAvatarPickerPet] = useState<any>(null);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [showAvatarPickerPanel, setShowAvatarPickerPanel] = useState(false);
+  const [showEditPetPanel, setShowEditPetPanel] = useState(false);
+  const [savingPetAvatar, setSavingPetAvatar] = useState(false);
+
+  // Inline edit states for pet modal
+  const [editPetName, setEditPetName] = useState("");
+  const [editPetBreed, setEditPetBreed] = useState("");
+  const [editPetWeight, setEditPetWeight] = useState("");
+  const [savingPetUpdates, setSavingPetUpdates] = useState(false);
+
+  // Save pet profile updates directly from the card
+  const handleSavePetUpdates = async () => {
+    if (!selectedPetForInfo) return;
+    if (!editPetName.trim()) {
+      toast.error("Pet name cannot be empty");
+      return;
+    }
+
+    setSavingPetUpdates(true);
+    try {
+      const parsedWeight = parseFloat(editPetWeight);
+      const updatePayload: Record<string, any> = {
+        name: editPetName.trim(),
+        breed: editPetBreed.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (!isNaN(parsedWeight) && parsedWeight > 0) {
+        updatePayload.weight_category = `${parsedWeight} kg`;
+      }
+
+      const { error } = await supabase
+        .from("pets")
+        .update(updatePayload)
+        .eq("id", selectedPetForInfo.id);
+
+      if (error) throw error;
+
+      setSelectedPetForInfo((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              name: editPetName.trim(),
+              breed: editPetBreed.trim(),
+              weightKg: !isNaN(parsedWeight) && parsedWeight > 0 ? parsedWeight : prev.weightKg,
+            }
+          : prev
+      );
+      setSelectedPetForPassport((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              name: editPetName.trim(),
+              breed: editPetBreed.trim(),
+              weightKg: !isNaN(parsedWeight) && parsedWeight > 0 ? parsedWeight : prev.weightKg,
+            }
+          : prev
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["owner-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-user-pets"] });
+
+      toast.success("Pet Profile Saved", {
+        description: `Changes for ${editPetName.trim()} have been saved successfully.`,
+      });
+      setShowEditPetPanel(false);
+    } catch (err: any) {
+      console.error("Pet update error:", err);
+      toast.error("Failed to save changes", { description: err.message });
+    } finally {
+      setSavingPetUpdates(false);
+    }
+  };
+
+  // Direct avatar selection from expanded passport side panel
+  const handleDirectAvatarSelect = async (petId: string, url: string, label: string) => {
+    setSavingPetAvatar(true);
+    try {
+      const { error } = await supabase
+        .from("pets")
+        .update({ photo_url: url, updated_at: new Date().toISOString() })
+        .eq("id", petId);
+      if (error) throw error;
+
+      setSelectedPetForInfo((prev: any) => (prev ? { ...prev, photo_url: url } : prev));
+      setSelectedPetForPassport((prev: any) => (prev ? { ...prev, photo_url: url } : prev));
+
+      queryClient.invalidateQueries({ queryKey: ["owner-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["chat-user-pets"] });
+
+      toast.success("Profile photo updated!", {
+        description: `${selectedPetForInfo?.name || "Pet"}'s avatar set to ${label}.`,
+      });
+    } catch (err: any) {
+      toast.error("Failed to update avatar", { description: err.message });
+    } finally {
+      setSavingPetAvatar(false);
+    }
+  };
 
   // CRUD state for deleting Consultation / EMR
   const [consultationToDelete, setConsultationToDelete] = useState<CVOConsultation | null>(null);
@@ -638,6 +748,7 @@ export default function PetOwnerPortalPage() {
       lastVaccinationDate: p.last_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2026-05-10" : undefined),
       nextVaccinationDate: p.next_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2027-05-10" : undefined),
       microchip: p.microchip_number || p.id,
+      photo_url: p.photo_url || (p.species?.toLowerCase() === "cat" ? "/assets/cat-profiles/image-removebg-preview (2).png" : "/assets/dog-profiles/image-removebg-preview (5).png"),
       bodyConditionScore: 5,
     }));
   }, [dbPets]);
@@ -674,13 +785,24 @@ export default function PetOwnerPortalPage() {
   // Primary pet for dynamic greetings and initial selections
   const primaryPetName = pets.length > 0 ? pets[0].name : "your pet";
 
+  // Verification URL generator for digital passport
+  const getPassportVerifyUrl = (pet: any) => {
+    if (!pet || typeof window === "undefined") return "";
+    return `${window.location.origin}/verify/pet/${pet.id}?name=${encodeURIComponent(pet.name || "")}&species=${encodeURIComponent(pet.species || "")}&breed=${encodeURIComponent(pet.breed || "")}&tag=${encodeURIComponent(pet.microchip || pet.id || "")}&owner=${encodeURIComponent(ownerName || "")}&contact=${encodeURIComponent(ownerContact || "")}&bgy=${encodeURIComponent(ownerBarangay || "")}&vax=${pet.rabiesVaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(pet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(pet.nextVaccinationDate || "")}&photo=${encodeURIComponent(pet.photo_url || "")}`;
+  };
+
   // Open comprehensive pet info modal
   const handleOpenPetInfo = async (pet: any) => {
     setSelectedPetForInfo(pet);
     setSelectedPetForPassport(pet);
+    setEditPetName(pet.name || "");
+    setEditPetBreed(pet.breed || "");
+    setEditPetWeight(pet.weightKg ? String(pet.weightKg) : "");
+    setShowAvatarPickerPanel(false);
+    setShowEditPetPanel(false);
     setPetInfoOpen(true);
     try {
-      const publicVerifyUrl = `${window.location.origin}/verify/pet/${pet.id}?name=${encodeURIComponent(pet.name || "")}&species=${encodeURIComponent(pet.species || "")}&breed=${encodeURIComponent(pet.breed || "")}&tag=${encodeURIComponent(pet.microchip || pet.id || "")}&owner=${encodeURIComponent(ownerName || "")}&bgy=${encodeURIComponent(ownerBarangay || "")}&vax=${pet.rabiesVaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(pet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(pet.nextVaccinationDate || "")}`;
+      const publicVerifyUrl = getPassportVerifyUrl(pet);
       const url = await QRCode.toDataURL(publicVerifyUrl, { width: 360, margin: 1 });
       setQrPassportUrl(url);
     } catch {
@@ -692,7 +814,7 @@ export default function PetOwnerPortalPage() {
   const handleOpenPassport = async (pet: any) => {
     setSelectedPetForPassport(pet);
     try {
-      const publicVerifyUrl = `${window.location.origin}/verify/pet/${pet.id}?name=${encodeURIComponent(pet.name || "")}&species=${encodeURIComponent(pet.species || "")}&breed=${encodeURIComponent(pet.breed || "")}&tag=${encodeURIComponent(pet.microchip || pet.id || "")}&owner=${encodeURIComponent(ownerName || "")}&bgy=${encodeURIComponent(ownerBarangay || "")}&vax=${pet.rabiesVaccinated ? "1" : "0"}&lastVax=${encodeURIComponent(pet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(pet.nextVaccinationDate || "")}`;
+      const publicVerifyUrl = getPassportVerifyUrl(pet);
       const url = await QRCode.toDataURL(publicVerifyUrl, { width: 360, margin: 1 });
       setQrPassportUrl(url);
       setPassportOpen(true);
@@ -820,7 +942,7 @@ export default function PetOwnerPortalPage() {
       // Guardian & Jurisdiction
       ctx.fillStyle = "#334155";
       ctx.font = "500 12px sans-serif";
-      ctx.fillText(`Registered Guardian: ${ownerName || "Cagayan de Oro Citizen"}`, 320, 622);
+      ctx.fillText(`Registered Guardian: ${ownerName || "Cagayan de Oro Citizen"}${ownerContact ? ` • ${ownerContact}` : ""}`, 320, 622);
       ctx.fillText(`Barangay Jurisdiction: ${ownerBarangay || "Cagayan de Oro City"}`, 320, 644);
 
       // Divider
@@ -1076,16 +1198,21 @@ export default function PetOwnerPortalPage() {
               <RegisterPetDialog
                 trigger={
                   <div
-                    className="w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl bg-card border border-primary/25 hover:border-primary/60 hover:bg-primary/5 overflow-hidden relative flex flex-col items-center justify-center p-2.5 sm:p-3 text-center shrink-0 cursor-pointer shadow-2xs hover:shadow-xs hover:scale-[1.02] transition-all duration-200 select-none group/story snap-start"
+                    className="w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-card/90 via-card/60 to-emerald-500/[0.04] dark:from-card/60 dark:to-emerald-950/20 hover:from-emerald-500/[0.08] hover:via-emerald-500/[0.05] hover:to-emerald-500/[0.12] border-2 border-dashed border-emerald-500/35 hover:border-emerald-500 dark:border-emerald-500/25 dark:hover:border-emerald-400 overflow-hidden relative flex flex-col items-center justify-center p-3 sm:p-4 text-center shrink-0 cursor-pointer shadow-2xs hover:shadow-xl hover:shadow-emerald-500/10 transition-all duration-300 select-none group/story snap-start"
                     title="Register a new pet into CVO database"
                   >
-                    <div className="size-10 sm:size-11 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shadow-xs mb-2.5 group-hover/story:scale-110 transition-transform">
-                      <Plus className="size-5 stroke-[2.5]" />
+                    {/* Atmospheric Ambient Glow on Hover */}
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-32 rounded-full bg-emerald-500/15 blur-2xl opacity-40 group-hover/story:opacity-100 group-hover/story:scale-125 transition-all duration-500 pointer-events-none" />
+
+                    {/* Interactive Plus Icon Box with 90deg Spin & Elevation on Hover */}
+                    <div className="size-11 sm:size-13 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs mb-3 group-hover/story:bg-emerald-600 group-hover/story:text-white group-hover/story:border-emerald-600 group-hover/story:scale-110 group-hover/story:rotate-90 group-hover/story:shadow-lg group-hover/story:shadow-emerald-600/30 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] relative z-10">
+                      <Plus className="size-5 sm:size-6 stroke-[2.5]" />
                     </div>
-                    <p className="text-xs sm:text-sm font-bold text-foreground group-hover/story:text-primary transition-colors leading-tight">
+
+                    <p className="text-xs sm:text-sm font-extrabold text-foreground group-hover/story:text-emerald-600 dark:group-hover/story:text-emerald-400 transition-colors duration-300 leading-tight relative z-10">
                       Register Pet
                     </p>
-                    <p className="text-[10px] text-muted-foreground leading-tight mt-1">
+                    <p className="text-[10px] text-muted-foreground group-hover/story:text-foreground/80 leading-tight mt-1 transition-colors duration-300 relative z-10">
                       Add Companion
                     </p>
                   </div>
@@ -1099,82 +1226,103 @@ export default function PetOwnerPortalPage() {
               const cdoPassportId = pet.microchip && !pet.microchip.startsWith("pet-")
                 ? pet.microchip
                 : `CDO-${isCat ? "FEL" : "CAN"}-${pet.id.replace(/\D/g, "").slice(-4) || pet.id.slice(0, 4).toUpperCase()}`;
+              const resolvedPhotoUrl = getPetAvatarUrl(pet.photo_url, pet.species);
 
-              // Curated companion card gradients
+              // Curated companion card gradients with atmospheric depth
               const gradientBg = isCat
-                ? "bg-gradient-to-b from-purple-800 via-indigo-950 to-slate-950"
+                ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-slate-950"
                 : idx % 2 === 0
-                ? "bg-gradient-to-b from-emerald-800 via-teal-950 to-slate-950"
-                : "bg-gradient-to-b from-teal-800 via-slate-900 to-slate-950";
+                ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-slate-950"
+                : "bg-gradient-to-b from-cyan-700 via-slate-900 to-slate-950";
 
               return (
                 <div
                   key={pet.id}
                   onClick={() => handleOpenPetInfo(pet)}
                   className={cn(
-                    "w-[114px] sm:w-[136px] md:w-[150px] h-44 sm:h-48 md:h-52 rounded-2xl overflow-hidden relative shrink-0 cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 border border-border/60 select-none group/story flex flex-col justify-between p-2.5 sm:p-3 snap-start",
+                    "w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-xl hover:border-white/25 transition-all duration-300 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-between p-2.5 sm:p-3 snap-start",
                     gradientBg
                   )}
                   title={`${pet.name} (${pet.species}) — Click to view Pet Details & Passport`}
                 >
-                  {/* Subtle decorative ambient glow */}
-                  <div className="absolute -bottom-6 -right-6 size-24 sm:size-28 bg-white/[0.05] rounded-full blur-xl pointer-events-none" />
-                  <div className="absolute top-0 right-0 w-20 sm:w-24 h-20 sm:h-24 bg-white/[0.06] rounded-full blur-2xl pointer-events-none" />
+                  {/* Atmospheric Top Spotlight & Glowing Halo */}
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-36 rounded-full bg-white/20 blur-2xl pointer-events-none" />
+                  <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-28 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none" />
+                  <div className="absolute -bottom-8 -right-8 size-28 bg-white/[0.04] rounded-full blur-xl pointer-events-none" />
 
-                  {/* Top Row: Pet Initial Monogram & Vaccination Status Badge */}
-                  <div className="flex items-center justify-between relative z-10 w-full">
-                    <div className="size-6 sm:size-7 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-[10px] sm:text-xs font-extrabold text-white shadow-xs">
-                      {pet.name.charAt(0).toUpperCase()}
+                  {/* Top Row: Species & Gender Pill + Glowing Vaccination Status Badge */}
+                  <div className="flex items-center justify-between relative z-20 w-full gap-1">
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white text-[10px] sm:text-[11px] font-extrabold shadow-xs">
+                      {isCat ? (
+                        <Cat className="size-3 text-violet-300 shrink-0" />
+                      ) : (
+                        <Dog className="size-3 text-teal-300 shrink-0" />
+                      )}
+                      <span>{pet.gender === "Female" ? "♀" : "♂"}</span>
                     </div>
 
                     <span
                       className={cn(
-                        "text-[8.5px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md",
+                        "text-[8.5px] sm:text-[9.5px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md flex items-center gap-1 shrink-0",
                         vaxStatus.isOverdue
-                          ? "bg-rose-600/90 text-white"
+                          ? "bg-rose-500/25 border border-rose-400/40 text-rose-200"
                           : vaxStatus.isDueSoon
-                          ? "bg-amber-500 text-black font-bold"
+                          ? "bg-amber-500/25 border border-amber-400/40 text-amber-200"
                           : vaxStatus.isVaccinated
-                          ? "bg-emerald-500/90 text-white"
-                          : "bg-amber-600/90 text-white"
+                          ? "bg-emerald-500/25 border border-emerald-400/40 text-emerald-200"
+                          : "bg-amber-600/25 border border-amber-400/40 text-amber-200"
                       )}
                     >
-                      {vaxStatus.isOverdue
-                        ? "Overdue"
-                        : vaxStatus.isDueSoon
-                        ? "Due Soon"
-                        : vaxStatus.isVaccinated
-                        ? "Protected"
-                        : "Unvaccinated"}
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full shrink-0",
+                          vaxStatus.isOverdue
+                            ? "bg-rose-400 animate-ping"
+                            : vaxStatus.isDueSoon
+                            ? "bg-amber-400"
+                            : vaxStatus.isVaccinated
+                            ? "bg-emerald-400 animate-pulse"
+                            : "bg-amber-400"
+                        )}
+                      />
+                      <span>
+                        {vaxStatus.isOverdue
+                          ? "Overdue"
+                          : vaxStatus.isDueSoon
+                          ? "Due Soon"
+                          : vaxStatus.isVaccinated
+                          ? "Protected"
+                          : "Unvax"}
+                      </span>
                     </span>
                   </div>
 
-                  {/* Center: Frosted Glass Digital Passport Species Crest */}
-                  <div className="relative z-10 flex flex-col items-center justify-center my-auto transition-transform group-hover/story:scale-108">
-                    <div className="size-11 sm:size-13 rounded-xl sm:rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-md flex flex-col items-center justify-center">
-                      {isCat ? (
-                        <Cat className="size-5 sm:size-6 text-white mb-0.5" />
-                      ) : (
-                        <Dog className="size-5 sm:size-6 text-white mb-0.5" />
-                      )}
-                      <span className="text-[7.5px] sm:text-[8px] font-mono font-bold tracking-wider text-emerald-200 uppercase">
-                        {isCat ? "FELINE" : "CANINE"}
-                      </span>
-                    </div>
+                  {/* Middle / Bottom: Transparent Pet Cutout Anchored at bottom-0, Scaling upward on hover */}
+                  <div className="absolute inset-x-0 bottom-0 top-8 flex items-end justify-center pointer-events-none overflow-hidden z-10">
+                    <img
+                      src={resolvedPhotoUrl}
+                      alt={pet.name}
+                      className="h-[88%] w-auto max-w-[125%] object-contain object-bottom origin-bottom filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)] group-hover/story:scale-115 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
+                      loading="lazy"
+                    />
                   </div>
 
-                  {/* Bottom: Pet Name, Breed, and CDO Passport Tag */}
-                  <div className="relative z-10 space-y-0.5">
-                    <p className="text-xs sm:text-sm font-extrabold text-white leading-tight drop-shadow-xs truncate">
-                      {pet.name}
-                    </p>
-                    <p className="text-[9px] sm:text-xs text-white/80 truncate leading-tight font-medium">
-                      {pet.breed || pet.species} • {pet.gender === "Female" ? "♀" : "♂"}
-                    </p>
-                    <div className="pt-0.5 sm:pt-1 flex items-center gap-1 text-[8px] sm:text-[9px] font-mono text-emerald-200 bg-black/40 px-1.5 py-0.5 rounded-md w-fit max-w-full">
-                      <QrCode className="size-2 sm:size-2.5 text-emerald-300 shrink-0" />
-                      <span className="truncate">#{cdoPassportId.startsWith("pet-") ? cdoPassportId.slice(0, 8) : cdoPassportId}</span>
+                  {/* Dark Gradient Scrim to Guarantee Text Readability */}
+                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/90 via-black/55 to-transparent z-20 pointer-events-none" />
+
+                  {/* Bottom: Pet Name & Breed */}
+                  <div className="relative z-30 space-y-0.5 w-full">
+                    <div className="flex items-center justify-between gap-1">
+                      <h3 className="text-sm sm:text-base font-black text-white leading-tight truncate tracking-tight drop-shadow-md">
+                        {pet.name}
+                      </h3>
+                      <span className="text-[10px] text-white/70 font-mono font-medium shrink-0">
+                        {pet.age}
+                      </span>
                     </div>
+                    <p className="text-[10px] sm:text-xs text-white/80 font-medium truncate drop-shadow-xs">
+                      {pet.breed || pet.species}
+                    </p>
                   </div>
                 </div>
               );
@@ -2248,8 +2396,23 @@ export default function PetOwnerPortalPage() {
       />
 
       {/* ── Pet Information & Digital Health Passport Modal ── */}
-      <Dialog open={petInfoOpen} onOpenChange={setPetInfoOpen}>
-        <DialogContent showCloseButton={false} className="max-w-3xl sm:max-w-3xl w-full p-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl max-h-[92vh] flex flex-col">
+      <Dialog
+        open={petInfoOpen}
+        onOpenChange={(open) => {
+          setPetInfoOpen(open);
+          if (!open) {
+            setShowAvatarPickerPanel(false);
+            setShowEditPetPanel(false);
+          }
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className={cn(
+            "w-full p-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl max-h-[92vh] flex flex-col transition-all duration-300 ease-in-out",
+            showAvatarPickerPanel || showEditPetPanel ? "max-w-5xl sm:max-w-5xl" : "max-w-3xl sm:max-w-3xl"
+          )}
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>{selectedPetForInfo?.name || "Pet"} Profile & Medical Passport</DialogTitle>
           </DialogHeader>
@@ -2272,9 +2435,23 @@ export default function PetOwnerPortalPage() {
               (c.petName && c.petName.toLowerCase() === pet.name.toLowerCase())
             );
 
+            const availableSpeciesAvatars = isCat ? PET_CAT_AVATARS : PET_DOG_AVATARS;
+            const baseBreeds: string[] = isCat ? [...CAT_BREEDS] : [...DOG_BREEDS];
+            const breedOptions: string[] = editPetBreed && !baseBreeds.includes(editPetBreed)
+              ? [editPetBreed, ...baseBreeds]
+              : baseBreeds;
+
+            const hasUnsavedChanges = Boolean(
+              editPetName.trim() !== (pet.name || "").trim() ||
+              editPetBreed.trim() !== (pet.breed || "").trim() ||
+              (editPetWeight.trim() !== "" && editPetWeight.trim() !== (pet.weightKg ? String(pet.weightKg) : "").trim())
+            );
+
             return (
-              <div className="flex flex-col h-full overflow-hidden">
-                {/* Header Card with Gradient & Crest */}
+              <div className="flex w-full h-full min-h-0 overflow-hidden">
+                {/* Left Side: Pet Info & Passport */}
+                <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+                  {/* Header Card with Gradient & Crest */}
                 <div
                   className={cn(
                     "p-5 text-white relative overflow-hidden shrink-0",
@@ -2286,14 +2463,33 @@ export default function PetOwnerPortalPage() {
                   <div className="absolute -bottom-10 -right-10 size-40 bg-white/[0.05] rounded-full blur-2xl pointer-events-none" />
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
 
-                  {/* Top Header Row */}
-                  <div className="flex items-center justify-between relative z-10 mb-3">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-200 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/20">
-                      {isCat ? "FELINE COMPANION" : "CANINE COMPANION"}
-                    </span>
+                  {/* Top Header Row with Tag ID & Weight above, no feline companion text */}
+                  <div className="flex items-center justify-between relative z-10 mb-3 gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-mono font-bold text-white/95 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-1.5 shadow-xs">
+                        <QrCode className="size-3.5 text-emerald-300" />
+                        <span>#{cdoPassportId}</span>
+                      </span>
+                      {pet.weightKg && (
+                        <span className="text-[11px] font-mono font-semibold text-cyan-200 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-1 shadow-xs">
+                          <Scale className="size-3 text-cyan-300" />
+                          <span>{pet.weightKg} kg</span>
+                        </span>
+                      )}
+                    </div>
 
-                    {/* Top Action Icons: Request Care, Book Slot, 3 Dots, Close */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Top Action Icons: Digital Passport, Request Care, Book Slot, 3 Dots, Save, Close */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPassport(pet)}
+                        className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                        title="Official Digital Health Passport"
+                      >
+                        <QrCode className="size-4 text-white" />
+                        <span className="sr-only">Official Digital Health Passport</span>
+                      </button>
+
                       <PetOwnerConsultationDialog
                         pets={pets}
                         initialPet={pet}
@@ -2326,6 +2522,27 @@ export default function PetOwnerPortalPage() {
                         }
                       />
 
+                      {/* Save Profile Button */}
+                      <button
+                        type="button"
+                        onClick={handleSavePetUpdates}
+                        disabled={savingPetUpdates}
+                        className={cn(
+                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                          hasUnsavedChanges
+                            ? "bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md animate-pulse"
+                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                        )}
+                        title={hasUnsavedChanges ? "Save profile changes" : "Save Profile"}
+                      >
+                        {savingPetUpdates ? (
+                          <Loader2 className="size-4 animate-spin text-white" />
+                        ) : (
+                          <Save className="size-4 text-white" />
+                        )}
+                        <span className="sr-only">Save Profile</span>
+                      </button>
+
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
@@ -2337,17 +2554,26 @@ export default function PetOwnerPortalPage() {
                             <span className="sr-only">More options</span>
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44 rounded-xl">
+                        <DropdownMenuContent align="end" className="w-52 rounded-xl">
                           <DropdownMenuItem
                             onClick={() => {
-                              setPetToEdit(pet);
-                              setEditDialogOpen(true);
-                              setPetInfoOpen(false);
+                              setShowEditPetPanel((prev) => !prev);
+                              setShowAvatarPickerPanel(false);
                             }}
                             className="cursor-pointer gap-2 text-xs"
                           >
-                            <Pencil className="size-3.5 text-muted-foreground" />
-                            <span>Edit Details</span>
+                            <Pencil className="size-3.5 text-primary" />
+                            <span>{showEditPetPanel ? "Hide Edit Panel" : "Edit Pet Details"}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setShowAvatarPickerPanel((prev) => !prev);
+                              setShowEditPetPanel(false);
+                            }}
+                            className="cursor-pointer gap-2 text-xs"
+                          >
+                            <Camera className="size-3.5 text-primary" />
+                            <span>{showAvatarPickerPanel ? "Hide Avatar Picker" : "Change Profile Picture"}</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -2367,7 +2593,7 @@ export default function PetOwnerPortalPage() {
                       <DialogClose asChild>
                         <button
                           type="button"
-                          className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                          className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
                           title="Close"
                         >
                           <X className="size-4 text-white" />
@@ -2379,23 +2605,53 @@ export default function PetOwnerPortalPage() {
 
                   {/* Hero Identity */}
                   <div className="flex items-center gap-4 relative z-10">
-                    <div className="size-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-md flex items-center justify-center shrink-0">
-                      {isCat ? (
-                        <Cat className="size-8 text-white" />
-                      ) : (
-                        <Dog className="size-8 text-white" />
-                      )}
-                    </div>
+                    <PetAvatar
+                      photoUrl={pet.photo_url}
+                      species={pet.species}
+                      name={pet.name}
+                      size="xl"
+                    />
 
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-2xl font-black text-white tracking-tight truncate">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      {/* Clean Pet Name with Clickable Edit Icon Button */}
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">
                           {pet.name}
                         </h2>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowEditPetPanel((prev) => !prev);
+                            setShowAvatarPickerPanel(false);
+                          }}
+                          className={cn(
+                            "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
+                            showEditPetPanel
+                              ? "bg-white text-slate-900 border-white shadow-md scale-105"
+                              : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                          )}
+                          title={showEditPetPanel ? "Close edit panel" : "Edit Pet Information"}
+                        >
+                          <Pencil className="size-3.5" />
+                          <span className="sr-only">Edit Pet</span>
+                        </button>
                       </div>
-                      <p className="text-xs text-white/80 font-medium">
-                        {pet.breed || pet.species} • {pet.gender === "Female" ? "Female ♀" : "Male ♂"} • {pet.age}
+
+                      {/* Basic Info Line */}
+                      <p className="text-xs text-white/90 font-medium flex items-center gap-1.5 flex-wrap">
+                        <span>{pet.breed || pet.species}</span>
+                        <span className="text-white/40">•</span>
+                        <span>{pet.gender === "Female" ? "Female ♀" : "Male ♂"}</span>
+                        <span className="text-white/40">•</span>
+                        <span>{pet.age}</span>
+                        {pet.weightKg && (
+                          <>
+                            <span className="text-white/40">•</span>
+                            <span className="font-semibold text-white">{pet.weightKg} kg</span>
+                          </>
+                        )}
                       </p>
+
                       <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                         <span
                           className={cn(
@@ -2440,53 +2696,8 @@ export default function PetOwnerPortalPage() {
                   </div>
                 </div>
 
-                {/* Scrollable Content */}
+                {/* Scrollable Content (Redundant Vitals Grid Removed) */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-                  {/* Vitals Grid */}
-                  <div>
-                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <Activity className="size-3.5 text-primary" />
-                      <span>Physical Vitals & Municipal Identification</span>
-                    </h4>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      <div className="p-3 rounded-xl bg-card border border-border/70 space-y-1">
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <QrCode className="size-3 text-primary" /> Tag ID
-                        </span>
-                        <p className="font-mono font-bold text-xs text-foreground truncate" title={cdoPassportId}>
-                          #{cdoPassportId}
-                        </p>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-card border border-border/70 space-y-1">
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Scale className="size-3 text-muted-foreground" /> Weight
-                        </span>
-                        <p className="font-bold text-xs text-foreground">
-                          {pet.weightKg} kg
-                        </p>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-card border border-border/70 space-y-1">
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Calendar className="size-3 text-muted-foreground" /> Age
-                        </span>
-                        <p className="font-bold text-xs text-foreground">
-                          {pet.age}
-                        </p>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-card border border-border/70 space-y-1">
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                          <Scissors className="size-3 text-cyan-600" /> Sterilization
-                        </span>
-                        <p className="font-bold text-xs text-foreground truncate">
-                          {pet.isSpayedNeutered ? "Neutered / Spayed" : "Intact"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* Rabies Immunization Status Card */}
                   <div className={cn(
@@ -2541,70 +2752,6 @@ export default function PetOwnerPortalPage() {
                         <span className="font-bold text-foreground text-xs">
                           {pet.nextVaccinationDate || (vaxStatus.isVaccinated ? "1 Year from dose" : "Immediate schedule required")}
                         </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Digital QR Passport Section */}
-                  <div className="p-4 rounded-xl bg-card border border-border/80 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                          <QrCode className="size-3.5 text-primary" />
-                          <span>Official Digital Health Passport</span>
-                        </h4>
-                        <p className="text-[10px] text-muted-foreground">
-                          Present this scannable code during mobile vet drives or walk-in visits
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
-                      {qrPassportUrl && (
-                        <div className="p-2.5 bg-white rounded-xl border-2 border-primary/20 shadow-xs shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={qrPassportUrl} alt="Pet Passport QR Code" className="size-32" />
-                        </div>
-                      )}
-
-                      <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
-                        <div className="space-y-0.5 text-xs">
-                          <p className="text-muted-foreground text-[11px]">
-                            Registered Guardian: <strong className="text-foreground">{ownerName}</strong>
-                          </p>
-                          <p className="text-muted-foreground text-[11px]">
-                            Barangay Jurisdiction: <strong className="text-foreground">{ownerBarangay}</strong>
-                          </p>
-                          <p className="text-muted-foreground text-[11px] font-mono">
-                            Tag: <strong className="text-primary font-bold">{cdoPassportId}</strong>
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1 justify-center sm:justify-start">
-                          <Button
-                            size="sm"
-                            onClick={handleDownloadPassport}
-                            disabled={downloadingPassport}
-                            className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer rounded-xl"
-                          >
-                            {downloadingPassport ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Download className="size-3.5" />
-                            )}
-                            <span>Download Slip (PNG)</span>
-                          </Button>
-
-                          <a
-                            href={`/verify/pet/${pet.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium px-2 py-1"
-                          >
-                            <span>Live Verify Pass</span>
-                            <ExternalLink className="size-3" />
-                          </a>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -2664,58 +2811,313 @@ export default function PetOwnerPortalPage() {
                   )}
                 </div>
               </div>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
+
+              {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}
+              {showAvatarPickerPanel && (
+                <div className="w-[340px] sm:w-[390px] md:w-[430px] border-l border-border bg-card/95 backdrop-blur-md flex flex-col h-full min-h-0 shrink-0 animate-in slide-in-from-right-4 duration-300">
+                  {/* Panel Header */}
+                  <div className="p-3.5 px-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="size-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <Camera className="size-3.5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground truncate">
+                          Choose Photo
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {isCat ? "Feline Profiles Only" : "Canine Profiles Only"} • {pet.name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAvatarPickerPanel(false)}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Close photo selector"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {/* Avatars Grid (4 Columns, Smooth Scrolling) */}
+                  <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5 max-h-[calc(92vh-75px)]">
+                    <div className="p-2 rounded-lg bg-primary/5 border border-primary/15 flex items-center justify-between text-xs">
+                      <span className="text-[10.5px] font-medium text-muted-foreground">
+                        {isCat ? "Cats only choose cat profiles" : "Dogs only choose dog profiles"}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-primary px-1.5 py-0.5 rounded bg-primary/10">
+                        {availableSpeciesAvatars.length} Avatars
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 pt-1">
+                      {availableSpeciesAvatars.map((avatar) => {
+                        const isSelected = pet.photo_url === avatar.url;
+                        return (
+                          <button
+                            key={avatar.id}
+                            type="button"
+                            disabled={savingPetAvatar}
+                            onClick={() => handleDirectAvatarSelect(pet.id, avatar.url, avatar.label)}
+                            className={cn(
+                              "relative group flex flex-col items-center justify-between p-1.5 rounded-xl border transition-all duration-200 cursor-pointer text-left focus:outline-none",
+                              isSelected
+                                ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/40 shadow-xs scale-[1.02]"
+                                : "border-border/60 bg-muted/20 hover:bg-accent/40 hover:border-border hover:scale-[1.03]"
+                            )}
+                            title={`Select ${avatar.label}`}
+                          >
+                            {isSelected && (
+                              <div className="absolute top-1 right-1 z-10 size-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                <Check className="size-2.5 stroke-[3]" />
+                              </div>
+                            )}
+                            <div className="size-12 sm:size-13 flex items-center justify-center p-0.5">
+                              <PetAvatar
+                                photoUrl={avatar.url}
+                                species={pet.species}
+                                name={avatar.label}
+                                size="sm"
+                              />
+                            </div>
+                            <span
+                              className={cn(
+                                "mt-1 text-[8.5px] sm:text-[9px] font-medium text-center truncate w-full px-0.5 leading-tight",
+                                isSelected ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground"
+                              )}
+                            >
+                              {avatar.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Right Side: Edit Pet Information Panel */}
+              {showEditPetPanel && (
+                <div className="w-[320px] sm:w-[360px] md:w-[390px] border-l border-border bg-card/95 backdrop-blur-md flex flex-col h-full shrink-0 animate-in slide-in-from-right-4 duration-300">
+                  {/* Panel Header */}
+                  <div className="p-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="size-6 rounded-md bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                          <Pencil className="size-3.5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground truncate">
+                          Edit Pet Details
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        Update basic info for {pet.name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPetPanel(false)}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Close edit panel"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {/* Form Inputs Area (Compact text inputs) */}
+                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+                    {/* Pet Name Input */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground flex items-center gap-1">
+                        Pet Name <span className="text-destructive">*</span>
+                      </label>
+                      <Input
+                        value={editPetName}
+                        onChange={(e) => setEditPetName(e.target.value)}
+                        placeholder="e.g. Bella"
+                        className="h-7.5 text-xs px-2.5 rounded-lg"
+                      />
+                    </div>
+
+                    {/* Breed Dropdown from verified list */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground flex items-center justify-between">
+                        <span>Breed</span>
+                        <span className="text-[9.5px] text-muted-foreground font-mono">
+                          {isCat ? "Feline Breeds" : "Canine Breeds"}
+                        </span>
+                      </label>
+                      <Select value={editPetBreed} onValueChange={setEditPetBreed}>
+                        <SelectTrigger className="w-full h-7.5 text-xs px-2.5 rounded-lg">
+                          <SelectValue placeholder="Select breed" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-56">
+                          {breedOptions.map((b) => (
+                            <SelectItem key={b} value={b} className="text-xs">
+                              {b}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Weight Input */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground flex items-center justify-between">
+                        <span>Weight</span>
+                        <span className="text-[9.5px] text-muted-foreground">in Kilograms (kg)</span>
+                      </label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="150"
+                          value={editPetWeight}
+                          onChange={(e) => setEditPetWeight(e.target.value)}
+                          placeholder="e.g. 12.4"
+                          className="h-7.5 text-xs px-2.5 pr-8 rounded-lg"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-muted-foreground pointer-events-none">
+                          kg
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Non-editable metadata notice */}
+                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-muted-foreground">
+                        <Lock className="size-3 text-muted-foreground" />
+                        <span>Municipal Registration Locks</span>
+                      </div>
+                      <p className="text-[9.5px] text-muted-foreground leading-relaxed">
+                        Species and gender are permanent municipal identification parameters and cannot be altered after registration.
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-[9.5px] font-medium px-2 py-0.5 rounded-md bg-background border text-foreground/80">
+                          Species: <strong>{pet.species}</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[9.5px] font-medium px-2 py-0.5 rounded-md bg-background border text-foreground/80">
+                          Gender: <strong>{pet.gender === "Female" ? "Female ♀" : "Male ♂"}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Panel Footer Actions */}
+                  <div className="p-4 border-t border-border/70 bg-muted/30 flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditPetName(pet.name || "");
+                        setEditPetBreed(pet.breed || "");
+                        setEditPetWeight(pet.weightKg ? String(pet.weightKg) : "");
+                        setShowEditPetPanel(false);
+                      }}
+                      className="flex-1 text-xs cursor-pointer"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSavePetUpdates}
+                      disabled={savingPetUpdates || !hasUnsavedChanges}
+                      className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                    >
+                      {savingPetUpdates ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Save className="size-3.5" />
+                      )}
+                      <span>Save Changes</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </DialogContent>
+    </Dialog>
 
       {/* ── Pet Digital Passport QR Modal (Direct preview fallback) ── */}
       <Dialog open={passportOpen} onOpenChange={setPassportOpen}>
-        <DialogContent className="max-w-md p-5 bg-background">
-          <DialogHeader className="border-b pb-2.5 pr-8">
-            <DialogTitle className="text-sm font-bold flex items-center gap-2 truncate">
+        <DialogContent showCloseButton={false} className="max-w-md p-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl">
+          {/* Header Bar with Title, Download Icon, Visit QR Icon, and Close Icon */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/20">
+            <DialogTitle className="text-sm font-bold flex items-center gap-2 truncate text-foreground">
               <QrCode className="size-4 text-primary shrink-0" />
               <span className="truncate">Digital Pet Passport — {selectedPetForPassport?.name}</span>
             </DialogTitle>
-          </DialogHeader>
 
-          <div className="flex flex-col items-center justify-center p-4 space-y-3 text-center">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Download Passport Icon Button */}
+              <button
+                type="button"
+                onClick={handleDownloadPassport}
+                disabled={downloadingPassport}
+                className="size-8 rounded-full border border-border/70 bg-background hover:bg-muted text-foreground hover:text-emerald-600 transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                title="Download Passport Slip (PNG)"
+              >
+                {downloadingPassport ? (
+                  <Loader2 className="size-3.5 animate-spin text-emerald-600" />
+                ) : (
+                  <Download className="size-3.5 text-emerald-600" />
+                )}
+                <span className="sr-only">Download Passport</span>
+              </button>
+
+              {/* Visit Live QR Verification Link Icon Button */}
+              <a
+                href={selectedPetForPassport ? getPassportVerifyUrl(selectedPetForPassport) : "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="size-8 rounded-full border border-border/70 bg-background hover:bg-muted text-foreground hover:text-primary transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Visit Live QR Verification Link"
+              >
+                <ExternalLink className="size-3.5 text-primary" />
+                <span className="sr-only">Visit Live QR</span>
+              </a>
+
+              {/* Close Icon Button */}
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  className="size-8 rounded-full border border-border/70 bg-background hover:bg-muted text-foreground hover:text-destructive transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  title="Close"
+                >
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </button>
+              </DialogClose>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
             {qrPassportUrl && (
-              <div className="p-3 bg-white rounded-xl border-2 border-primary/20 shadow-sm">
+              <div className="p-3 bg-white rounded-2xl border-2 border-primary/20 shadow-sm transition-transform hover:scale-102">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrPassportUrl} alt="Pet Passport QR Code" className="size-44" />
+                <img src={qrPassportUrl} alt="Pet Passport QR Code" className="size-48" />
               </div>
             )}
-            <div>
+            <div className="space-y-1">
               <h4 className="font-extrabold text-base text-foreground">
                 {selectedPetForPassport?.name}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {selectedPetForPassport?.species} • {selectedPetForPassport?.breed}
+                {selectedPetForPassport?.species} • {selectedPetForPassport?.breed || "Standard"}
               </p>
               <p className="text-xs font-mono text-primary font-bold mt-1">
-                Tag ID: {selectedPetForPassport?.microchip}
+                Tag ID: #{selectedPetForPassport?.microchip && !selectedPetForPassport.microchip.startsWith("pet-")
+                  ? selectedPetForPassport.microchip
+                  : `CDO-${selectedPetForPassport?.species === "Cat" ? "FEL" : "CAN"}-${selectedPetForPassport?.id?.replace(/\D/g, "").slice(-4) || selectedPetForPassport?.id?.slice(0, 5).toUpperCase()}`}
               </p>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs">
               Show this QR code to CVO clinicians during mobile drives or walk-in visits for instant medical history retrieval.
             </p>
-
-            {/* Single clean download button */}
-            <div className="pt-2 w-full">
-              <Button
-                onClick={handleDownloadPassport}
-                disabled={downloadingPassport}
-                className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer shadow-xs text-xs h-9.5"
-              >
-                {downloadingPassport ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Download className="size-3.5" />
-                )}
-                <span>Download Passport Card</span>
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2758,6 +3160,22 @@ export default function PetOwnerPortalPage() {
         appointment={selectedAppointmentForSlip}
         petDetails={pets.find((p) => p.id === selectedAppointmentForSlip?.pet_id || p.name === selectedAppointmentForSlip?.pet_name)}
         ownerDetails={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+      />
+
+      {/* ── Pet Avatar Picker Dialog ── */}
+      <PetAvatarPickerDialog
+        open={avatarPickerOpen}
+        onOpenChange={setAvatarPickerOpen}
+        petId={avatarPickerPet?.id}
+        petName={avatarPickerPet?.name}
+        species={avatarPickerPet?.species}
+        breed={avatarPickerPet?.breed}
+        currentPhotoUrl={avatarPickerPet?.photo_url}
+        onSelectAvatar={(url) => {
+          if (selectedPetForInfo && selectedPetForInfo.id === avatarPickerPet?.id) {
+            setSelectedPetForInfo((prev: any) => ({ ...prev, photo_url: url }));
+          }
+        }}
       />
     </div>
   );

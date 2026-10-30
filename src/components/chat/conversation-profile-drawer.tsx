@@ -41,6 +41,7 @@ import {
 import { cn, getTwoLetterInitials } from "@/lib/utils";
 import { toast } from "sonner";
 import Link from "next/link";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 
 interface ConversationProfileDrawerProps {
   isOpen: boolean;
@@ -463,9 +464,12 @@ export function ConversationProfileDrawer({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className="size-11 rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/20 border border-emerald-500/20 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
-                              <PawPrint className="size-5" />
-                            </div>
+                            <PetAvatar
+                              photoUrl={pet.photo_url || pet.photoUrl}
+                              species={pet.species}
+                              name={pet.name}
+                              size="md"
+                            />
                             <div>
                               <div className="flex items-center gap-2">
                                 <h5 className="font-bold text-sm text-foreground">

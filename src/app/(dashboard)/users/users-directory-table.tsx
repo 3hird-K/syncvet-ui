@@ -33,6 +33,7 @@ import {
   Save,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -312,7 +313,7 @@ export function UsersDirectoryTable({
               weight_category: (mp.weightCategory as string) || null,
               microchip_number: (mp.microchipNumber || mp.microchip as string) || null,
               notes: (mp.notes as string) || null,
-              photo_url: null,
+              photo_url: (mp.photo_url || mp.photoUrl || null) as string | null,
               avatar_id: (mp.avatarId as string) || null,
               vaccination_doses: 0,
               last_vaccination_date: null,
@@ -1230,13 +1231,12 @@ export function UsersDirectoryTable({
                               <CardHeader className="p-4 pb-3 border-b border-border/40">
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center gap-3">
-                                    <div className="size-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                                      {isDog ? (
-                                        <Dog className="size-5 text-primary" />
-                                      ) : (
-                                        <Cat className="size-5 text-primary" />
-                                      )}
-                                    </div>
+                                    <PetAvatar
+                                      photoUrl={pet.photo_url}
+                                      species={pet.species}
+                                      name={pet.name}
+                                      size="md"
+                                    />
                                     <div className="min-w-0">
                                       <h3 className="text-sm font-bold text-foreground leading-tight truncate group-hover:text-primary transition-colors">
                                         {pet.name}

@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useCVO } from "@/lib/cvo-context";
 import { useRouter } from "next/navigation";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 
 interface GlobalSearchDialogProps {
   open: boolean;
@@ -165,15 +166,23 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                     onClick={() => navigateTo("/pet-registry")}
                     className="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs hover:bg-muted/60 transition-colors group cursor-pointer"
                   >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-foreground group-hover:text-primary">{pet.name}</span>
-                        <Badge variant="outline" className="text-[9px] py-0 px-1.5">{pet.species}</Badge>
-                        <span className="font-mono text-[10px] text-muted-foreground">{pet.id}</span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <PetAvatar
+                        photoUrl={(pet as any).photo_url}
+                        species={pet.species}
+                        name={pet.name}
+                        size="sm"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-foreground group-hover:text-primary">{pet.name}</span>
+                          <Badge variant="outline" className="text-[9px] py-0 px-1.5">{pet.species}</Badge>
+                          <span className="font-mono text-[10px] text-muted-foreground">{pet.id}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Owner: {pet.owner} • Brgy. {pet.barangay}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        Owner: {pet.owner} • Brgy. {pet.barangay}
-                      </p>
                     </div>
                     <ArrowRight className="size-3.5 text-muted-foreground/40 group-hover:text-foreground shrink-0" />
                   </button>
