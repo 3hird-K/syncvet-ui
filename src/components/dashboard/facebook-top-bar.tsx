@@ -33,10 +33,12 @@ import {
   ArrowRight,
   Shield,
   CircleUser,
+  QrCode,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -218,8 +220,22 @@ export function FacebookTopBar({
 
         {/* ── 3. Right Section: Utility Icons (Menu, Chat, Profile) ── */}
         <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
-        {/* CVO Services Quick Grid Menu */}
-        <DropdownMenu>
+          {/* Clinic Arrival QR Scanner */}
+          <ScanQueueQrDialog
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8.5 sm:size-9.5 md:size-10 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-pointer transition-transform hover:scale-105"
+                title="Scan CVO Clinic Arrival QR to Join Queue"
+              >
+                <QrCode className="size-4 sm:size-4.5 md:size-5" />
+              </Button>
+            }
+          />
+
+          {/* CVO Services Quick Grid Menu */}
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"

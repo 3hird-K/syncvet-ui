@@ -123,7 +123,8 @@ export const checkContactTyping = (
   contact: ChatContact,
   isOtherTyping: boolean,
   typingInfo: any,
-  currentUserId?: string | null
+  currentUserId?: string | null,
+  knownChatIds?: Record<string, string>
 ) => {
   if (!isOtherTyping || !typingInfo) return false;
   // A user should never see typing events triggered by themselves
@@ -131,33 +132,86 @@ export const checkContactTyping = (
     return false;
   }
 
+  // If the typing payload specifies an intended recipient user ID, it MUST match the current user!
+  if (typingInfo.recipientId && currentUserId && typingInfo.recipientId !== currentUserId) {
+    return false;
+  }
+
+  // If typing payload target is a synthetic thread id (e.g. thread-user_...), ensure it matches
+  if (
+    typingInfo.chatId &&
+    typingInfo.chatId.startsWith("thread-") &&
+    currentUserId &&
+    typingInfo.chatId !== `thread-${currentUserId}`
+  ) {
+    return false;
+  }
+
   // Strictly check by contact identity (id), NOT shared desk name!
   if (contact.id === "vet") {
     // Must be typed by Veterinarian/staff (not Pet Owner, not Admin)
-    return (
+    const isVetSender =
       typingInfo.senderRole === "Veterinarian" ||
       (typingInfo.desk === "vet" && typingInfo.senderRole !== "Pet Owner") ||
-      (typingInfo.senderName?.includes("Helen") && !typingInfo.senderName?.includes("Admin"))
-    );
+      (typingInfo.senderName?.includes("Helen") && !typingInfo.senderName?.includes("Admin"));
+
+    if (!isVetSender) return false;
+    if (typingInfo.desk && typingInfo.desk !== "vet") return false;
+
+    // If knownChatIds is provided and typingInfo has a specific real chatId, verify it matches this citizen's chat
+    if (knownChatIds?.["vet"] && typingInfo.chatId && !typingInfo.chatId.startsWith("thread-")) {
+      if (typingInfo.chatId !== knownChatIds["vet"]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   if (contact.id === "admin") {
     // Must be typed by CVO Admin Desk (not Vet, not Pet Owner)
-    return (
+    const isAdminSender =
       typingInfo.senderRole === "Admin" ||
       typingInfo.senderRole === "Administrator" ||
       (typingInfo.desk === "admin" && typingInfo.senderRole !== "Pet Owner") ||
-      typingInfo.senderName?.includes("Admin")
-    );
+      typingInfo.senderName?.includes("Admin");
+
+    if (!isAdminSender) return false;
+    if (typingInfo.desk && typingInfo.desk !== "admin") return false;
+
+    if (knownChatIds?.["admin"] && typingInfo.chatId && !typingInfo.chatId.startsWith("thread-")) {
+      if (typingInfo.chatId !== knownChatIds["admin"]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   if (contact.id === "citizen" || contact.ownerId) {
     // Must strictly be typed by a Pet Owner
-    if (typingInfo.senderRole !== "Pet Owner") return false;
-    if (contact.ownerId && typingInfo.senderId && typingInfo.senderId !== contact.ownerId) {
+    if (
+      typingInfo.senderRole === "Admin" ||
+      typingInfo.senderRole === "Administrator" ||
+      typingInfo.senderRole === "Veterinarian" ||
+      typingInfo.senderRole === "Staff"
+    ) {
       return false;
     }
-    return true;
+
+    const targetOwnerId = contact.ownerId || (contact.id !== "citizen" ? contact.id : null);
+    if (targetOwnerId && typingInfo.senderId && typingInfo.senderId !== "anon") {
+      return typingInfo.senderId === targetOwnerId;
+    }
+
+    if (typingInfo.chatId && targetOwnerId) {
+      return (
+        typingInfo.chatId === targetOwnerId ||
+        typingInfo.chatId === `thread-${targetOwnerId}`
+      );
+    }
+
+    return false;
   }
 
   return false;
@@ -486,6 +540,7 @@ export function CitizenChatWidget() {
   // Unread message count per contact ID
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [pawReactions, setPawReactions] = useState<Record<string, string>>({});
+  const processedMsgIdsRef = useRef<Set<string>>(new Set());
 
   // Strict guard: staff (Admin and Vet) must never have 'admin' or 'vet' desks opened as chat heads
   useEffect(() => {
@@ -495,9 +550,41 @@ export function CitizenChatWidget() {
     }
   }, [isStaff]);
 
+  // Fetch logged-in citizen's chats to know their exact chat IDs for vet/admin desks
+  const { data: userChats = [] } = useQuery({
+    queryKey: ["citizen-widget-user-chats", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from("chats")
+        .select("id, assigned_vet_name, subject, owner_id")
+        .eq("owner_id", user.id);
+      return data || [];
+    },
+    enabled: !!user?.id && !isStaff,
+    refetchInterval: 10000,
+  });
+
+  const userChatsRef = useRef<any[]>([]);
+  useEffect(() => {
+    userChatsRef.current = userChats;
+  }, [userChats]);
+
+  const knownChatIds = useMemo(() => {
+    const map: Record<string, string> = {};
+    userChats.forEach((c: any) => {
+      if (c.assigned_vet_name?.includes("Admin") || c.subject?.toLowerCase().includes("admin")) {
+        map["admin"] = c.id;
+      } else {
+        map["vet"] = c.id;
+      }
+    });
+    return map;
+  }, [userChats]);
+
   // Helper to determine if a specific contact is typing
   const isContactTyping = (contact: ChatContact) => {
-    return checkContactTyping(contact, isOtherTyping, typingInfo, user?.id);
+    return checkContactTyping(contact, isOtherTyping, typingInfo, user?.id, knownChatIds);
   };
 
   const markContactAsRead = useCallback(
@@ -534,12 +621,21 @@ export function CitizenChatWidget() {
         }
 
         if (chatId) {
-          await supabase
+          const updateQ = supabase
             .from("chat_messages")
             .update({ is_read: true })
             .eq("chat_id", chatId)
-            .neq("sender_id", user.id)
             .eq("is_read", false);
+
+          if (isStaff) {
+            updateQ.eq("sender_role", "Pet Owner");
+          } else {
+            updateQ.neq("sender_role", "Pet Owner");
+          }
+          if (user?.id) {
+            updateQ.neq("sender_id", user.id);
+          }
+          await updateQ;
         }
       } catch {
         // ignore
@@ -603,12 +699,21 @@ export function CitizenChatWidget() {
 
           if (toMarkReadChatIds.size > 0) {
             for (const cId of Array.from(toMarkReadChatIds)) {
-              await supabase
+              const uQ = supabase
                 .from("chat_messages")
                 .update({ is_read: true })
                 .eq("chat_id", cId)
-                .neq("sender_id", user.id)
                 .eq("is_read", false);
+
+              if (isStaff) {
+                uQ.eq("sender_role", "Pet Owner");
+              } else {
+                uQ.neq("sender_role", "Pet Owner");
+              }
+              if (user?.id) {
+                uQ.neq("sender_id", user.id);
+              }
+              await uQ;
             }
           }
 
@@ -639,6 +744,28 @@ export function CitizenChatWidget() {
           if (!row) return;
           if (row.sender_id === user.id) return;
 
+          // Prevent processing duplicate delivery of the exact same message row
+          if (row.id) {
+            if (processedMsgIdsRef.current.has(row.id)) return;
+            processedMsgIdsRef.current.add(row.id);
+            if (processedMsgIdsRef.current.size > 200) {
+              processedMsgIdsRef.current.clear();
+            }
+          }
+
+          // For pet owners, only count messages that belong to their own chats
+          if (!isStaff) {
+            const myChatIds = userChatsRef.current.map((c: any) => c.id).filter(Boolean);
+            if (myChatIds.length > 0 && !myChatIds.includes(row.chat_id)) {
+              return;
+            }
+          }
+
+          const isFromOther = isStaff
+            ? row.sender_role === "Pet Owner"
+            : row.sender_role !== "Pet Owner";
+          if (!isFromOther) return;
+
           const isAdmin =
             row.sender_role === "Admin" ||
             row.sender_role === "Administrator" ||
@@ -665,27 +792,17 @@ export function CitizenChatWidget() {
               .update({ is_read: true })
               .eq("id", row.id)
               .then(() => {});
-            setUnreadCounts((prev) => {
-              if (!prev[targetContactId]) return prev;
-              const next = { ...prev };
-              delete next[targetContactId];
-              return next;
-            });
             return;
           }
 
-          setOpenChatIds((currentOpen) => {
-            if (!currentOpen.includes(targetContactId)) {
-              setUnreadCounts((prev) => ({
-                ...prev,
-                [targetContactId]: (prev[targetContactId] || 0) + 1,
-              }));
-              setActiveChatHeadIds((prev) =>
-                prev.includes(targetContactId) ? prev : [...prev, targetContactId]
-              );
-            }
-            return currentOpen;
-          });
+          // Directly increment unread count by 1 and dock chat head (without side-effects in state updaters)
+          setUnreadCounts((prev) => ({
+            ...prev,
+            [targetContactId]: (prev[targetContactId] || 0) + 1,
+          }));
+          setActiveChatHeadIds((prev) =>
+            prev.includes(targetContactId) ? prev : [...prev, targetContactId]
+          );
         }
       )
       .subscribe();
@@ -693,7 +810,7 @@ export function CitizenChatWidget() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, isStaff, supabase]);
+  }, [user?.id, isStaff, isVet, supabase]);
 
   const handleOpenContact = (contactId: string) => {
     markContactAsRead(contactId);
@@ -762,7 +879,7 @@ export function CitizenChatWidget() {
       const isTyping = isContactTyping(c);
       return isOpen || isHeadActive || hasUnread || isTyping;
     });
-  }, [dynamicContacts, openChatIds, activeChatHeadIds, unreadCounts, isOtherTyping, typingInfo, isStaff, isVet, user?.id]);
+  }, [dynamicContacts, openChatIds, activeChatHeadIds, unreadCounts, isOtherTyping, typingInfo, isStaff, isVet, user?.id, knownChatIds]);
 
   const handleMaximize = (contact: ChatContact, activeDbId?: string | null) => {
     const targetDesk = isVet ? "vet" : contact.desk;
@@ -1229,6 +1346,7 @@ function FacebookMessengerWindow({
     const msgIsAdmin = m.sender_role === "Admin" || (isStaffMsg && effectiveDesk === "admin");
     const meta = parseAttachmentMeta(m.attachment_url);
     const isUnsent = m.message_text === "__UNSENT__" || meta.isUnsent === true;
+    const isIncoming = isStaff ? !isStaffMsg : isStaffMsg;
     return {
       id: m.id,
       chatId: m.chat_id,
@@ -1250,9 +1368,9 @@ function FacebookMessengerWindow({
       createdAt: m.created_at,
       reaction: isUnsent ? undefined : meta.reaction,
       replyTo: isUnsent ? undefined : meta.replyTo,
-      isRead: true,
+      isRead: isIncoming ? true : Boolean(m.is_read),
     };
-  }, [effectiveDesk]);
+  }, [effectiveDesk, isStaff]);
 
   const loadOlderMessages = async () => {
     if (!activeChatDbId || !hasMoreOlder || isFetchingOlder || messages.length === 0) return;
@@ -1450,14 +1568,22 @@ function FacebookMessengerWindow({
       }
 
       if (chatId) {
-        // Mark all unread messages from other user as read in DB & clear local unread count
-        supabase
+        // Mark only incoming unread messages from other user as read in DB & clear local unread count
+        const updateIncomingQ = supabase
           .from("chat_messages")
           .update({ is_read: true })
           .eq("chat_id", chatId)
-          .neq("sender_id", user.id)
-          .eq("is_read", false)
-          .then(() => {});
+          .eq("is_read", false);
+
+        if (isStaff) {
+          updateIncomingQ.eq("sender_role", "Pet Owner");
+        } else {
+          updateIncomingQ.neq("sender_role", "Pet Owner");
+        }
+        if (user?.id) {
+          updateIncomingQ.neq("sender_id", user.id);
+        }
+        updateIncomingQ.then(() => {});
 
         onMarkAsReadRef.current?.(contact.id, chatId);
 
@@ -1525,7 +1651,8 @@ function FacebookMessengerWindow({
               return;
             }
 
-            if (row.sender_id !== user?.id) {
+            const isIncoming = isStaff ? row.sender_role === "Pet Owner" : row.sender_role !== "Pet Owner";
+            if (isIncoming && row.sender_id !== user?.id) {
               supabase
                 .from("chat_messages")
                 .update({ is_read: true })
@@ -1627,7 +1754,13 @@ function FacebookMessengerWindow({
   }, [messages, isStaff, scrollToBottom]);
 
   // Gentle scroll on typing status only if this contact is typing and user is already at the bottom
-  const contactIsTyping = checkContactTyping(contact, isOtherTyping, typingInfo, user?.id);
+  const contactIsTyping = checkContactTyping(
+    contact,
+    isOtherTyping,
+    typingInfo,
+    user?.id,
+    activeChatDbId ? { [contact.id]: activeChatDbId } : undefined
+  );
   useEffect(() => {
     if (contactIsTyping && isNearBottomRef.current) {
       scrollToBottom("smooth");
@@ -1643,6 +1776,7 @@ function FacebookMessengerWindow({
         ? "Admin"
         : "Veterinarian"
       : "Pet Owner";
+    const targetRecipientId = isStaff ? (contact.ownerId || (contact.id !== "citizen" ? contact.id : null)) : undefined;
     if (val.trim()) {
       sendTypingStatus(true, senderRole, {
         desk: effectiveDesk,
@@ -1662,11 +1796,13 @@ function FacebookMessengerWindow({
             : "HT"
           : undefined,
         chatId: activeChatDbId || (contact.ownerId ? `thread-${contact.ownerId}` : null),
+        recipientId: targetRecipientId,
       });
     } else {
       sendTypingStatus(false, senderRole, {
         desk: effectiveDesk,
         chatId: activeChatDbId || (contact.ownerId ? `thread-${contact.ownerId}` : null),
+        recipientId: targetRecipientId,
       });
     }
 
@@ -1691,9 +1827,11 @@ function FacebookMessengerWindow({
           ? "Admin"
           : "Veterinarian"
         : "Pet Owner";
+      const targetRecipientId = isStaff ? (contact.ownerId || (contact.id !== "citizen" ? contact.id : null)) : undefined;
       sendTypingStatus(false, senderRole, {
         desk: effectiveDesk,
         chatId: activeChatDbId || (contact.ownerId ? `thread-${contact.ownerId}` : null),
+        recipientId: targetRecipientId,
       });
 
       if (textareaRef.current) {
@@ -1715,7 +1853,7 @@ function FacebookMessengerWindow({
           minute: "2-digit",
           hour12: true,
         }).format(new Date()),
-        isRead: true,
+        isRead: false,
       };
 
       setMessages((prev) => [...prev, optimisticMsg]);
@@ -2198,7 +2336,7 @@ function FacebookMessengerWindow({
                       afterMsg.senderRole === "Administrator";
                     return isStaff ? !afterIsStaff : afterIsStaff;
                   });
-                  if ((m.isRead ?? false) || hasIncomingAfter) {
+                  if (m.isRead === true || hasIncomingAfter) {
                     lastReadId = m.id;
                     break;
                   }
@@ -2513,7 +2651,7 @@ function FacebookMessengerWindow({
                       </div>
                     )}
 
-                    {!isGroupEnd && isLastReadOutgoing && (
+                    {!isGroupEnd && isOutgoing && !msg.isUnsent && isLastReadOutgoing && (
                       <div className="flex justify-end px-1 mt-0.5 select-none animate-in fade-in zoom-in-75 duration-200">
                         <div
                           className="inline-flex items-center"
@@ -2540,7 +2678,13 @@ function FacebookMessengerWindow({
             });
             })()}
 
-            {checkContactTyping(contact, isOtherTyping, typingInfo, user?.id) && (
+            {checkContactTyping(
+              contact,
+              isOtherTyping,
+              typingInfo,
+              user?.id,
+              activeChatDbId ? { [contact.id]: activeChatDbId } : undefined
+            ) && (
               <div className="flex items-end gap-2 animate-in fade-in-50 slide-in-from-bottom-1 duration-200 mt-2">
                 <Avatar className="size-6.5 rounded-full border border-border/60 shrink-0 overflow-hidden bg-muted">
                   {contact.avatar ? (

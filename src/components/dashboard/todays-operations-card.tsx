@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format, parseISO, isValid } from "date-fns";
 import { useCVO } from "@/lib/cvo-context";
 import { Badge } from "@/components/ui/badge";
@@ -20,13 +20,73 @@ import {
   PawPrint,
   CheckCircle2,
   Activity,
+  QrCode,
+  Bell,
+  Volume2,
 } from "lucide-react";
 import Link from "next/link";
 import { isTodayDate } from "@/lib/utils";
+import { DailyQueueQrDialog } from "@/components/dashboard/daily-queue-qr-dialog";
+import {
+  getDailyQueue,
+  callQueueTicket,
+  completeQueueTicket,
+  getTodayDateStr,
+  syncQueueFromSupabase,
+  type QueueTicket,
+} from "@/lib/cvo-queue";
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export function TodaysOperationsCard() {
   const { consultations } = useCVO();
   const [viewMode, setViewMode] = useState<"today" | "all">("today");
+
+  const todayStr = useMemo(() => getTodayDateStr(), []);
+  const [queueState, setQueueState] = useState(() => getDailyQueue(todayStr));
+
+  useEffect(() => {
+    // 1. Initial sync with Supabase appointments
+    syncQueueFromSupabase(todayStr).then((synced) => {
+      setQueueState(synced);
+    });
+
+    const handleUpdate = () => {
+      setQueueState(getDailyQueue(todayStr));
+    };
+    window.addEventListener("syncvet-queue-updated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+
+    // 2. Realtime subscription to appointments & queue broadcast across devices
+    const supabase = getPublicSupabaseClient();
+    const channel = supabase
+      .channel("cvo-queue-realtime-card")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        () => {
+          syncQueueFromSupabase(todayStr).then((synced) => {
+            setQueueState(synced);
+          });
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "queue_state_updated" },
+        (payload) => {
+          if (payload?.payload?.date === todayStr) {
+            setQueueState(payload.payload);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("syncvet-queue-updated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+      supabase.removeChannel(channel);
+    };
+  }, [todayStr]);
 
   // Filter consultations strictly for today
   const todaysConsultations = useMemo(
@@ -35,6 +95,18 @@ export function TodaysOperationsCard() {
   );
 
   const displayedConsultations = viewMode === "today" ? todaysConsultations : consultations;
+  const activeQueueTickets = queueState.activeTickets.filter((t) => t.status !== "completed");
+  const totalActive = activeQueueTickets.length + todaysConsultations.length;
+
+  const handleCallTicket = (ticketNumber: string, petName: string) => {
+    callQueueTicket(ticketNumber, "Dr. Helen Ann P. Tacandong, DVM", "Consultation Desk 1");
+    toast.info(`Calling Ticket ${ticketNumber} (${petName})! Broadcast sent to pet owner.`);
+  };
+
+  const handleCompleteTicket = (ticketNumber: string, petName: string) => {
+    completeQueueTicket(ticketNumber);
+    toast.success(`Ticket ${ticketNumber} (${petName}) completed.`);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -87,7 +159,7 @@ export function TodaysOperationsCard() {
     <Card className="rounded-2xl border border-border/80 bg-card shadow-2xs overflow-hidden flex flex-col h-full">
       {/* ── Minimalist Clean Header ── */}
       <CardHeader className="p-4 sm:p-5 pb-3.5 border-b border-border/50 bg-muted/15">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="size-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
               <Clock className="size-4" />
@@ -110,27 +182,80 @@ export function TodaysOperationsCard() {
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground truncate">
-                {todayFormatted} • Walk-in clinical triage
+                {todayFormatted} • Clinical consultations & QR Check-in
               </p>
             </div>
           </div>
 
-          {/* Single Primary Action Button */}
-          <Link href="/consultations" className="shrink-0">
-            <Button
-              size="sm"
-              className="h-8 px-3 text-xs gap-1.5 font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
-            >
-              <Plus className="size-3.5" />
-              <span>New Encounter</span>
-            </Button>
-          </Link>
+          {/* Action Button: Check-in QR Station */}
+          <div className="flex items-center gap-2 shrink-0">
+            <DailyQueueQrDialog isStaff={true} />
+          </div>
         </div>
       </CardHeader>
 
       {/* ── Content Section ── */}
       <CardContent className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-        {displayedConsultations.length === 0 ? (
+        {viewMode === "today" && activeQueueTickets.length > 0 && (
+          <div className="space-y-2 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <QrCode className="size-3.5 text-primary" />
+                <span>QR Checked-in Pet Owners ({activeQueueTickets.length})</span>
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                Now Serving: <strong className="text-blue-600 dark:text-blue-400">{queueState.nowServingTicketNumber || "None"}</strong>
+              </span>
+            </div>
+
+            {activeQueueTickets.map((t) => (
+              <div
+                key={t.id}
+                className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xs font-mono font-black text-emerald-800 dark:text-emerald-200 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-md shrink-0">
+                      {t.ticketNumber}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-bold text-xs text-foreground truncate">
+                        {t.petName} <span className="font-normal text-muted-foreground">({t.species})</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        Owner: <strong className="text-foreground">{t.ownerName}</strong> • {t.serviceTitle}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {getStatusBadge(t.status)}
+                    {t.status === "waiting" ? (
+                      <Button
+                        size="sm"
+                        onClick={() => handleCallTicket(t.ticketNumber, t.petName)}
+                        className="h-6 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer"
+                      >
+                        <Bell className="size-2.5 mr-1" /> Call Next
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCompleteTicket(t.ticketNumber, t.petName)}
+                        className="h-6 px-2 text-[10px] font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 rounded-lg cursor-pointer"
+                      >
+                        Done
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {displayedConsultations.length === 0 && activeQueueTickets.length === 0 ? (
           /* Minimalist Clean Empty State (No duplicate buttons) */
           <div className="flex-1 flex flex-col items-center justify-center py-9 px-4 text-center space-y-2.5">
             <div className="size-10 rounded-xl bg-muted/50 border border-border/60 text-muted-foreground/60 flex items-center justify-center">
@@ -210,7 +335,12 @@ export function TodaysOperationsCard() {
         {/* Minimal Footer */}
         <div className="pt-2.5 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>
-            Queue: <strong className="text-foreground">{todaysConsultations.length} active</strong>
+            Queue: <strong className="text-foreground">{totalActive} active</strong>
+            {activeQueueTickets.length > 0 && (
+              <span className="text-[10px] text-muted-foreground ml-1">
+                ({activeQueueTickets.length} QR check-in{activeQueueTickets.length === 1 ? "" : "s"})
+              </span>
+            )}
           </span>
           <Link
             href="/consultations"

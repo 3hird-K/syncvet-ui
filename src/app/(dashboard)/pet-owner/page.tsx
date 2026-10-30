@@ -116,6 +116,8 @@ import { getSlotConfiguration, PROCEDURE_SERVICES } from "@/lib/cvo-slots";
 import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
 import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
+import { PetOwnerQueueTracker } from "@/components/dashboard/pet-owner-queue-tracker";
+import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -525,6 +527,14 @@ export default function PetOwnerPortalPage() {
     return [...list].sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
   }, [ownerAppointments, appointmentFilter]);
 
+  const todayAppointments = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return ownerAppointments.filter((apt: any) => {
+      const isToday = apt.date === todayStr || (apt.date && apt.date.startsWith(todayStr));
+      return isToday && apt.status !== "cancelled";
+    });
+  }, [ownerAppointments]);
+
   const handleCancelAppointment = async (appointmentId: string) => {
     try {
       await supabase
@@ -918,6 +928,15 @@ export default function PetOwnerPortalPage() {
             {/* ════ TAB 0: CVO Central Social Media Feed ════ */}
             <TabsContent value="feed" className="space-y-4 m-0">
 
+      {/* ── Real-Time Clinic Arrival Queue Tracker & Live Status ── */}
+      <PetOwnerQueueTracker
+        userId={dbUser?.id || user?.id || ""}
+        userEmail={ownerEmail}
+        userName={ownerName}
+        userContact={ownerContact}
+        userBarangay={ownerBarangay}
+        todayAppointments={todayAppointments}
+      />
 
       {/* ── Annual Rabies Vaccination Reminder Alert ── */}
       {boosterAlertPets.length > 0 && (
@@ -1005,6 +1024,34 @@ export default function PetOwnerPortalPage() {
                 </div>
               }
             />
+
+            {/* Welcoming Companion Guide Card when resident has 0 pets */}
+            {pets.length === 0 && (
+              <div className="flex-1 min-w-[260px] sm:min-w-[340px] h-44 sm:h-48 md:h-52 rounded-2xl bg-gradient-to-br from-card via-card to-emerald-500/[0.04] border border-border/80 p-3.5 sm:p-4.5 flex flex-col justify-between shadow-2xs relative overflow-hidden select-none">
+                <div className="absolute -top-10 -right-10 size-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                <div className="space-y-1.5 relative z-10">
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                    <ShieldCheck className="size-3.5 sm:size-4" />
+                    <span className="text-[9.5px] sm:text-[10.5px] font-bold uppercase tracking-wider">
+                      Official CVO Pet Registry
+                    </span>
+                  </div>
+                  <h3 className="text-xs sm:text-sm font-bold text-foreground">
+                    Register Your Companion Animals
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-3">
+                    Generate official digital QR passports, receive annual rabies vaccination reminders, and access municipal clinical care for your pets.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 relative z-10">
+                  <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                    <CheckCircle2 className="size-3 text-emerald-500" /> Free for Cagayan de Oro Residents
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 2..N: Each Pet's Digital Passport Card */}
             {pets.map((pet, idx) => {
@@ -1221,28 +1268,6 @@ export default function PetOwnerPortalPage() {
           );
         })()}
       </div>
-
-        {/* Friendly Empty state if 0 pets registered */}
-        {pets.length === 0 && (
-          <Card className="p-8 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
-            <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
-              <PawPrint className="size-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-sm text-foreground">No Registered Companion Animals Yet</h3>
-              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                Register your pets with the City Veterinary Office to generate official QR passports and access free clinical care.
-              </p>
-            </div>
-            <RegisterPetDialog
-              trigger={
-                <Button size="sm" className="gap-1.5 text-xs font-semibold cursor-pointer rounded-xl">
-                  <Plus className="size-3.5" /> Register Your Pet Now
-                </Button>
-              }
-            />
-          </Card>
-        )}
 
         {/* CVO Central Social Media Feed */}
         <CVOSocialFeed
@@ -2069,18 +2094,32 @@ export default function PetOwnerPortalPage() {
                         {nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedAppointmentForSlip(nextApt);
-                        setAppointmentSlipOpen(true);
-                      }}
-                      className="w-full h-7 text-[11px] font-semibold gap-1.5 rounded-lg cursor-pointer bg-card hover:bg-muted"
-                    >
-                      <Printer className="size-3 text-primary" />
-                      <span>View Official Appointment Slip</span>
-                    </Button>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedAppointmentForSlip(nextApt);
+                          setAppointmentSlipOpen(true);
+                        }}
+                        className="flex-1 h-7 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-card hover:bg-muted"
+                      >
+                        <Printer className="size-3 text-primary" />
+                        <span>Slip</span>
+                      </Button>
+
+                      <ScanQueueQrDialog
+                        trigger={
+                          <Button
+                            size="sm"
+                            className="flex-1 h-7 text-[11px] font-bold gap-1 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                          >
+                            <QrCode className="size-3" />
+                            <span>Scan Arrival QR</span>
+                          </Button>
+                        }
+                      />
+                    </div>
                   </div>
                 )}
 

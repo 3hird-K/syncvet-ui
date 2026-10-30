@@ -248,9 +248,9 @@ function isThreadUserTyping(
     const threadOwnerId = thread.owner_id;
     const threadId = thread.id;
 
-    // Match by senderId
-    if (threadOwnerId && typingInfo.senderId && typingInfo.senderId === threadOwnerId) {
-      return true;
+    // Strict ID check: If senderId is provided, it must match threadOwnerId!
+    if (threadOwnerId && typingInfo.senderId && typingInfo.senderId !== "anon") {
+      return typingInfo.senderId === threadOwnerId;
     }
 
     // Match by chatId
@@ -263,16 +263,14 @@ function isThreadUserTyping(
       return true;
     }
 
-    // Match by citizen name
+    // Match by exact full name ONLY if senderId/chatId are absent AND not a generic placeholder
     const threadFullName = (thread.users?.full_name || "").toLowerCase().trim();
     const typingFullName = (typingInfo.senderName || "").toLowerCase().trim();
-    if (
-      threadFullName &&
-      typingFullName &&
-      (threadFullName === typingFullName ||
-        threadFullName.includes(typingFullName) ||
-        typingFullName.includes(threadFullName))
-    ) {
+    const isGeneric =
+      !typingFullName ||
+      ["pet owner", "citizen", "registered citizen", "you"].includes(typingFullName);
+
+    if (!isGeneric && threadFullName && typingFullName && threadFullName === typingFullName) {
       return true;
     }
 
@@ -280,8 +278,19 @@ function isThreadUserTyping(
   } else {
     // Citizen view: channel typing (vet or admin)
     if (typingInfo.senderRole === "Pet Owner") return false;
+
+    // If typing event specifies a recipient, it MUST match this citizen thread owner
+    if (typingInfo.recipientId && thread?.owner_id && typingInfo.recipientId !== thread.owner_id) {
+      return false;
+    }
+
     const threadChatId = thread?.id;
-    if (typingInfo.chatId && threadChatId && typingInfo.chatId !== threadChatId) {
+    if (
+      typingInfo.chatId &&
+      threadChatId &&
+      typingInfo.chatId !== threadChatId &&
+      typingInfo.chatId !== `thread-${thread?.owner_id}`
+    ) {
       return false;
     }
     if (activeDesk === "vet" && (typingInfo.senderRole === "Veterinarian" || typingInfo.desk === "vet")) {
@@ -1029,7 +1038,7 @@ function MessagesContent() {
           return isVeterinarian ? !afterIsStaff : afterIsStaff;
         });
 
-        if ((m.isRead ?? false) || hasIncomingAfter) {
+        if (m.isRead === true || hasIncomingAfter) {
           return m.id;
         }
       }
@@ -1084,12 +1093,20 @@ function MessagesContent() {
       if (typingInfo.senderRole === "Admin" || typingInfo.senderRole === "Veterinarian") {
         return false;
       }
-      // If typing has a specific chatId, ensure it matches the active citizen thread
       const activeOwnerId = activeThread?.owner_id;
       const activeThreadId = activeThread?.id;
+
+      // Strict sender ID check: If senderId is known, it must match the active thread owner!
+      if (typingInfo.senderId && typingInfo.senderId !== "anon" && activeOwnerId) {
+        if (typingInfo.senderId !== activeOwnerId) {
+          return false;
+        }
+      }
+
+      // If typing has a specific chatId, ensure it matches the active citizen thread
       if (
         typingInfo.chatId &&
-        activeChatId &&
+        (activeChatId || activeThreadId) &&
         typingInfo.chatId !== activeChatId &&
         typingInfo.chatId !== activeThreadId &&
         typingInfo.chatId !== activeOwnerId &&
@@ -1103,14 +1120,30 @@ function MessagesContent() {
       if (typingInfo.senderRole === "Pet Owner") {
         return false;
       }
+      if (typingInfo.recipientId && user?.id && typingInfo.recipientId !== user.id) {
+        return false;
+      }
+      if (
+        typingInfo.chatId &&
+        typingInfo.chatId.startsWith("thread-") &&
+        user?.id &&
+        typingInfo.chatId !== `thread-${user.id}`
+      ) {
+        return false;
+      }
       const myActiveChat = activeDesk === "admin" ? adminChat?.id : vetChat?.id;
-      if (typingInfo.chatId && myActiveChat && typingInfo.chatId !== myActiveChat) {
+      if (
+        typingInfo.chatId &&
+        myActiveChat &&
+        !typingInfo.chatId.startsWith("thread-") &&
+        typingInfo.chatId !== myActiveChat
+      ) {
         return false;
       }
     }
 
     return true;
-  }, [isOtherTyping, typingInfo, activeDesk, isVeterinarian, activeChatId, activeThread, adminChat?.id, vetChat?.id]);
+  }, [isOtherTyping, typingInfo, activeDesk, isVeterinarian, activeChatId, activeThread, adminChat?.id, vetChat?.id, user?.id]);
 
   const isVetChannelTyping = Boolean(
     !isVeterinarian &&
@@ -1118,7 +1151,9 @@ function MessagesContent() {
       typingInfo &&
       (typingInfo.senderRole === "Veterinarian" ||
         (typingInfo.senderRole !== "Pet Owner" && (typingInfo.desk === "vet" || !typingInfo.desk))) &&
-      (!typingInfo.chatId || !vetChat?.id || typingInfo.chatId === vetChat.id)
+      (!typingInfo.recipientId || !user?.id || typingInfo.recipientId === user.id) &&
+      (!typingInfo.chatId?.startsWith("thread-") || !user?.id || typingInfo.chatId === `thread-${user.id}`) &&
+      (!typingInfo.chatId || !vetChat?.id || typingInfo.chatId.startsWith("thread-") || typingInfo.chatId === vetChat.id)
   );
 
   const isAdminChannelTyping = Boolean(
@@ -1127,7 +1162,9 @@ function MessagesContent() {
       typingInfo &&
       (typingInfo.senderRole === "Admin" ||
         (typingInfo.senderRole !== "Pet Owner" && typingInfo.desk === "admin")) &&
-      (!typingInfo.chatId || !adminChat?.id || typingInfo.chatId === adminChat.id)
+      (!typingInfo.recipientId || !user?.id || typingInfo.recipientId === user.id) &&
+      (!typingInfo.chatId?.startsWith("thread-") || !user?.id || typingInfo.chatId === `thread-${user.id}`) &&
+      (!typingInfo.chatId || !adminChat?.id || typingInfo.chatId.startsWith("thread-") || typingInfo.chatId === adminChat.id)
   );
 
   // Resolved typing indicator identity
@@ -1229,12 +1266,16 @@ function MessagesContent() {
     const currentReply = replyingTo;
     setInputText("");
     setReplyingTo(null);
+    const recipientOwnerId =
+      activeThread?.owner_id ||
+      (activeChatId && !isValidUuid(activeChatId) ? activeChatId.replace(/^thread-/, "") : null);
     sendTypingStatus(
       false,
       isVeterinarian ? (activeDesk === "admin" ? "Admin" : "Veterinarian") : "Pet Owner",
       {
         desk: activeDesk,
         chatId: activeChatId || activeThread?.id,
+        recipientId: isVeterinarian ? recipientOwnerId : undefined,
       }
     );
 
@@ -2835,12 +2876,16 @@ function MessagesContent() {
                   }
                   const isTypingNow = Boolean(val.trim());
                   const staffRole = activeDesk === "admin" ? "Admin" : "Veterinarian";
+                  const recipientOwnerId =
+                    activeThread?.owner_id ||
+                    (activeChatId && !isValidUuid(activeChatId) ? activeChatId.replace(/^thread-/, "") : null);
                   sendTypingStatus(
                     isTypingNow,
                     isVeterinarian ? staffRole : "Pet Owner",
                     {
                       desk: activeDesk,
                       chatId: activeChatId || activeThread?.id,
+                      recipientId: isVeterinarian ? recipientOwnerId : undefined,
                       avatarUrl: isVeterinarian
                         ? activeDesk === "admin"
                           ? "/partners/cdo-seal.png"

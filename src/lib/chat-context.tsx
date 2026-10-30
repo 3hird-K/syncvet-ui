@@ -207,6 +207,7 @@ export interface TypingSenderInfo {
   avatarUrl?: string | null;
   initials: string;
   chatId?: string | null;
+  recipientId?: string | null;
 }
 
 export interface ChatContextType {
@@ -255,6 +256,7 @@ export interface ChatContextType {
       chatId?: string | null;
       senderName?: string;
       initials?: string;
+      recipientId?: string | null;
     }
   ) => void;
   refetchMessages: (explicitChatId?: string | null, deskOverride?: "vet" | "admin") => Promise<void>;
@@ -709,6 +711,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           avatarUrl: resolvedAvatar || null,
           initials: resolvedInitials,
           chatId: data.chatId || null,
+          recipientId: data.recipientId || null,
         });
 
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -854,7 +857,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                     createdAt: row.created_at,
                     reaction: rowReaction,
                     replyTo: rowReplyTo || updated[optIdx].replyTo,
-                    isRead: true,
+                    isRead: Boolean(row.is_read),
                   };
                   return updated;
                 }
@@ -879,7 +882,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                     replyTo: rowReplyTo || updated[optVetIdx].replyTo,
                     senderName: UNIFIED_VET_NAME,
                     actualSenderId: row.sender_id,
-                    isRead: true,
+                    isRead: Boolean(row.is_read),
                   };
                   return updated;
                 }
@@ -1067,11 +1070,13 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           if (!payload?.chatId) return;
           if (payload.readByUserId && payload.readByUserId === user?.id) return;
           setMessages((prev) =>
-            prev.map((m) =>
-              (!m.chatId || m.chatId === payload.chatId) && !m.isRead
-                ? { ...m, isRead: true }
-                : m
-            )
+            prev.map((m) => {
+              if (m.chatId && m.chatId !== payload.chatId) return m;
+              const isOutgoing = isStaffUser
+                ? m.senderRole !== "Pet Owner"
+                : m.senderRole === "Pet Owner";
+              return isOutgoing ? { ...m, isRead: true } : m;
+            })
           );
         }
       )
@@ -1758,6 +1763,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         chatId?: string | null;
         senderName?: string;
         initials?: string;
+        recipientId?: string | null;
       }
     ) => {
       const now = Date.now();
@@ -1809,6 +1815,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         avatarUrl: avatarUrl || null,
         initials,
         chatId: meta?.chatId || activeChatId,
+        recipientId: meta?.recipientId || null,
         isTyping,
       };
 
