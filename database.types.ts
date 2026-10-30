@@ -152,9 +152,9 @@ export type Database = {
           id: string
           location: string | null
           notes: string | null
-          owner_id: string
+          owner_id: string | null
           pet_id: string | null
-          pet_name: string
+          pet_name: string | null
           service_id: string
           status: string
           time_slot: string
@@ -166,9 +166,9 @@ export type Database = {
           id?: string
           location?: string | null
           notes?: string | null
-          owner_id: string
+          owner_id?: string | null
           pet_id?: string | null
-          pet_name: string
+          pet_name?: string | null
           service_id: string
           status?: string
           time_slot: string
@@ -180,9 +180,9 @@ export type Database = {
           id?: string
           location?: string | null
           notes?: string | null
-          owner_id?: string
+          owner_id?: string | null
           pet_id?: string | null
-          pet_name?: string
+          pet_name?: string | null
           service_id?: string
           status?: string
           time_slot?: string
@@ -247,7 +247,7 @@ export type Database = {
           is_read: boolean
           message_text: string
           sender_id: string | null
-          sender_name: string
+          sender_name: string | null
           sender_role: string
         }
         Insert: {
@@ -258,7 +258,7 @@ export type Database = {
           is_read?: boolean
           message_text: string
           sender_id?: string | null
-          sender_name: string
+          sender_name?: string | null
           sender_role: string
         }
         Update: {
@@ -269,7 +269,7 @@ export type Database = {
           is_read?: boolean
           message_text?: string
           sender_id?: string | null
-          sender_name?: string
+          sender_name?: string | null
           sender_role?: string
         }
         Relationships: [
@@ -337,6 +337,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "chats_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
         ]
       }
       consultations: {
@@ -356,9 +363,9 @@ export type Database = {
           owner_barangay: string | null
           owner_contact: string | null
           owner_id: string | null
-          owner_name: string
+          owner_name: string | null
           pet_id: string | null
-          pet_name: string
+          pet_name: string | null
           service_type: string
           species: string
           status: string
@@ -387,9 +394,9 @@ export type Database = {
           owner_barangay?: string | null
           owner_contact?: string | null
           owner_id?: string | null
-          owner_name: string
+          owner_name?: string | null
           pet_id?: string | null
-          pet_name: string
+          pet_name?: string | null
           service_type?: string
           species: string
           status?: string
@@ -418,9 +425,9 @@ export type Database = {
           owner_barangay?: string | null
           owner_contact?: string | null
           owner_id?: string | null
-          owner_name?: string
+          owner_name?: string | null
           pet_id?: string | null
-          pet_name?: string
+          pet_name?: string | null
           service_type?: string
           species?: string
           status?: string
@@ -441,7 +448,59 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "consultations_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      field_operations: {
+        Row: {
+          barangay: string
+          created_at: string
+          id: string
+          lead: string
+          notes: string | null
+          op_id: string
+          operation_type: string
+          scheduled_date: string
+          status: string
+          target_pets: number
+          updated_at: string
+          vaccinated_pets: number
+        }
+        Insert: {
+          barangay: string
+          created_at?: string
+          id?: string
+          lead: string
+          notes?: string | null
+          op_id: string
+          operation_type: string
+          scheduled_date?: string
+          status?: string
+          target_pets?: number
+          updated_at?: string
+          vaccinated_pets?: number
+        }
+        Update: {
+          barangay?: string
+          created_at?: string
+          id?: string
+          lead?: string
+          notes?: string | null
+          op_id?: string
+          operation_type?: string
+          scheduled_date?: string
+          status?: string
+          target_pets?: number
+          updated_at?: string
+          vaccinated_pets?: number
+        }
+        Relationships: []
       }
       inventory_items: {
         Row: {
@@ -578,6 +637,7 @@ export type Database = {
           detail: string | null
           id: string
           owner_id: string
+          pet_id: string | null
           reference_id: string | null
           status: string
           title: string
@@ -590,6 +650,7 @@ export type Database = {
           detail?: string | null
           id?: string
           owner_id: string
+          pet_id?: string | null
           reference_id?: string | null
           status?: string
           title: string
@@ -602,6 +663,7 @@ export type Database = {
           detail?: string | null
           id?: string
           owner_id?: string
+          pet_id?: string | null
           reference_id?: string | null
           status?: string
           title?: string
@@ -614,6 +676,13 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_transactions_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
             referencedColumns: ["id"]
           },
         ]
@@ -677,9 +746,9 @@ export type Database = {
           next_due_date: string | null
           owner_contact: string | null
           owner_id: string | null
-          owner_name: string
+          owner_name: string | null
           pet_id: string | null
-          pet_name: string
+          pet_name: string | null
           record_no: string
           species: string
           status: string
@@ -697,9 +766,9 @@ export type Database = {
           next_due_date?: string | null
           owner_contact?: string | null
           owner_id?: string | null
-          owner_name: string
+          owner_name?: string | null
           pet_id?: string | null
-          pet_name: string
+          pet_name?: string | null
           record_no: string
           species?: string
           status?: string
@@ -717,9 +786,9 @@ export type Database = {
           next_due_date?: string | null
           owner_contact?: string | null
           owner_id?: string | null
-          owner_name?: string
+          owner_name?: string | null
           pet_id?: string | null
-          pet_name?: string
+          pet_name?: string | null
           record_no?: string
           species?: string
           status?: string
@@ -733,6 +802,13 @@ export type Database = {
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vaccination_records_pet_id_fkey"
+            columns: ["pet_id"]
+            isOneToOne: false
+            referencedRelation: "pets"
             referencedColumns: ["id"]
           },
         ]

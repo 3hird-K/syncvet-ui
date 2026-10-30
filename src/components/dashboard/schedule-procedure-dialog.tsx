@@ -111,6 +111,7 @@ export function ScheduleProcedureDialog({
         status: string;
         pet_id?: string;
         pet_name?: string;
+        pets?: any;
         owner_id?: string;
       }> = [];
       const seen = new Set<string>();
@@ -122,11 +123,11 @@ export function ScheduleProcedureDialog({
       try {
         const { data } = await supabase
           .from("appointments")
-          .select("id, date, service_id, status, pet_id, pet_name, owner_id")
+          .select("id, date, service_id, status, pet_id, pet_name, owner_id, pets:pet_id(id, name, species, breed, photo_url)")
           .neq("status", "cancelled");
 
         if (data) {
-          data.forEach((d) => {
+          data.forEach((d: any) => {
             if (!seen.has(d.id)) {
               seen.add(d.id);
               let effStatus = d.status || "confirmed";
@@ -145,13 +146,16 @@ export function ScheduleProcedureDialog({
                 }
               } catch {}
 
+              const petData = Array.isArray(d.pets) ? d.pets[0] : d.pets;
+              const resolvedPetName = petData?.name || d.pet_name;
               items.push({
                 id: d.id,
                 date: d.date,
                 service_id: d.service_id,
                 status: effStatus,
-                pet_id: d.pet_id || undefined,
-                pet_name: d.pet_name,
+                pet_id: d.pet_id || petData?.id || undefined,
+                pets: petData,
+                pet_name: resolvedPetName,
                 owner_id: d.owner_id,
               });
             }
@@ -165,7 +169,7 @@ export function ScheduleProcedureDialog({
       try {
         const { data: txData } = await supabase
           .from("service_transactions")
-          .select("id, reference_id, date, transaction_type, status, title, owner_id")
+          .select("id, reference_id, date, transaction_type, status, title, owner_id, pet_id, pets:pet_id(id, name, species, breed, photo_url)")
           .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
           .neq("status", "cancelled");
 
@@ -174,9 +178,10 @@ export function ScheduleProcedureDialog({
             const refId = tx.reference_id || tx.id;
             if (!seen.has(refId)) {
               seen.add(refId);
-              const petNameMatch = tx.title && tx.title.includes(" for ")
+              const petData = Array.isArray(tx.pets) ? tx.pets[0] : tx.pets;
+              const petNameMatch = petData?.name || (tx.title && tx.title.includes(" for ")
                 ? tx.title.split(" for ").slice(1).join(" for ").trim()
-                : (tx.title || "").trim();
+                : (tx.title || "").trim());
               const serviceType = tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter";
               const dateVal = tx.date ? tx.date.split("T")[0] : "";
               let effStatus = tx.status || "confirmed";
@@ -202,6 +207,8 @@ export function ScheduleProcedureDialog({
                 date: dateVal,
                 service_id: serviceType,
                 status: effStatus,
+                pet_id: tx.pet_id || petData?.id || undefined,
+                pets: petData,
                 pet_name: petNameMatch,
                 owner_id: tx.owner_id,
               });
@@ -772,6 +779,7 @@ export function ScheduleProcedureDialog({
       try {
         await supabase.from("service_transactions").insert({
           owner_id: ownerDbId,
+          pet_id: validPetId,
           transaction_no: `TXN-${Date.now().toString().slice(-6)}`,
           transaction_type: service === "vaccination" ? "Vaccination Booking" : "Spay & Neuter Booking",
           title: `${serviceConfig.shortTitle} for ${currentPet.name}`,

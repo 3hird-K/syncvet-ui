@@ -661,7 +661,7 @@ function MessagesContent() {
       try {
         const { data, error } = await supabase
           .from("chats")
-          .select("*, users:owner_id(id, full_name, email, phone_number, address, avatar_url)")
+          .select("*, users:owner_id(id, full_name, email, phone_number, address, avatar_url), pets:pet_id(id, name, species, breed, photo_url)")
           .order("last_message_at", { ascending: false });
 
         if (error || !data) return [];
@@ -817,20 +817,21 @@ function MessagesContent() {
       const rawAvatar = chat.users?.avatar_url || chat.users?.image_url || userRecord?.avatar_url || userRecord?.image_url;
       const cleanAvatar = rawAvatar && typeof rawAvatar === "string" && rawAvatar.trim() !== "" ? rawAvatar.trim() : null;
 
-      list.push({
-        id: chat.id,
-        owner_id: chat.owner_id,
-        avatar_url: cleanAvatar,
-        users: {
-          full_name: chat.users?.full_name || userRecord?.full_name || "Registered Citizen",
-          email: chat.users?.email || userRecord?.email,
-          phone: chat.users?.phone_number || userRecord?.phone_number,
-          address: chat.users?.address || userRecord?.address,
+        const petData = Array.isArray(chat.pets) ? chat.pets[0] : chat.pets;
+        list.push({
+          id: chat.id,
+          owner_id: chat.owner_id,
           avatar_url: cleanAvatar,
-        },
-        pet_name: chat.pet_name || "Pet",
-        pet_species: chat.pet_species || "Dog",
-        pet_breed: chat.pet_breed || "Mixed",
+          users: {
+            full_name: chat.users?.full_name || userRecord?.full_name || "Registered Citizen",
+            email: chat.users?.email || userRecord?.email,
+            phone: chat.users?.phone_number || userRecord?.phone_number,
+            address: chat.users?.address || userRecord?.address,
+            avatar_url: cleanAvatar,
+          },
+          pet_name: petData?.name || chat.pet_name || "Pet",
+          pet_species: petData?.species || chat.pet_species || "Dog",
+          pet_breed: petData?.breed || chat.pet_breed || "Mixed",
         last_message: chat.last_message || "Inquiry open on file",
         last_message_at: chat.last_message_at || chat.created_at,
         latest_message_item: chat.latest_message_item || null,

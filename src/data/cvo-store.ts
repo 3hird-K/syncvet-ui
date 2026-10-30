@@ -7,6 +7,7 @@ export interface CVOConsultation {
   encounterNo: string;
   petId: string;
   petName: string;
+  ownerId?: string;
   species: "Dog" | "Cat" | "Livestock" | "Other";
   breed: string;
   ownerName: string;

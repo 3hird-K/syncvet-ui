@@ -79,16 +79,20 @@ function mapDbConsultationToCVO(row: any): CVOConsultation {
     ? row.veterinarian_notes.split("__CVO_FORM_META__:")[0].trim()
     : undefined;
 
+  const petData = Array.isArray(row.pets) ? row.pets[0] : row.pets;
+  const userData = Array.isArray(row.users) ? row.users[0] : row.users;
+
   return {
     id: row.id,
     encounterNo: row.encounter_no,
-    petId: row.pet_id || "",
-    petName: row.pet_name,
-    species: row.species,
-    breed: row.breed || "",
-    ownerName: row.owner_name,
-    ownerContact: row.owner_contact || "",
-    ownerBarangay: row.owner_barangay || "",
+    petId: row.pet_id || petData?.id || "",
+    petName: petData?.name || row.pet_name,
+    ownerId: row.owner_id || userData?.id,
+    species: petData?.species || row.species,
+    breed: petData?.breed || row.breed || "",
+    ownerName: userData?.full_name || row.owner_name,
+    ownerContact: userData?.phone_number || row.owner_contact || "",
+    ownerBarangay: userData?.address || row.owner_barangay || "",
     vetName: row.vet_name,
     date: row.date,
     time: row.time,
@@ -274,7 +278,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data, error } = await supabase
           .from("consultations")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, email, address)")
           .order("date", { ascending: false });
 
         if (error) return initialConsultations;
@@ -550,6 +554,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
         await supabase.from("consultations").insert({
           encounter_no: encounterNo,
           pet_id: c.petId || null,
+          owner_id: c.ownerId || null,
           pet_name: c.petName,
           species: c.species,
           breed: c.breed || null,

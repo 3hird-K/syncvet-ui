@@ -502,15 +502,21 @@ export default function PetOwnerPortalPage() {
       try {
         const { data, error } = await supabase
           .from("appointments")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, email, phone_number)")
           .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
           .order("date", { ascending: false });
 
         if (!error && data) {
-          data.forEach((item) => {
+          data.forEach((item: any) => {
             if (!seenIds.has(item.id)) {
               seenIds.add(item.id);
-              list.push(item);
+              const petData = Array.isArray(item.pets) ? item.pets[0] : item.pets;
+              const resolvedPetName = petData?.name || item.pet_name || "Pet";
+              list.push({
+                ...item,
+                pet_name: resolvedPetName,
+                pets: petData,
+              });
             }
           });
         }
@@ -522,7 +528,7 @@ export default function PetOwnerPortalPage() {
       try {
         const { data: txData } = await supabase
           .from("service_transactions")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url)")
           .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
           .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
           .order("date", { ascending: false });
@@ -534,10 +540,13 @@ export default function PetOwnerPortalPage() {
               seenIds.add(refId);
               const serviceType =
                 tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter";
-              const petNameMatch = tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet";
+              const petData = Array.isArray(tx.pets) ? tx.pets[0] : tx.pets;
+              const petNameMatch = petData?.name || (tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet");
               list.push({
                 id: refId,
                 owner_id: tx.owner_id,
+                pet_id: tx.pet_id || petData?.id || null,
+                pets: petData,
                 pet_name: petNameMatch,
                 service_id: serviceType,
                 date: tx.date ? tx.date.split("T")[0] : format(new Date(), "yyyy-MM-dd"),
@@ -1413,7 +1422,9 @@ export default function PetOwnerPortalPage() {
               {nextApt && (
                 <div className="flex items-center justify-between gap-2 bg-card p-2.5 rounded-xl border border-border/80 text-xs">
                   <div className="min-w-0">
-                    <p className="font-bold text-foreground truncate">{nextApt.pet_name || nextApt.petName} • {nextApt.service_type || nextApt.serviceType}</p>
+                    <p className="font-bold text-foreground truncate">
+                      {nextApt.pets?.name || (pets.find((p) => p.id === nextApt.pet_id)?.name) || nextApt.pet_name || nextApt.petName} • {nextApt.service_type || nextApt.serviceType}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">{nextApt.appointment_date || nextApt.date} ({nextApt.appointment_time || "Morning"})</p>
                   </div>
                   <Button
@@ -1760,7 +1771,8 @@ export default function PetOwnerPortalPage() {
               <div className="space-y-2.5">
                 {displayedAppointments.map((apt: any) => {
                   const isSpayNeuter = apt.service_id === "spay-neuter";
-                  const aptPet = pets.find((p) => p.id === apt.pet_id || p.name === apt.pet_name);
+                  const aptPet = pets.find((p) => (apt.pet_id && p.id === apt.pet_id) || (apt.pet_name && p.name.toLowerCase() === apt.pet_name.toLowerCase())) || apt.pets;
+                  const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
                   const isMissed = apt.status === "missed";
 
                   return (
@@ -1801,7 +1813,7 @@ export default function PetOwnerPortalPage() {
                             <div className="space-y-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-sm text-foreground">
-                                  {apt.pet_name}
+                                  {displayPetName}
                                 </span>
                                 {aptPet && (
                                   <span className="text-xs text-muted-foreground hidden md:inline">
@@ -1874,7 +1886,7 @@ export default function PetOwnerPortalPage() {
                               <>
                                 <ScheduleProcedureDialog
                                   initialService={apt.service_id === "spay-neuter" ? "spay-neuter" : "vaccination"}
-                                  initialPet={aptPet || { id: apt.pet_id, name: apt.pet_name }}
+                                  initialPet={aptPet || (apt.pet_id ? { id: apt.pet_id, name: displayPetName } : undefined)}
                                   pets={pets}
                                   rescheduleAppointmentId={apt.id}
                                   ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
@@ -2272,7 +2284,9 @@ export default function PetOwnerPortalPage() {
                       </Badge>
                     </div>
                     <div className="space-y-0.5">
-                      <p className="font-bold text-xs text-foreground">{nextApt.pet_name || nextApt.petName}</p>
+                      <p className="font-bold text-xs text-foreground">
+                        {nextApt.pets?.name || (pets.find((p) => p.id === nextApt.pet_id)?.name) || nextApt.pet_name || nextApt.petName}
+                      </p>
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
                         <Calendar className="size-3" />
                         {nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}
@@ -3319,7 +3333,7 @@ export default function PetOwnerPortalPage() {
         open={appointmentSlipOpen}
         onOpenChange={setAppointmentSlipOpen}
         appointment={selectedAppointmentForSlip}
-        petDetails={pets.find((p) => p.id === selectedAppointmentForSlip?.pet_id || p.name === selectedAppointmentForSlip?.pet_name)}
+        petDetails={selectedAppointmentForSlip?.pets || pets.find((p) => (selectedAppointmentForSlip?.pet_id && p.id === selectedAppointmentForSlip.pet_id) || (selectedAppointmentForSlip?.pet_name && p.name.toLowerCase() === selectedAppointmentForSlip.pet_name.toLowerCase()))}
         ownerDetails={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
       />
 

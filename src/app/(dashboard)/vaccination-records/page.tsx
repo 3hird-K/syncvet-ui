@@ -105,28 +105,33 @@ export default function VaccinationRecordsPage() {
       try {
         const { data, error } = await supabase
           .from("vaccination_records")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed), users:owner_id(id, full_name, phone_number, address)")
           .order("administered_date", { ascending: false });
 
         if (error || !data) return [];
 
-        return data.map((r: any) => ({
-          id: r.record_no || `VAX-${r.id.slice(0, 8)}`,
-          petName: r.pet_name || "Pet",
-          petId: r.pet_id || "—",
-          species: r.species || "Dog",
-          breed: r.breed || "Aspin (Mixed)",
-          ownerName: r.owner_name || "Pet Owner",
-          ownerContact: r.owner_contact || "",
-          barangay: r.barangay || "Carmen",
-          vaccine: r.vaccine_name || "Anti-Rabies Inactivated Vaccine",
-          batch: r.batch_number || "—",
-          date: r.administered_date || "",
-          vet: r.veterinarian || "Attending CVO Vet",
-          nextDue: r.next_due_date || "—",
-          status: (r.status || "complete").toLowerCase() as any,
-          source: "database" as const,
-        }));
+        return data.map((r: any) => {
+          const petData = Array.isArray(r.pets) ? r.pets[0] : r.pets;
+          const userData = Array.isArray(r.users) ? r.users[0] : r.users;
+
+          return {
+            id: r.record_no || `VAX-${r.id.slice(0, 8)}`,
+            petName: petData?.name || r.pet_name || "Pet",
+            petId: r.pet_id || petData?.id || "—",
+            species: petData?.species || r.species || "Dog",
+            breed: petData?.breed || r.breed || "Aspin (Mixed)",
+            ownerName: userData?.full_name || r.owner_name || "Pet Owner",
+            ownerContact: userData?.phone_number || r.owner_contact || "",
+            barangay: userData?.address || r.barangay || "Carmen",
+            vaccine: r.vaccine_name || "Anti-Rabies Inactivated Vaccine",
+            batch: r.batch_number || "—",
+            date: r.administered_date || "",
+            vet: r.veterinarian || "Attending CVO Vet",
+            nextDue: r.next_due_date || "—",
+            status: (r.status || "complete").toLowerCase() as any,
+            source: "database" as const,
+          };
+        });
       } catch {
         return [];
       }

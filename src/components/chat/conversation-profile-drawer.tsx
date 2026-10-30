@@ -146,7 +146,7 @@ export function ConversationProfileDrawer({
       try {
         const { data, error } = await supabase
           .from("consultations")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed)")
           .order("date", { ascending: false });
 
         if (error || !data) {
@@ -184,7 +184,7 @@ export function ConversationProfileDrawer({
         const targetId = ownerId || dbUser?.id;
         const { data, error } = await supabase
           .from("appointments")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed)")
           .eq("owner_id", targetId)
           .order("date", { ascending: false });
 
@@ -633,7 +633,7 @@ export function ConversationProfileDrawer({
                               </Badge>
                             </div>
                             <h5 className="font-bold text-sm text-foreground">
-                              Patient: {c.pet_name || c.petName} ({c.species} {c.breed ? `• ${c.breed}` : ""})
+                              Patient: {c.pets?.name || c.pet_name || c.petName} ({c.pets?.species || c.species} {(c.pets?.breed || c.breed) ? `• ${c.pets?.breed || c.breed}` : ""})
                             </h5>
                           </div>
 
@@ -775,7 +775,7 @@ export function ConversationProfileDrawer({
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-foreground">
-                              {apt.service_id === "spay-neuter" ? "Spay & Neuter" : "Rabies Vaccination"} • {apt.pet_name}
+                              {apt.service_id === "spay-neuter" ? "Spay & Neuter" : "Rabies Vaccination"} • {apt.pets?.name || apt.pet_name}
                             </span>
                             <Badge
                               variant="outline"

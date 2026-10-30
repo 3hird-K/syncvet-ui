@@ -206,14 +206,22 @@ function ConsultationsContent() {
       try {
         const { data } = await supabase
           .from("appointments")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, email)")
           .order("date", { ascending: false });
 
         if (data) {
-          data.forEach((d) => {
+          data.forEach((d: any) => {
             if (!seen.has(d.id)) {
               seen.add(d.id);
-              list.push(d);
+              const petData = Array.isArray(d.pets) ? d.pets[0] : d.pets;
+              const resolvedPetName = petData?.name || d.pet_name || "Pet";
+              list.push({
+                ...d,
+                pet_name: resolvedPetName,
+                species: petData?.species || d.species || "Dog",
+                breed: petData?.breed || d.breed || "Mixed",
+                pets: petData,
+              });
             }
           });
         }
@@ -225,7 +233,7 @@ function ConsultationsContent() {
       try {
         const { data: txData } = await supabase
           .from("service_transactions")
-          .select("*")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, email)")
           .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
           .order("date", { ascending: false });
 
@@ -234,10 +242,16 @@ function ConsultationsContent() {
             const refId = tx.reference_id || tx.id;
             if (!seen.has(refId)) {
               seen.add(refId);
+              const petData = Array.isArray(tx.pets) ? tx.pets[0] : tx.pets;
+              const petNameMatch = petData?.name || (tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet");
               list.push({
                 id: refId,
                 owner_id: tx.owner_id,
-                pet_name: tx.title ? tx.title.replace(/^[^f]+for\s+/i, "") : "Pet",
+                pet_id: tx.pet_id || petData?.id || null,
+                pets: petData,
+                pet_name: petNameMatch,
+                species: petData?.species || "Dog",
+                breed: petData?.breed || "Mixed",
                 service_id: tx.transaction_type === "Vaccination Booking" ? "vaccination" : "spay-neuter",
                 date: tx.date ? tx.date.split("T")[0] : "",
                 status: tx.status || "confirmed",

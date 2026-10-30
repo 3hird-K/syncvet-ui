@@ -45,6 +45,7 @@ interface ProcedureAppointmentSlipProps {
     created_at?: string;
   } | null;
   petDetails?: {
+    name?: string;
     species?: string;
     breed?: string;
     gender?: string;
@@ -73,10 +74,11 @@ export function ProcedureAppointmentSlipDialog({
 
   useEffect(() => {
     if (appointment?.id) {
+      const resolvedPetName = petDetails?.name || (appointment as any)?.pets?.name || appointment.pet_name;
       const payload = JSON.stringify({
         appointmentId: appointment.id,
         service: appointment.service_id,
-        pet: appointment.pet_name,
+        pet: resolvedPetName,
         date: appointment.date,
         facility: "CVO Central Clinic, Cagayan de Oro",
       });
@@ -318,7 +320,7 @@ export function ProcedureAppointmentSlipDialog({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <span className="text-[10px] text-muted-foreground block">Patient (Pet)</span>
-                <span className="font-bold text-foreground text-xs">{appointment.pet_name}</span>
+                <span className="font-bold text-foreground text-xs">{petDetails?.name || (appointment as any)?.pets?.name || appointment.pet_name}</span>
                 {petDetails?.species && (
                   <span className="block text-[11px] text-muted-foreground">
                     {petDetails.species} • {petDetails.breed || "Mixed"}

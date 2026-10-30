@@ -106,7 +106,7 @@ export async function syncQueueFromSupabase(
     const supabase = getPublicSupabaseClient();
     const { data: appointments, error } = await supabase
       .from("appointments")
-      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (species, breed)")
+      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (id, name, species, breed)")
       .eq("date", dateStr)
       .in("status", ["checked-in", "in-consultation", "serving"]);
 
@@ -169,7 +169,7 @@ export async function syncQueueFromSupabase(
             ownerContact: ownerUser?.phone_number,
             ownerBarangay,
             petId: apt.pet_id,
-            petName: apt.pet_name || "Pet",
+            petName: petData?.name || apt.pet_name || "Pet",
             species,
             breed,
             serviceId: apt.service_id || "consultation",

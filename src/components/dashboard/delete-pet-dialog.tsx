@@ -57,9 +57,6 @@ export function DeletePetDialog({
         if (pet.id) {
           await supabase.from("appointments").delete().eq("pet_id", pet.id);
         }
-        if (pet.name) {
-          await supabase.from("appointments").delete().eq("pet_name", pet.name);
-        }
       } catch (e) {
         console.warn("Appointments delete warning:", e);
       }
@@ -67,10 +64,7 @@ export function DeletePetDialog({
       // 2. Cascade delete service transactions
       try {
         if (pet.id) {
-          await supabase.from("service_transactions").delete().eq("reference_id", pet.id);
-        }
-        if (pet.name) {
-          await supabase.from("service_transactions").delete().ilike("title", `%${pet.name}%`);
+          await supabase.from("service_transactions").delete().or(`pet_id.eq.${pet.id},reference_id.eq.${pet.id}`);
         }
       } catch (e) {
         console.warn("Transactions delete warning:", e);
@@ -81,18 +75,12 @@ export function DeletePetDialog({
         if (pet.id) {
           await supabase.from("consultations").delete().eq("pet_id", pet.id);
         }
-        if (pet.name) {
-          await supabase.from("consultations").delete().eq("pet_name", pet.name);
-        }
       } catch (e) {
         console.warn("Consultations delete warning:", e);
       }
       try {
         if (pet.id) {
           await supabase.from("vaccination_records").delete().eq("pet_id", pet.id);
-        }
-        if (pet.name) {
-          await supabase.from("vaccination_records").delete().eq("pet_name", pet.name);
         }
       } catch (e) {
         console.warn("Vaccination delete warning:", e);
