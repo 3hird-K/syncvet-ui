@@ -107,7 +107,7 @@ export function CVOClinicInfoCard({
 
   // Supabase Realtime subscription: update slots live when pet owners book, cancel, or reschedule
   useEffect(() => {
-    const channelName = `cvo-quota-realtime-${Math.random().toString(36).slice(2, 9)}`;
+    const channelName = "cvo-quota-realtime";
     const channel = supabase
       .channel(channelName)
       .on(

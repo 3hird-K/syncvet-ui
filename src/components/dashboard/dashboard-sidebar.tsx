@@ -141,13 +141,13 @@ export function SidebarContent({
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getPublicSupabaseClient();
-    const channelId = `sidebar-user-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
+    const channelId = `sidebar-user-${user.id}`;
     const channel = supabase
       .channel(channelId)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
           table: "users",
           filter: `id=eq.${user.id}`,

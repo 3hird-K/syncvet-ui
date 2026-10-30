@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import { createClerkClient } from "@clerk/backend";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 
+// In-memory heartbeat tracker to eliminate database writes and prevent Supabase Realtime CDC flooding
+const globalForPresence = globalThis as unknown as {
+  _syncvetPresenceMap?: Map<string, number>;
+};
+
+if (!globalForPresence._syncvetPresenceMap) {
+  globalForPresence._syncvetPresenceMap = new Map<string, number>();
+}
+const activePresenceMap = globalForPresence._syncvetPresenceMap;
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -51,8 +61,11 @@ export async function GET() {
       lastActiveMs: number | null,
       fallbackDateStr: string | null
     ) => {
-      let effectiveMs = lastActiveMs || 0;
-      if (fallbackDateStr) {
+      // Prioritize in-memory live heartbeat ping if available
+      const memoryPingMs = activePresenceMap.get(userId) || null;
+      let effectiveMs = Math.max(lastActiveMs || 0, memoryPingMs || 0);
+
+      if (fallbackDateStr && effectiveMs === 0) {
         const fallbackMs = new Date(fallbackDateStr).getTime();
         if (!isNaN(fallbackMs) && fallbackMs > effectiveMs) {
           effectiveMs = fallbackMs;
@@ -153,12 +166,19 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const userId = body?.userId;
-    if (userId) {
-      const supabase = getPublicSupabaseClient();
-      await supabase
-        .from("users")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", userId);
+    if (userId && typeof userId === "string") {
+      // Record ephemeral activity timestamp in memory without touching Postgres DB
+      activePresenceMap.set(userId, Date.now());
+
+      // Prevent memory accumulation over long periods
+      if (activePresenceMap.size > 2000) {
+        const staleThreshold = Date.now() - 24 * 60 * 60 * 1000;
+        for (const [id, ts] of activePresenceMap.entries()) {
+          if (ts < staleThreshold) {
+            activePresenceMap.delete(id);
+          }
+        }
+      }
     }
     return NextResponse.json({ ok: true });
   } catch (e: any) {

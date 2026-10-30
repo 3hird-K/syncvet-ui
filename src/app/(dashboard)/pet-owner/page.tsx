@@ -676,11 +676,17 @@ export default function PetOwnerPortalPage() {
 
   // Supabase Realtime channel subscription for pets to update TanStack Query live on deletion/changes
   useEffect(() => {
+    if (!user?.id) return;
     const channel = supabase
-      .channel("owner-pets-realtime-channel")
+      .channel(`owner-pets-${user.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "pets" },
+        {
+          event: "*",
+          schema: "public",
+          table: "pets",
+          filter: `owner_id=eq.${user.id}`,
+        },
         (payload) => {
           if (payload.eventType === "DELETE") {
             const deletedId = (payload.old as any)?.id;
@@ -701,7 +707,7 @@ export default function PetOwnerPortalPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, queryClient]);
+  }, [user?.id, supabase, queryClient]);
 
   // Owner details dynamically resolved from logged-in citizen
   const ownerName =
@@ -2409,7 +2415,7 @@ export default function PetOwnerPortalPage() {
         <DialogContent
           showCloseButton={false}
           className={cn(
-            "w-full p-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl max-h-[92vh] flex flex-col transition-all duration-300 ease-in-out",
+            "w-full p-0 bg-transparent border-0 shadow-none max-h-[92vh] flex flex-col transition-all duration-300 ease-in-out",
             showAvatarPickerPanel || showEditPetPanel ? "max-w-5xl sm:max-w-5xl" : "max-w-3xl sm:max-w-3xl"
           )}
         >
@@ -2448,9 +2454,9 @@ export default function PetOwnerPortalPage() {
             );
 
             return (
-              <div className="flex w-full h-full min-h-0 overflow-hidden">
-                {/* Left Side: Pet Info & Passport */}
-                <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+              <div className="flex items-stretch gap-1.5 sm:gap-2 w-full h-full min-h-0">
+                {/* Left Side: Pet Info & Passport Card */}
+                <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl">
                   {/* Header Card with Gradient & Crest */}
                 <div
                   className={cn(
@@ -2814,7 +2820,7 @@ export default function PetOwnerPortalPage() {
 
               {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}
               {showAvatarPickerPanel && (
-                <div className="w-[340px] sm:w-[390px] md:w-[430px] border-l border-border bg-card/95 backdrop-blur-md flex flex-col h-full min-h-0 shrink-0 animate-in slide-in-from-right-4 duration-300">
+                <div className="w-[340px] sm:w-[390px] md:w-[430px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
                   {/* Panel Header */}
                   <div className="p-3.5 px-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
                     <div className="space-y-0.5 min-w-0">
@@ -2899,7 +2905,7 @@ export default function PetOwnerPortalPage() {
 
               {/* Right Side: Edit Pet Information Panel */}
               {showEditPetPanel && (
-                <div className="w-[320px] sm:w-[360px] md:w-[390px] border-l border-border bg-card/95 backdrop-blur-md flex flex-col h-full shrink-0 animate-in slide-in-from-right-4 duration-300">
+                <div className="w-[320px] sm:w-[360px] md:w-[390px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
                   {/* Panel Header */}
                   <div className="p-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
                     <div className="space-y-0.5 min-w-0">

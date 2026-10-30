@@ -463,7 +463,7 @@ export function OperationalNotifications({
   // Realtime Postgres subscriptions: Exclude chat messages; listen to inventory, appointments, & vax records
   useEffect(() => {
     if (!isStaff) return;
-    const channelId = `cvo-operational-alerts-${Math.random().toString(36).slice(2, 8)}`;
+    const channelId = "cvo-operational-alerts";
     const channel = supabase
       .channel(channelId)
       .on(

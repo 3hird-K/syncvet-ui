@@ -569,7 +569,7 @@ function MessagesContent() {
         return {};
       }
     },
-    refetchInterval: 8000,
+    refetchInterval: 25000,
   });
 
   // Heartbeat ping while the current user has this tab active

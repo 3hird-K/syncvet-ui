@@ -263,7 +263,7 @@ export function CitizenChatWidget() {
         return {};
       }
     },
-    refetchInterval: 8000,
+    refetchInterval: 25000,
   });
 
   // Heartbeat ping while the current user has the app open
@@ -735,7 +735,7 @@ export function CitizenChatWidget() {
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
-      .channel(`widget-unread-counter-${user.id}-${Math.random().toString(36).slice(2, 8)}`)
+      .channel(`widget-unread-counter-${user.id}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
@@ -1639,7 +1639,7 @@ function FacebookMessengerWindow({
   useEffect(() => {
     if (!activeChatDbId) return;
     const channel = supabase
-      .channel(`messenger-window-${activeChatDbId}-${contact.id}-${Math.random().toString(36).slice(2, 8)}`)
+      .channel(`messenger-window-${activeChatDbId}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages", filter: `chat_id=eq.${activeChatDbId}` },

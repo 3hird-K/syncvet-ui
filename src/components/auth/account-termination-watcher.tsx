@@ -42,7 +42,7 @@ export function AccountTerminationWatcher() {
 
     // 1. Realtime Broadcast & Postgres Changes Listeners
     const watchChannel = supabase
-      .channel(`account-watch-${currentUserId}-${Math.random().toString(36).slice(2, 8)}`)
+      .channel(`account-watch-${currentUserId}`)
       .on(
         "broadcast",
         { event: "account-deleted" },
@@ -55,7 +55,7 @@ export function AccountTerminationWatcher() {
       .subscribe();
 
     const globalRealtimeChannel = supabase
-      .channel(`syncvet-users-realtime-${Math.random().toString(36).slice(2, 8)}`)
+      .channel("syncvet-users-realtime")
       .on(
         "broadcast",
         { event: "account-deleted" },
