@@ -19,7 +19,6 @@ import {
   Calendar,
   CalendarCheck,
   Syringe,
-  HeartPulse,
   Newspaper,
   MapPin,
   ShieldAlert,
@@ -149,7 +148,6 @@ export function FacebookTopBar({
     { key: "feed", label: "CVO Public Bulletins & Announcements", shortLabel: "Bulletins", icon: Newspaper },
     { key: "consultations", label: "Clinical Consultations", shortLabel: "Consultations", icon: Stethoscope },
     { key: "procedures", label: "Procedure Appointments", shortLabel: "Appointments", icon: CalendarCheck },
-    { key: "vaccinations", label: "Vaccination Ledger", shortLabel: "Vaccines", icon: HeartPulse },
   ];
 
   return (
@@ -281,18 +279,6 @@ export function FacebookTopBar({
               </div>
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() => handleTabClick("vaccinations")}
-              className="cursor-pointer gap-2.5 py-2 rounded-xl"
-            >
-              <div className="size-7 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
-                <Syringe className="size-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-xs text-foreground">Vaccination Ledger</p>
-                <p className="text-[10px] text-muted-foreground">Certified rabies & immunization records</p>
-              </div>
-            </DropdownMenuItem>
 
             <DropdownMenuItem
               onClick={() => handleTabClick("drives")}

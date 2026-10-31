@@ -2,15 +2,15 @@
 
 import { useState, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, Loader2, Search, Check, ChevronsUpDown, User, PawPrint, Scale, Calendar, Camera } from "lucide-react";
+import { Plus, Loader2, Search, Check, ClipboardCheck, ChevronsUpDown, User, PawPrint, Scale, Calendar, Camera, ImageIcon, X } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
-import { PetAvatarPickerDialog } from "./pet-avatar-picker-dialog";
 import { PetAvatar } from "./pet-avatar";
 import { PET_DOG_AVATARS, PET_CAT_AVATARS, getDefaultPetAvatar } from "@/lib/pet-avatars";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -147,7 +147,8 @@ export function RegisterPetDialog({
   const [petName, setPetName] = useState("");
   const [species, setSpecies] = useState<"Dog" | "Cat">("Dog");
   const [photoUrl, setPhotoUrl] = useState<string>(PET_DOG_AVATARS[0].url);
-  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [showAvatarPickerPanel, setShowAvatarPickerPanel] = useState(false);
+  const availableSpeciesAvatars = species === "Cat" ? PET_CAT_AVATARS : PET_DOG_AVATARS;
   const [breed, setBreed] = useState<string>("Aspin (Asong Pinoy)");
   const [gender, setGender] = useState<"Male" | "Female">("Male");
   const [birthYear, setBirthYear] = useState<string>(String(currentYear - 1));
@@ -273,6 +274,7 @@ export function RegisterPetDialog({
       setWeightCategory("Medium (10 – 25 kg)");
       setNotes("");
       setSelectedOwner(null);
+      setShowAvatarPickerPanel(false);
       setOpen(false);
     } catch (err: any) {
       console.error("Pet registration error:", err);
@@ -285,7 +287,13 @@ export function RegisterPetDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setShowAvatarPickerPanel(false);
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ? (
           trigger
@@ -295,52 +303,102 @@ export function RegisterPetDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="w-[95vw] sm:max-w-[640px] md:max-w-[700px] max-h-[92vh] overflow-y-auto p-5 sm:p-6 rounded-2xl gap-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <DialogHeader className="pb-2.5 border-b border-border/60">
-            <div className="flex items-center gap-2 text-primary">
-              <PawIcon className="size-5" />
-              <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Official registration for municipal digital passport and anti-rabies immunity records.
-            </DialogDescription>
-          </DialogHeader>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          "w-[95vw] p-0 bg-transparent border-0 shadow-none max-h-[92vh] flex flex-col transition-all duration-300 ease-in-out",
+          showAvatarPickerPanel
+            ? "sm:max-w-4xl md:max-w-5xl"
+            : "sm:max-w-[620px] md:max-w-[660px]"
+        )}
+      >
+        <div className="flex items-stretch gap-2.5 sm:gap-3.5 w-full max-h-[90vh] flex-1 overflow-hidden">
+          {/* Left Side: Register Pet Form Card */}
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl p-5 sm:p-6 relative">
+            <form id="register-pet-form" onSubmit={handleSubmit} className="space-y-4">
+              {/* Top Action Buttons: Complete Registration & Close */}
+              <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
+                <button
+                  type="submit"
+                  disabled={loading || !petName.trim() || (!isPetOwner && !selectedOwner && !defaultOwnerId)}
+                  className="h-8 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer border border-emerald-600/30 flex items-center gap-1.5 text-xs font-semibold"
+                  title="Complete Registration & Issue Passport"
+                  aria-label="Register Pet"
+                >
+                  {loading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="size-3.5" />
+                  )}
+                  <span>Register Pet</span>
+                </button>
 
-          <div className="grid gap-3.5 py-1">
-            {/* Pet Profile Picture Picker */}
-            <div className="p-3 rounded-xl border border-border/70 bg-muted/30 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <PetAvatar
-                  photoUrl={photoUrl}
-                  species={species}
-                  name={petName}
-                  size="md"
-                />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-bold">
-                    Profile Picture (Optional)
-                  </p>
-                  <p className="text-xs font-semibold text-foreground">
-                    {photoUrl ? "Custom Avatar Chosen" : "Default Species Avatar"}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Choose from official SyncVet pet avatars
-                  </p>
-                </div>
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+                    title="Close"
+                  >
+                    <X className="size-4" />
+                    <span className="sr-only">Close</span>
+                  </button>
+                </DialogClose>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setAvatarPickerOpen(true)}
-                className="h-8 px-3 text-xs font-medium rounded-lg gap-1.5 shrink-0 bg-background hover:bg-muted"
-              >
-                <Camera className="size-3.5 text-primary" />
-                <span>{photoUrl ? "Change" : "Choose Photo"}</span>
-              </Button>
-            </div>
+              <DialogHeader className="pb-2.5 border-b border-border/60 pr-36 sm:pr-40">
+                <div className="flex items-center gap-2 text-primary">
+                  <PawIcon className="size-5" />
+                  <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
+                </div>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Official registration for municipal digital passport and anti-rabies immunity records.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-3.5 py-1">
+                {/* Pet Profile Picture Picker */}
+                <div className="p-3 rounded-xl border border-border/70 bg-muted/30 flex items-center justify-between gap-3">
+                  <div
+                    onClick={() => setShowAvatarPickerPanel((prev) => !prev)}
+                    className="flex items-center gap-3 cursor-pointer group"
+                    title="Click to toggle avatar selection"
+                  >
+                    <div className="relative">
+                      <PetAvatar
+                        photoUrl={photoUrl}
+                        species={species}
+                        name={petName}
+                        size="md"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-bold">
+                        Profile Picture (Optional)
+                      </p>
+                      <p className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {photoUrl ? "Custom Avatar Chosen" : "Default Species Avatar"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Choose from official SyncVet pet avatars
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarPickerPanel((prev) => !prev)}
+                    className={cn(
+                      "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
+                      showAvatarPickerPanel
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm scale-105"
+                        : "bg-background hover:bg-muted text-foreground border-border/80 hover:border-primary/50"
+                    )}
+                    title={showAvatarPickerPanel ? "Close photo panel" : "Choose Profile Picture"}
+                  >
+                    <ImageIcon className="size-4" />
+                    <span className="sr-only">Choose Profile Picture</span>
+                  </button>
+                </div>
 
             {/* Pet Name */}
             <div className="grid gap-1">
@@ -576,35 +634,94 @@ export function RegisterPetDialog({
             )}
           </div>
 
-          <DialogFooter className="pt-2 border-t border-border/50">
-            <Button
-              type="submit"
-              disabled={loading || (!isPetOwner && !selectedOwner && !defaultOwnerId)}
-              className="w-full cursor-pointer h-9 text-xs font-bold rounded-xl"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                  Registering Pet...
-                </>
-              ) : (
-                "Complete Registration & Issue Passport"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+            </form>
+          </div>
 
-      <PetAvatarPickerDialog
-        open={avatarPickerOpen}
-        onOpenChange={setAvatarPickerOpen}
-        petName={petName || "New Pet"}
-        species={species}
-        breed={breed}
-        currentPhotoUrl={photoUrl}
-        speciesStrict={true}
-        onSelectAvatar={(url) => setPhotoUrl(url)}
-      />
+          {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}
+          {showAvatarPickerPanel && (
+            <div className="w-[330px] sm:w-[380px] md:w-[410px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+              {/* Panel Header */}
+              <div className="p-3.5 px-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="size-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <ImageIcon className="size-3.5" />
+                    </div>
+                    <h3 className="text-sm font-bold text-foreground truncate">
+                      Choose Photo
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {species === "Cat" ? "Feline Profiles Only" : "Canine Profiles Only"} • {petName.trim() || "New Pet"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarPickerPanel(false)}
+                  className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+                  title="Close photo selector"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Avatars Grid (4 Columns, Smooth Scrolling) */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5 max-h-[calc(90vh-70px)]">
+                <div className="p-2 rounded-lg bg-primary/5 border border-primary/15 flex items-center justify-between text-xs">
+                  <span className="text-[10.5px] font-medium text-muted-foreground">
+                    {species === "Cat" ? "Cats only choose cat profiles" : "Dogs only choose dog profiles"}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-primary px-1.5 py-0.5 rounded bg-primary/10">
+                    {availableSpeciesAvatars.length} Avatars
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 pt-1">
+                  {availableSpeciesAvatars.map((avatar) => {
+                    const isSelected = photoUrl === avatar.url;
+                    return (
+                      <button
+                        key={avatar.id}
+                        type="button"
+                        onClick={() => setPhotoUrl(avatar.url)}
+                        className={cn(
+                          "relative group flex flex-col items-center justify-between p-1.5 rounded-xl border transition-all duration-200 cursor-pointer text-left focus:outline-none",
+                          isSelected
+                            ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/40 shadow-xs scale-[1.02]"
+                            : "border-border/60 bg-muted/20 hover:bg-accent/40 hover:border-border hover:scale-[1.03]"
+                        )}
+                        title={`Select ${avatar.label}`}
+                      >
+                        {isSelected && (
+                          <div className="absolute top-1 right-1 z-10 size-4 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                            <Check className="size-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                        <div className="size-12 sm:size-13 flex items-center justify-center p-0.5">
+                          <PetAvatar
+                            photoUrl={avatar.url}
+                            species={species}
+                            name={avatar.label}
+                            size="sm"
+                          />
+                        </div>
+                        <span
+                          className={cn(
+                            "mt-1 text-[8.5px] sm:text-[9px] font-medium text-center truncate w-full px-0.5 leading-tight",
+                            isSelected ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground"
+                          )}
+                        >
+                          {avatar.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }

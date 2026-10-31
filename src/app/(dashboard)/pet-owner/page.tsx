@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { useUser } from "@clerk/nextjs";
@@ -20,7 +20,9 @@ import {
   Stethoscope,
   Syringe,
   Calendar,
+  CalendarCheck,
   CalendarClock,
+  ClipboardCheck,
   Clock,
   MapPin,
   Phone,
@@ -128,6 +130,91 @@ import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { syncConsultationsToQueue } from "@/lib/cvo-queue";
 import { parsePetWeightKg } from "@/lib/pet-weight";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
+
+function AnimatedModalContent({
+  activeKey,
+  children,
+  className,
+  isSidePanelOpen = false,
+}: {
+  activeKey: string;
+  children: React.ReactNode;
+  className?: string;
+  isSidePanelOpen?: boolean;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+
+    const updateHeight = () => {
+      if (contentRef.current) {
+        const measured = Math.round(contentRef.current.offsetHeight);
+        if (measured > 0) {
+          setHeight(measured);
+        }
+      }
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const measured = Math.round(
+          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+        );
+        if (measured > 0) {
+          setHeight(measured);
+        }
+      }
+    });
+
+    resizeObserver.observe(contentRef.current);
+    return () => resizeObserver.disconnect();
+  }, [activeKey]);
+
+  if (isSidePanelOpen) {
+    return (
+      <div className={cn("flex-1 min-h-0 overflow-y-auto overscroll-contain", className)}>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      style={{ height: height ?? "auto" }}
+      animate={height !== undefined ? { height } : undefined}
+      transition={{
+        duration: 0.35,
+        ease: [0.16, 1, 0.3, 1],
+      }}
+      className={cn(
+        "w-full transition-colors",
+        isTransitioning
+          ? "overflow-hidden"
+          : "overflow-y-auto max-h-[calc(92vh-185px)] overscroll-contain",
+        className
+      )}
+      onAnimationStart={() => setIsTransitioning(true)}
+      onAnimationComplete={() => setIsTransitioning(false)}
+    >
+      <div ref={contentRef} className="w-full">
+        <motion.div
+          key={activeKey}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+        >
+          {children}
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
 
 interface ChatMessage {
   id: string;
@@ -153,7 +240,14 @@ export default function PetOwnerPortalPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam) setActiveTab(tabParam);
+      if (tabParam && tabParam !== "vaccinations") {
+        setActiveTab(tabParam);
+      } else if (tabParam === "vaccinations") {
+        setActiveTab("feed");
+        const url = new URL(window.location.href);
+        url.searchParams.set("tab", "feed");
+        window.history.replaceState({}, "", url.toString());
+      }
     }
 
     const handleTabChange = (e: Event) => {
@@ -309,13 +403,10 @@ export default function PetOwnerPortalPage() {
     return () => window.removeEventListener("cvo-slot-config-updated", handleConfigUpdate);
   }, []);
 
-  const petsScrollRef = useRef<HTMLDivElement>(null);
-  const scrollPets = (direction: "left" | "right") => {
-    if (petsScrollRef.current) {
-      const scrollAmount = direction === "left" ? -320 : 320;
-      petsScrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
+  const [isConsultationValid, setIsConsultationValid] = useState(false);
+  const [isProcedureValid, setIsProcedureValid] = useState(false);
+
+
 
   // Live Philippine standard time
   const [time, setTime] = useState<string>("");
@@ -775,6 +866,54 @@ export default function PetOwnerPortalPage() {
       bodyConditionScore: 5,
     }));
   }, [dbPets]);
+
+  // Pet Registry Carousel Horizontal Scrolling & Edge Navigation
+  const petsScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkPetScroll = useCallback(() => {
+    const el = petsScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 5);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 5);
+  }, []);
+
+  useEffect(() => {
+    const el = petsScrollRef.current;
+    if (!el) return;
+
+    checkPetScroll();
+
+    el.addEventListener("scroll", checkPetScroll, { passive: true });
+    window.addEventListener("resize", checkPetScroll);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        checkPetScroll();
+      });
+      ro.observe(el);
+    }
+
+    const timer = setTimeout(checkPetScroll, 150);
+
+    return () => {
+      el.removeEventListener("scroll", checkPetScroll);
+      window.removeEventListener("resize", checkPetScroll);
+      if (ro) ro.disconnect();
+      clearTimeout(timer);
+    };
+  }, [pets, checkPetScroll]);
+
+  const scrollPets = (direction: "left" | "right") => {
+    if (petsScrollRef.current) {
+      const scrollAmount = direction === "left" ? -320 : 320;
+      petsScrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+      setTimeout(checkPetScroll, 350);
+    }
+  };
 
   // Keep selectedPetForInfo and selectedPetForPassport in sync with latest pets data
   useEffect(() => {
@@ -1263,33 +1402,42 @@ export default function PetOwnerPortalPage() {
               const resolvedPhotoUrl = getPetAvatarUrl(pet.photo_url, pet.species);
 
               // Curated companion card gradients with atmospheric depth
-              const gradientBg = isCat
-                ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-slate-950"
+              const topVibrantBg = isCat
+                ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-transparent"
                 : idx % 2 === 0
-                ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-slate-950"
-                : "bg-gradient-to-b from-cyan-700 via-slate-900 to-slate-950";
+                ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-transparent"
+                : "bg-gradient-to-b from-cyan-700 via-slate-900 to-transparent";
 
               return (
                 <div
                   key={pet.id}
                   onClick={() => handleOpenPetInfo(pet)}
-                  className={cn(
-                    "w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-xl hover:border-white/25 transition-all duration-300 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-end p-2.5 sm:p-3 snap-start",
-                    gradientBg
-                  )}
+                  className="w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-2xl hover:border-white/30 transition-all duration-500 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-end p-2.5 sm:p-3 snap-start bg-transparent"
                   title={`${pet.name} (${pet.species}) — Click to view Pet Details & Passport`}
                 >
-                  {/* Atmospheric Top Spotlight & Glowing Halo */}
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-36 rounded-full bg-white/20 blur-2xl pointer-events-none" />
-                  <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-28 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none" />
+                  {/* Bottom Half Card Dark Base (Supports name and breed readability) */}
+                  <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pointer-events-none z-0" />
+
+                  {/* Top-to-Half Background Color (100% opacity at rest, fades to 0 opacity on hover) */}
+                  <div
+                    className={cn(
+                      "absolute inset-x-0 top-0 h-[60%] pointer-events-none transition-opacity duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] z-0",
+                      topVibrantBg,
+                      "opacity-100 group-hover/story:opacity-0"
+                    )}
+                  />
+
+                  {/* Atmospheric Top Spotlight & Glowing Halo (Fades to 0 opacity on hover) */}
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-36 rounded-full bg-white/20 blur-2xl pointer-events-none opacity-100 group-hover/story:opacity-0 transition-opacity duration-500" />
+                  <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-28 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none opacity-100 group-hover/story:opacity-0 transition-opacity duration-500" />
                   <div className="absolute -bottom-8 -right-8 size-28 bg-white/[0.04] rounded-full blur-xl pointer-events-none" />
 
-                  {/* Middle / Bottom: Transparent Pet Cutout Anchored at bottom-0, occupying 70% of card height */}
+                  {/* Middle / Bottom: Transparent Pet Cutout Anchored at bottom-0, occupying 90% of card height with scale up animation on hover */}
                   <div className="absolute inset-x-0 bottom-0 top-0 flex items-end justify-center pointer-events-none overflow-hidden z-10">
                     <img
                       src={resolvedPhotoUrl}
                       alt={pet.name}
-                      className="h-[70%] w-auto max-w-[110%] object-contain object-bottom origin-bottom filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)] group-hover/story:scale-108 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
+                      className="h-[90%] w-auto max-w-none object-contain object-bottom origin-bottom filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)] group-hover/story:scale-115 group-hover/story:drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-transform"
                       loading="lazy"
                     />
                   </div>
@@ -1299,14 +1447,9 @@ export default function PetOwnerPortalPage() {
 
                   {/* Bottom: Pet Name & Breed */}
                   <div className="relative z-30 space-y-0.5 w-full">
-                    <div className="flex items-center justify-between gap-1">
-                      <h3 className="text-sm sm:text-base font-black text-white leading-tight truncate tracking-tight drop-shadow-md">
-                        {pet.name}
-                      </h3>
-                      <span className="text-[10px] text-white/70 font-mono font-medium shrink-0">
-                        {pet.age}
-                      </span>
-                    </div>
+                    <h3 className="text-sm sm:text-base font-black text-white leading-tight truncate tracking-tight drop-shadow-md">
+                      {pet.name}
+                    </h3>
                     <p className="text-[10px] sm:text-xs text-white/80 font-medium truncate drop-shadow-xs">
                       {pet.breed || pet.species}
                     </p>
@@ -1316,13 +1459,26 @@ export default function PetOwnerPortalPage() {
             })}
           </div>
 
-          {/* Floating Right Scroll Arrow Button (hidden on mobile touch screens, active on tablet/desktop) */}
-          {pets.length > 2 && (
+          {/* Edge Navigation Buttons (Previous on left edge when scrolled; Next on right edge when more content exists) */}
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => scrollPets("left")}
+              className="absolute -left-2.5 sm:-left-3.5 top-1/2 -translate-y-1/2 z-30 size-8 sm:size-9 rounded-full bg-card/95 hover:bg-card border border-border/80 shadow-md flex items-center justify-center text-foreground hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+              title="View previous pets"
+              aria-label="View previous pets"
+            >
+              <ChevronLeft className="size-4 sm:size-5" />
+            </button>
+          )}
+
+          {canScrollRight && (
             <button
               type="button"
               onClick={() => scrollPets("right")}
-              className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 size-8 sm:size-9 rounded-full bg-card/90 hover:bg-card border border-border shadow-md items-center justify-center text-foreground hover:scale-105 transition-all cursor-pointer backdrop-blur-sm"
+              className="absolute -right-2.5 sm:-right-3.5 top-1/2 -translate-y-1/2 z-30 size-8 sm:size-9 rounded-full bg-card/95 hover:bg-card border border-border/80 shadow-md flex items-center justify-center text-foreground hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
               title="View next pets"
+              aria-label="View next pets"
             >
               <ChevronRight className="size-4 sm:size-5" />
             </button>
@@ -1511,6 +1667,7 @@ export default function PetOwnerPortalPage() {
                 {ownerConsultations.map((c) => {
                   const isCompleted = c.status === "completed";
                   const isWaiting = c.status === "waiting";
+                  const cPet = pets.find((p) => (c.petId && p.id === c.petId) || (c.petName && p.name.toLowerCase() === c.petName.toLowerCase()));
 
                   return (
                     <Card
@@ -1519,77 +1676,89 @@ export default function PetOwnerPortalPage() {
                     >
                       <CardContent className="p-4 sm:p-5">
                         <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
-                          <div className="space-y-2 flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-xs font-extrabold text-foreground bg-muted px-2 py-0.5 rounded border border-border/80">
-                                Encounter #{c.encounterNo}
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] font-bold pointer-events-none select-none shadow-none gap-1 ${
-                                  isCompleted
-                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
-                                    : isWaiting
-                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700"
-                                    : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
-                                }`}
-                              >
-                                {c.status === "in-consultation" ? (
-                                  <>
-                                    <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                    IN CONSULTATION
-                                  </>
-                                ) : isWaiting ? (
-                                  <>
-                                    <Clock className="size-2.5 text-amber-600" />
-                                    WAITING
-                                  </>
-                                ) : isCompleted ? (
-                                  <>
-                                    <CheckCircle2 className="size-2.5 text-emerald-600" />
-                                    COMPLETED
-                                  </>
-                                ) : (
-                                  c.status.replace(/-/g, " ").toUpperCase()
-                                )}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Calendar className="size-3" />
-                                {c.date} • {c.time}
-                              </span>
+                          <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                            <div className="shrink-0 pt-0.5">
+                              <PetAvatar
+                                photoUrl={cPet?.photo_url}
+                                species={cPet?.species || c.species}
+                                name={c.petName}
+                                size="md"
+                                className="size-14 sm:size-16 shadow-xs"
+                              />
                             </div>
 
-                            <div className="space-y-1 min-w-0">
-                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                <h4 className="font-bold text-sm text-foreground">
-                                  {c.petName} ({c.species} - {c.breed || "Aspin"})
-                                </h4>
-                                <span className="text-xs text-muted-foreground">•</span>
-                                <span className="text-xs font-semibold text-primary">
-                                  {c.serviceType}
+                            <div className="space-y-2 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-extrabold text-foreground bg-muted px-2 py-0.5 rounded border border-border/80">
+                                  Encounter #{c.encounterNo}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] font-bold pointer-events-none select-none shadow-none gap-1 ${
+                                    isCompleted
+                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+                                      : isWaiting
+                                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700"
+                                      : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
+                                  }`}
+                                >
+                                  {c.status === "in-consultation" ? (
+                                    <>
+                                      <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                      IN CONSULTATION
+                                    </>
+                                  ) : isWaiting ? (
+                                    <>
+                                      <Clock className="size-2.5 text-amber-600" />
+                                      WAITING
+                                    </>
+                                  ) : isCompleted ? (
+                                    <>
+                                      <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                      COMPLETED
+                                    </>
+                                  ) : (
+                                    c.status.replace(/-/g, " ").toUpperCase()
+                                  )}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Calendar className="size-3" />
+                                  {c.date} • {c.time}
                                 </span>
                               </div>
 
-                              <p className="text-xs text-muted-foreground leading-relaxed">
-                                <strong className="text-foreground">Chief Complaint / Reason:</strong> {c.chiefComplaint}
-                              </p>
-
-                              {c.diagnosis && (
-                                <div className="text-xs text-foreground bg-slate-50 dark:bg-muted/30 p-2.5 rounded-lg border border-border/60 space-y-1">
-                                  <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                                      Official Diagnosis: {c.diagnosis}
-                                    </span>
-                                    <span className="text-[10px] text-muted-foreground font-serif italic">
-                                      Attending Vet: {c.vetName}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-muted-foreground">
-                                    <strong>Treatment & Rx:</strong> {c.treatment}
-                                    {c.medication && ` • ${c.medication}`}
-                                  </p>
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                                  <h4 className="font-bold text-sm text-foreground">
+                                    {c.petName} ({c.species} - {c.breed || "Aspin"})
+                                  </h4>
+                                  <span className="text-xs text-muted-foreground">•</span>
+                                  <span className="text-xs font-semibold text-primary">
+                                    {c.serviceType}
+                                  </span>
                                 </div>
-                              )}
+
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                  <strong className="text-foreground">Chief Complaint / Reason:</strong> {c.chiefComplaint}
+                                </p>
+
+                                {c.diagnosis && (
+                                  <div className="text-xs text-foreground bg-slate-50 dark:bg-muted/30 p-2.5 rounded-lg border border-border/60 space-y-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                      <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                        Official Diagnosis: {c.diagnosis}
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground font-serif italic">
+                                        Attending Vet: {c.vetName}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                      <strong>Treatment & Rx:</strong> {c.treatment}
+                                      {c.medication && ` • ${c.medication}`}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
 
@@ -1791,23 +1960,16 @@ export default function PetOwnerPortalPage() {
                     >
                       <CardContent className="p-3.5 sm:p-4 space-y-2.5">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                          {/* Left: Icon & Details */}
-                          <div className="flex items-start sm:items-center gap-3 min-w-0">
-                            <div
-                              className={cn(
-                                "size-10 rounded-xl flex items-center justify-center shrink-0 border",
-                                isMissed
-                                  ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                                  : isSpayNeuter
-                                  ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
-                                  : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                              )}
-                            >
-                              {isSpayNeuter ? (
-                                <Scissors className="size-4.5" />
-                              ) : (
-                                <Syringe className="size-4.5" />
-                              )}
+                          {/* Left: Pet Avatar & Details */}
+                          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                            <div className="shrink-0">
+                              <PetAvatar
+                                photoUrl={aptPet?.photo_url || apt.pets?.photo_url}
+                                species={aptPet?.species || apt.pets?.species}
+                                name={displayPetName}
+                                size="md"
+                                className="size-14 sm:size-16 shadow-xs"
+                              />
                             </div>
 
                             <div className="space-y-1 min-w-0">
@@ -1959,70 +2121,6 @@ export default function PetOwnerPortalPage() {
             )}
           </TabsContent>
 
-          {/* ════ TAB 3: Vaccination & Rabies Ledger ════ */}
-          <TabsContent value="vaccinations" className="space-y-4 pt-2">
-            <div>
-              <h3 className="text-base font-bold text-foreground">
-                Official Rabies & Preventive Immunization Ledger
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Certified records of anti-rabies vaccination administered by the Cagayan de Oro City Veterinary Office
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {pets.length === 0 ? (
-                <Card className="col-span-full p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
-                  <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
-                    <Syringe className="size-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-sm text-foreground">No Pet Vaccination Ledgers Found</h3>
-                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                      Register a pet to view certified immunization records and track rabies booster schedules.
-                    </p>
-                  </div>
-                </Card>
-              ) : (
-                pets.map((pet) => (
-                  <Card key={pet.id} className="border-emerald-500/30 bg-emerald-500/5 shadow-xs">
-                    <CardHeader className="pb-2.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] shrink-0">
-                          {pet.rabiesVaccinated ? "ANTI-RABIES PROTECTION" : "BOOSTER SCHEDULE DUE"}
-                        </Badge>
-                        <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{pet.microchip}</span>
-                      </div>
-                      <CardTitle className="text-base font-bold mt-1.5 break-words">
-                        {pet.name} ({pet.species} • {pet.breed})
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        Administered at CVO Central Clinic & Barangay Drives • Dr. Elena Santos, DVM
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-xs">
-                      <div className="flex justify-between border-b border-border/40 pb-1">
-                        <span className="text-muted-foreground">Vaccine Product:</span>
-                        <span className="font-bold text-foreground">Rabisin Rabies Inactivated</span>
-                      </div>
-                      <div className="flex justify-between border-b border-border/40 pb-1">
-                        <span className="text-muted-foreground">Batch / Lot No:</span>
-                        <span className="font-mono font-bold text-foreground">RB-2026-0814</span>
-                      </div>
-                      <div className="flex justify-between border-b border-border/40 pb-1">
-                        <span className="text-muted-foreground">Date Administered:</span>
-                        <span className="font-bold text-foreground">{pet.lastVaccinationDate || "May 10, 2026"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Valid Until (Annual Booster):</span>
-                        <span className="font-bold text-emerald-600">{pet.nextVaccinationDate || "May 10, 2027"}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </TabsContent>
 
           {/* ════ TAB 4: Animal Bite Protocol & Emergency ABTC Guidance ════ */}
           <TabsContent value="protocols" className="space-y-4 pt-2">
@@ -2273,72 +2371,106 @@ export default function PetOwnerPortalPage() {
 
             return (
               <div className="space-y-2.5">
-                {nextApt && (
-                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-                        Next Appointment
-                      </span>
-                      <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30">
-                        {nextApt.service_type || nextApt.serviceType}
-                      </Badge>
-                    </div>
-                    <div className="space-y-0.5">
-                      <p className="font-bold text-xs text-foreground">
-                        {nextApt.pets?.name || (pets.find((p) => p.id === nextApt.pet_id)?.name) || nextApt.pet_name || nextApt.petName}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
-                        <Calendar className="size-3" />
-                        {nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedAppointmentForSlip(nextApt);
-                          setAppointmentSlipOpen(true);
-                        }}
-                        className="flex-1 h-7 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-card hover:bg-muted"
-                      >
-                        <Printer className="size-3 text-primary" />
-                        <span>Slip</span>
-                      </Button>
+                {nextApt && (() => {
+                  const nextAptPet = pets.find((p) => p.id === nextApt.pet_id || (p.name && nextApt.pet_name && p.name.toLowerCase() === nextApt.pet_name.toLowerCase())) || nextApt.pets;
+                  const nextAptPetName = nextAptPet?.name || nextApt.pets?.name || nextApt.pet_name || nextApt.petName || "Pet";
+                  const isNextSpayNeuter = nextApt.service_id === "spay-neuter" || nextApt.service_type === "spay-neuter" || nextApt.serviceType === "spay-neuter";
 
-                      <ScanQueueQrDialog
-                        trigger={
-                          <Button
+                  return (
+                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                          Next Appointment
+                        </span>
+                        <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30">
+                          {nextApt.service_type || nextApt.serviceType}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <div className="shrink-0">
+                          <PetAvatar
+                            photoUrl={nextAptPet?.photo_url}
+                            species={nextAptPet?.species}
+                            name={nextAptPetName}
                             size="sm"
-                            className="flex-1 h-7 text-[11px] font-bold gap-1 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
-                          >
-                            <QrCode className="size-3" />
-                            <span>Scan Arrival QR</span>
-                          </Button>
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
+                            className="size-10 shadow-xs"
+                          />
+                        </div>
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                          <p className="font-bold text-xs text-foreground truncate">
+                            {nextAptPetName}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
+                            <Calendar className="size-3 shrink-0 text-primary" />
+                            <span className="truncate">{nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedAppointmentForSlip(nextApt);
+                            setAppointmentSlipOpen(true);
+                          }}
+                          className="flex-1 h-7 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-card hover:bg-muted"
+                        >
+                          <Printer className="size-3 text-primary" />
+                          <span>Slip</span>
+                        </Button>
 
-                {waitingConsultation && (
-                  <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                        Pending Consultation
-                      </span>
-                      <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30">
-                        Waiting Vet
-                      </Badge>
+                        <ScanQueueQrDialog
+                          trigger={
+                            <Button
+                              size="sm"
+                              className="flex-1 h-7 text-[11px] font-bold gap-1 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                            >
+                              <QrCode className="size-3" />
+                              <span>Scan Arrival QR</span>
+                            </Button>
+                          }
+                        />
+                      </div>
                     </div>
-                    <p className="text-xs font-bold text-foreground">
-                      {waitingConsultation.petName} — {waitingConsultation.serviceType}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground line-clamp-1">
-                      {waitingConsultation.chiefComplaint}
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
+
+                {waitingConsultation && (() => {
+                  const waitingPet = pets.find((p) => (waitingConsultation.petId && p.id === waitingConsultation.petId) || (waitingConsultation.petName && p.name.toLowerCase() === waitingConsultation.petName.toLowerCase()));
+
+                  return (
+                    <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                          Pending Consultation
+                        </span>
+                        <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30">
+                          Waiting Vet
+                        </Badge>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <div className="shrink-0 mt-0.5">
+                          <PetAvatar
+                            photoUrl={waitingPet?.photo_url}
+                            species={waitingPet?.species || waitingConsultation.species}
+                            name={waitingConsultation.petName}
+                            size="sm"
+                            className="size-10 shadow-xs"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="text-xs font-bold text-foreground truncate">
+                            {waitingConsultation.petName} — {waitingConsultation.serviceType}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground line-clamp-1">
+                            {waitingConsultation.chiefComplaint}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -2402,12 +2534,10 @@ export default function PetOwnerPortalPage() {
         <DialogContent
           showCloseButton={false}
           className={cn(
-            "w-full p-0 bg-transparent border-0 shadow-none h-[88vh] max-h-[88vh] flex flex-col transition-all duration-300 ease-in-out",
+            "w-full p-0 bg-transparent border-0 shadow-none",
             showAvatarPickerPanel || showEditPetPanel
-              ? "max-w-5xl sm:max-w-5xl"
-              : activeProfileTab !== "overview"
-              ? "max-w-4xl sm:max-w-4xl"
-              : "max-w-3xl sm:max-w-3xl"
+              ? "max-w-5xl sm:max-w-5xl h-[88vh] max-h-[88vh] flex flex-col transition-all duration-300"
+              : "max-w-4xl sm:max-w-4xl max-h-[95vh] h-auto flex flex-col"
           )}
         >
           <DialogHeader className="sr-only">
@@ -2447,11 +2577,23 @@ export default function PetOwnerPortalPage() {
               weightChanged
             );
 
+            const isSidePanelOpen = Boolean(showAvatarPickerPanel || showEditPetPanel);
+
             return (
-              <div className="flex items-stretch gap-1.5 sm:gap-2 w-full h-full min-h-0 flex-1 overflow-hidden">
+              <div
+                className={cn(
+                  "flex items-stretch gap-1.5 sm:gap-2 w-full min-h-0 flex-1",
+                  isSidePanelOpen ? "h-full overflow-hidden" : "h-auto"
+                )}
+              >
                 {/* Left Side: Pet Info & Passport Card */}
-                <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl">
-                  {/* Header Card with Gradient & Crest */}
+                <div
+                  className={cn(
+                    "flex-1 flex flex-col min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl",
+                    isSidePanelOpen ? "h-full" : "h-auto"
+                  )}
+                >
+                {/* Header Card with Gradient & Crest */}
                 <div
                   className={cn(
                     "p-5 text-white relative overflow-hidden shrink-0",
@@ -2465,122 +2607,122 @@ export default function PetOwnerPortalPage() {
 
                   {/* Top Action Icons: Digital Passport, Request Care, Book Slot, 3 Dots, Save, Close */}
                   <div className="flex items-center justify-end relative z-10 mb-3 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (activeProfileTab === "passport") {
-                            setActiveProfileTab("overview");
-                          } else {
-                            setSelectedPetForPassport(pet);
-                            if (!qrPassportUrl) {
-                              try {
-                                const publicVerifyUrl = getPassportVerifyUrl(pet);
-                                const url = await QRCode.toDataURL(publicVerifyUrl, { width: 360, margin: 1 });
-                                setQrPassportUrl(url);
-                              } catch {}
-                            }
-                            setActiveProfileTab("passport");
-                            setShowEditPetPanel(false);
-                            setShowAvatarPickerPanel(false);
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (activeProfileTab === "passport") {
+                          setActiveProfileTab("overview");
+                        } else {
+                          setSelectedPetForPassport(pet);
+                          if (!qrPassportUrl) {
+                            try {
+                              const publicVerifyUrl = getPassportVerifyUrl(pet);
+                              const url = await QRCode.toDataURL(publicVerifyUrl, { width: 360, margin: 1 });
+                              setQrPassportUrl(url);
+                            } catch {}
                           }
-                        }}
-                        className={cn(
-                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                          activeProfileTab === "passport"
-                            ? "bg-purple-600 text-white border-purple-300 ring-2 ring-purple-400/50 shadow-md scale-105"
-                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                        )}
-                        title={activeProfileTab === "passport" ? "Close Digital Health Passport" : "Official Digital Health Passport"}
-                      >
-                        <QrCode className="size-4 text-white" />
-                        <span className="sr-only">Official Digital Health Passport</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveProfileTab((prev) => (prev === "consultation" ? "overview" : "consultation"));
+                          setActiveProfileTab("passport");
                           setShowEditPetPanel(false);
                           setShowAvatarPickerPanel(false);
-                        }}
-                        className={cn(
-                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                          activeProfileTab === "consultation"
-                            ? "bg-emerald-500 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md scale-105"
-                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                        )}
-                        title={activeProfileTab === "consultation" ? "Close Request Care" : "Request Care (Consultation)"}
-                      >
-                        <Stethoscope className="size-4 text-white" />
-                        <span className="sr-only">Request Care</span>
-                      </button>
+                        }
+                      }}
+                      className={cn(
+                        "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                        activeProfileTab === "passport"
+                          ? "bg-purple-600 text-white border-purple-300 ring-2 ring-purple-400/50 shadow-md scale-105"
+                          : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                      )}
+                      title={activeProfileTab === "passport" ? "Close Digital Health Passport" : "Official Digital Health Passport"}
+                    >
+                      <QrCode className="size-4 text-white" />
+                      <span className="sr-only">Official Digital Health Passport</span>
+                    </button>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveProfileTab((prev) => (prev === "consultation" ? "overview" : "consultation"));
+                        setShowEditPetPanel(false);
+                        setShowAvatarPickerPanel(false);
+                      }}
+                      className={cn(
+                        "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                        activeProfileTab === "consultation"
+                          ? "bg-emerald-500 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md scale-105"
+                          : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                      )}
+                      title={activeProfileTab === "consultation" ? "Close Request Care" : "Request Care (Consultation)"}
+                    >
+                      <Stethoscope className="size-4 text-white" />
+                      <span className="sr-only">Request Care</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveProfileTab((prev) => (prev === "procedure" ? "overview" : "procedure"));
+                        setShowEditPetPanel(false);
+                        setShowAvatarPickerPanel(false);
+                      }}
+                      className={cn(
+                        "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                        activeProfileTab === "procedure"
+                          ? "bg-indigo-500 text-white border-indigo-300 ring-2 ring-indigo-400/50 shadow-md scale-105"
+                          : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                      )}
+                      title={activeProfileTab === "procedure" ? "Close Book Slot" : "Book Slot (Vaccination & Kapon)"}
+                    >
+                      <Calendar className="size-4 text-white" />
+                      <span className="sr-only">Book Slot</span>
+                    </button>
+
+                    {/* Save Profile Button */}
+                    <button
+                      type="button"
+                      onClick={handleSavePetUpdates}
+                      disabled={savingPetUpdates}
+                      className={cn(
+                        "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                        hasUnsavedChanges
+                          ? "bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md animate-pulse"
+                          : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                      )}
+                      title={hasUnsavedChanges ? "Save profile changes" : "Save Profile"}
+                    >
+                      {savingPetUpdates ? (
+                        <Loader2 className="size-4 animate-spin text-white" />
+                      ) : (
+                        <Save className="size-4 text-white" />
+                      )}
+                      <span className="sr-only">Save Profile</span>
+                    </button>
+
+                    {/* Delete Pet Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPetToDelete(pet);
+                        setDeleteDialogOpen(true);
+                        setPetInfoOpen(false);
+                      }}
+                      className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white hover:text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                      title="Delete Pet"
+                    >
+                      <Trash2 className="size-4 text-white" />
+                      <span className="sr-only">Delete Pet</span>
+                    </button>
+
+                    <DialogClose asChild>
                       <button
                         type="button"
-                        onClick={() => {
-                          setActiveProfileTab((prev) => (prev === "procedure" ? "overview" : "procedure"));
-                          setShowEditPetPanel(false);
-                          setShowAvatarPickerPanel(false);
-                        }}
-                        className={cn(
-                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                          activeProfileTab === "procedure"
-                            ? "bg-indigo-500 text-white border-indigo-300 ring-2 ring-indigo-400/50 shadow-md scale-105"
-                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                        )}
-                        title={activeProfileTab === "procedure" ? "Close Book Slot" : "Book Slot (Vaccination & Kapon)"}
+                        className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
+                        title="Close"
                       >
-                        <Calendar className="size-4 text-white" />
-                        <span className="sr-only">Book Slot</span>
+                        <X className="size-4 text-white" />
+                        <span className="sr-only">Close</span>
                       </button>
-
-                      {/* Save Profile Button */}
-                      <button
-                        type="button"
-                        onClick={handleSavePetUpdates}
-                        disabled={savingPetUpdates}
-                        className={cn(
-                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                          hasUnsavedChanges
-                            ? "bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md animate-pulse"
-                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                        )}
-                        title={hasUnsavedChanges ? "Save profile changes" : "Save Profile"}
-                      >
-                        {savingPetUpdates ? (
-                          <Loader2 className="size-4 animate-spin text-white" />
-                        ) : (
-                          <Save className="size-4 text-white" />
-                        )}
-                        <span className="sr-only">Save Profile</span>
-                      </button>
-
-                      {/* Delete Pet Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPetToDelete(pet);
-                          setDeleteDialogOpen(true);
-                          setPetInfoOpen(false);
-                        }}
-                        className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white hover:text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-                        title="Delete Pet"
-                      >
-                        <Trash2 className="size-4 text-white" />
-                        <span className="sr-only">Delete Pet</span>
-                      </button>
-
-                      <DialogClose asChild>
-                        <button
-                          type="button"
-                          className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
-                          title="Close"
-                        >
-                          <X className="size-4 text-white" />
-                          <span className="sr-only">Close</span>
-                        </button>
-                      </DialogClose>
-                    </div>
+                    </DialogClose>
+                  </div>
 
                   {/* Hero Identity */}
                   <div className="flex items-center gap-4 relative z-10">
@@ -2703,8 +2845,15 @@ export default function PetOwnerPortalPage() {
                   </div>
                 </div>
 
-                {/* Scrollable Content (Redundant Vitals Grid Removed) */}
-                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-3">
+                {/* Animated Content Area */}
+                <AnimatedModalContent
+                  activeKey={activeProfileTab}
+                  isSidePanelOpen={isSidePanelOpen}
+                  className="bg-background"
+                >
+                  <div className={cn(
+                    activeProfileTab !== "overview" ? "p-3 sm:p-3.5 space-y-2" : "p-3 sm:p-4 space-y-3"
+                  )}>
                   {activeProfileTab === "overview" && (
                     <>
                       {/* Rabies Immunization Status Card */}
@@ -2822,7 +2971,7 @@ export default function PetOwnerPortalPage() {
 
                   {/* Consultation Scheduling View */}
                   {activeProfileTab === "consultation" && (
-                    <div className="space-y-3.5 animate-in fade-in-0 duration-200">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -2837,15 +2986,29 @@ export default function PetOwnerPortalPage() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setActiveProfileTab("overview")}
-                          className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                        >
-                          Back to Overview
-                        </Button>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="submit"
+                            form="pet-owner-consultation-form"
+                            disabled={!isConsultationValid}
+                            size="sm"
+                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <ClipboardCheck className="size-3.5" />
+                            <span>Submit Request</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setActiveProfileTab("overview")}
+                            className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                          >
+                            Back to Overview
+                          </Button>
+                        </div>
                       </div>
 
                       <PetOwnerConsultationDialog
@@ -2854,6 +3017,7 @@ export default function PetOwnerPortalPage() {
                         initialPet={pet}
                         hidePetSelector
                         ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                        onValidationChange={setIsConsultationValid}
                         onSuccess={() => {
                           setActiveProfileTab("overview");
                           queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
@@ -2865,7 +3029,7 @@ export default function PetOwnerPortalPage() {
 
                   {/* Procedure Scheduling View */}
                   {activeProfileTab === "procedure" && (
-                    <div className="space-y-3.5 animate-in fade-in-0 duration-200">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
@@ -2880,15 +3044,29 @@ export default function PetOwnerPortalPage() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setActiveProfileTab("overview")}
-                          className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                        >
-                          Back to Overview
-                        </Button>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="submit"
+                            form="schedule-procedure-form"
+                            disabled={!isProcedureValid}
+                            size="sm"
+                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Calendar className="size-3.5" />
+                            <span>Book Procedure</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setActiveProfileTab("overview")}
+                            className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                          >
+                            Back to Overview
+                          </Button>
+                        </div>
                       </div>
 
                       <ScheduleProcedureDialog
@@ -2897,6 +3075,7 @@ export default function PetOwnerPortalPage() {
                         initialPet={pet}
                         hidePetSelector
                         ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                        onValidationChange={setIsProcedureValid}
                         onSuccess={() => {
                           setActiveProfileTab("overview");
                           queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
@@ -2909,7 +3088,7 @@ export default function PetOwnerPortalPage() {
 
                   {/* Digital Pet Passport QR View */}
                   {activeProfileTab === "passport" && (
-                    <div className="space-y-3 animate-in fade-in-0 duration-200">
+                    <div className="space-y-3">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center">
@@ -2984,7 +3163,8 @@ export default function PetOwnerPortalPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                </AnimatedModalContent>
               </div>
 
               {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}

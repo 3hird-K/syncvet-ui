@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
 import { PetPassportHeroCard } from "@/components/dashboard/pet-passport-hero-card";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,7 @@ interface ScheduleProcedureDialogProps {
   embedded?: boolean;
   onCancel?: () => void;
   hidePetSelector?: boolean;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
 export function ScheduleProcedureDialog({
@@ -85,6 +87,7 @@ export function ScheduleProcedureDialog({
   embedded = false,
   onCancel,
   hidePetSelector = false,
+  onValidationChange,
 }: ScheduleProcedureDialogProps) {
   const [open, setOpen] = useState(false);
   const [service, setService] = useState<ProcedureServiceType>(initialService);
@@ -623,6 +626,21 @@ export function ScheduleProcedureDialog({
     service === "spay-neuter" &&
     Boolean(currentPet?.is_spayed_neutered || currentPet?.sterilized || currentPet?.isSpayedNeutered);
 
+  const isFormValid = Boolean(
+    !submitting &&
+    Boolean(appointmentDate) &&
+    checklistConfirmed &&
+    !isSelectedDateUnavailable &&
+    pets.length > 0 &&
+    !isVaccinationBlocked &&
+    !isAlreadyScheduled &&
+    !isSameDayConflict
+  );
+
+  useEffect(() => {
+    onValidationChange?.(isFormValid);
+  }, [isFormValid, onValidationChange]);
+
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -871,18 +889,19 @@ export function ScheduleProcedureDialog({
   };
 
   const formContent = (
-    <form onSubmit={handleBookingSubmit} className="space-y-5 pt-1">
+    <form id="schedule-procedure-form" onSubmit={handleBookingSubmit} className={cn(embedded ? "space-y-2.5 pt-0" : "space-y-5 pt-1")}>
       {/* ── SECTION 1: Service Selection ── */}
-      <div className="space-y-2">
-        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+      <div className={cn(embedded ? "space-y-1" : "space-y-2")}>
+        <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
           1. Select Municipal Veterinary Service *
         </Label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {/* Vaccination Card */}
           <div
             onClick={() => !isVaccinationScheduled && handleServiceChange("vaccination")}
             className={cn(
-              "p-2.5 sm:p-3 rounded-xl border-2 transition-all flex flex-col justify-between space-y-1.5 relative select-none",
+              "rounded-xl border-2 transition-all flex flex-col justify-between relative select-none",
+              embedded ? "p-2 space-y-1" : "p-2.5 sm:p-3 space-y-1.5",
               isVaccinationScheduled
                 ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
                 : service === "vaccination"
@@ -945,7 +964,8 @@ export function ScheduleProcedureDialog({
           <div
             onClick={() => !isSpayNeuterScheduled && handleServiceChange("spay-neuter")}
             className={cn(
-              "p-2.5 sm:p-3 rounded-xl border-2 transition-all flex flex-col justify-between space-y-1.5 relative select-none",
+              "rounded-xl border-2 transition-all flex flex-col justify-between relative select-none",
+              embedded ? "p-2 space-y-1" : "p-2.5 sm:p-3 space-y-1.5",
               isSpayNeuterScheduled
                 ? "opacity-55 cursor-not-allowed bg-muted/40 border-dashed border-border/80"
                 : service === "spay-neuter"
@@ -1041,7 +1061,13 @@ export function ScheduleProcedureDialog({
                       {pets.map((p) => (
                         <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
                           <div className="flex items-center gap-2 text-xs">
-                            <PawPrint className="size-3.5 text-primary shrink-0" />
+                            <PetAvatar
+                              photoUrl={p.photo_url}
+                              species={p.species}
+                              name={p.name}
+                              size="xs"
+                              className="size-5 shrink-0"
+                            />
                             <span className="font-semibold text-xs">{p.name}</span>
                             <span className="text-muted-foreground text-[11px]">
                               ({p.species} • {p.breed} • {p.weightKg || p.weight_kg || "?"} kg)
@@ -1156,12 +1182,12 @@ export function ScheduleProcedureDialog({
             )}
 
           {/* ── SECTION 3: Date & Slot Selection ── */}
-          <div className="space-y-2">
+          <div className={cn(embedded ? "space-y-1" : "space-y-2")}>
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
                 3. Choose Appointment Date (Monday – Friday) *
               </Label>
-              <Badge variant="outline" className="text-[10px] font-semibold text-primary border-primary/30">
+              <Badge variant="outline" className="text-[9px] font-semibold text-primary border-primary/30 h-4 px-1.5">
                 {serviceConfig.operatingHours}
               </Badge>
             </div>
@@ -1214,28 +1240,39 @@ export function ScheduleProcedureDialog({
           </div>
 
           {/* ── SECTION 4: Pre-procedure Guidelines & Mandatory Check ── */}
-          <div className="space-y-2 p-3.5 rounded-2xl border border-border/80 bg-muted/20">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+          <div className={cn("rounded-xl border border-border/80 bg-muted/20", embedded ? "p-2 space-y-1" : "p-3.5 space-y-2 rounded-2xl")}>
+            <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
               <ShieldCheck className="size-3.5 text-primary" />
               4. Pre-Procedure Clinical Requirements ({serviceConfig.shortTitle})
             </h4>
 
-            <ul className="space-y-1.5 text-xs text-muted-foreground pl-1">
-              {serviceConfig.prepGuidelines.map((item, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="text-primary font-bold">•</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
+            {embedded ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2.5 gap-y-0.5 text-[10px] text-muted-foreground pl-1">
+                {serviceConfig.prepGuidelines.map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-1 leading-tight">
+                    <span className="text-primary font-bold shrink-0">•</span>
+                    <span className="truncate" title={item}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <ul className="space-y-1.5 text-xs text-muted-foreground pl-1">
+                {serviceConfig.prepGuidelines.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="text-primary font-bold">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
 
-            <div className="pt-2 border-t border-border/60">
-              <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-foreground select-none">
+            <div className={cn("border-t border-border/60", embedded ? "pt-1" : "pt-2")}>
+              <label className="flex items-center gap-2 cursor-pointer text-[10.5px] sm:text-xs font-semibold text-foreground select-none">
                 <input
                   type="checkbox"
                   checked={checklistConfirmed}
                   onChange={(e) => setChecklistConfirmed(e.target.checked)}
-                  className="size-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                  className="size-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
                 />
                 <span>I confirm that my pet meets these health criteria and I will follow prep guidelines.</span>
               </label>
@@ -1243,103 +1280,105 @@ export function ScheduleProcedureDialog({
           </div>
 
           {/* ── SECTION 6: Owner Contact & Special Notes ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-foreground">Contact Phone Number</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="space-y-0.5">
+              <Label className="text-[10.5px] font-semibold text-foreground">Contact Phone Number</Label>
               <Input
                 value={ownerContact}
                 onChange={(e) => setOwnerContact(e.target.value)}
                 placeholder="e.g. 0917-xxx-xxxx"
-                className="h-10 text-xs sm:text-sm rounded-xl bg-background"
+                className="h-8 text-xs rounded-lg bg-background px-2.5"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-foreground">Special Clinical Notes (Optional)</Label>
+            <div className="space-y-0.5">
+              <Label className="text-[10.5px] font-semibold text-foreground">Special Clinical Notes (Optional)</Label>
               <Input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Allergies, prior medication, temperament..."
-                className="h-10 text-xs sm:text-sm rounded-xl bg-background"
+                className="h-8 text-xs rounded-lg bg-background px-2.5"
               />
             </div>
           </div>
 
-          {/* Submit Actions */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60">
-            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-              <Info className="size-3.5 text-primary" />
-              <span>Free municipal service provided by Cagayan de Oro City Veterinary Office.</span>
-            </p>
+          {/* Submit Actions (Only rendered in standalone dialog mode; embedded view uses top header check button beside Back to Overview) */}
+          {!embedded && (
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Info className="size-3.5 text-primary" />
+                <span>Free municipal service provided by Cagayan de Oro City Veterinary Office.</span>
+              </p>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setOpen(false);
-                  onCancel?.();
-                }}
-                className="w-full sm:w-auto text-xs rounded-lg h-8 px-3 cursor-pointer"
-              >
-                Cancel
-              </Button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setOpen(false);
+                    onCancel?.();
+                  }}
+                  className="w-full sm:w-auto text-xs rounded-lg h-8 px-3 cursor-pointer"
+                >
+                  Cancel
+                </Button>
 
-              <Button
-                type="submit"
-                size="sm"
-                disabled={
-                  submitting ||
-                  !checklistConfirmed ||
-                  !appointmentDate ||
-                  isSelectedDateUnavailable ||
-                  pets.length === 0 ||
-                  isVaccinationBlocked ||
-                  isAlreadyScheduled ||
-                  isSameDayConflict
-                }
-                className="w-full sm:w-auto text-xs font-bold rounded-lg h-8 px-4 gap-1.5 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {submitting ? (
-                  <>
-                    <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                    <span>Booking Slot...</span>
-                  </>
-                ) : isSelectedDateUnavailable ? (
-                  <>
-                    <AlertCircle className="size-3.5" />
-                    <span>Date Closed / Unavailable</span>
-                  </>
-                ) : isSameDayConflict ? (
-                  <>
-                    <ShieldAlert className="size-3.5" />
-                    <span>Blocked: Same-Day {conflictingServiceTitle} Conflict</span>
-                  </>
-                ) : isAlreadyScheduled ? (
-                  <>
-                    <AlertTriangle className="size-3.5" />
-                    <span>Already Scheduled for {currentPet?.name}</span>
-                  </>
-                ) : isVaccinationBlocked ? (
-                  <>
-                    <ShieldCheck className="size-3.5" />
-                    <span>Vaccination Not Due (Protected)</span>
-                  </>
-                ) : (existingMissedAppointment || rescheduleAppointmentId) ? (
-                  <>
-                    <CalendarClock className="size-3.5" />
-                    <span>Reschedule Missed {serviceConfig.shortTitle} Slot</span>
-                  </>
-                ) : (
-                  <>
-                    <Calendar className="size-3.5" />
-                    <span>Confirm {serviceConfig.shortTitle} Slot</span>
-                  </>
-                )}
-              </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    submitting ||
+                    !checklistConfirmed ||
+                    !appointmentDate ||
+                    isSelectedDateUnavailable ||
+                    pets.length === 0 ||
+                    isVaccinationBlocked ||
+                    isAlreadyScheduled ||
+                    isSameDayConflict
+                  }
+                  className="w-full sm:w-auto text-xs font-bold rounded-lg h-8 px-4 gap-1.5 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                      <span>Booking Slot...</span>
+                    </>
+                  ) : isSelectedDateUnavailable ? (
+                    <>
+                      <AlertCircle className="size-3.5" />
+                      <span>Date Closed / Unavailable</span>
+                    </>
+                  ) : isSameDayConflict ? (
+                    <>
+                      <ShieldAlert className="size-3.5" />
+                      <span>Blocked: Same-Day {conflictingServiceTitle} Conflict</span>
+                    </>
+                  ) : isAlreadyScheduled ? (
+                    <>
+                      <AlertTriangle className="size-3.5" />
+                      <span>Already Scheduled for {currentPet?.name}</span>
+                    </>
+                  ) : isVaccinationBlocked ? (
+                    <>
+                      <ShieldCheck className="size-3.5" />
+                      <span>Vaccination Not Due (Protected)</span>
+                    </>
+                  ) : (existingMissedAppointment || rescheduleAppointmentId) ? (
+                    <>
+                      <CalendarClock className="size-3.5" />
+                      <span>Reschedule Missed {serviceConfig.shortTitle} Slot</span>
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="size-3.5" />
+                      <span>Confirm {serviceConfig.shortTitle} Slot</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </form>
   );
 

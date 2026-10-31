@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PROCEDURE_SERVICES, type ProcedureServiceType } from "@/lib/cvo-slots";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 
 interface ProcedureAppointmentSlipProps {
   open: boolean;
@@ -51,6 +52,7 @@ interface ProcedureAppointmentSlipProps {
     gender?: string;
     weightKg?: number;
     microchip?: string;
+    photo_url?: string | null;
   };
   ownerDetails?: {
     name?: string;
@@ -318,14 +320,23 @@ export function ProcedureAppointmentSlipDialog({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div>
-                <span className="text-[10px] text-muted-foreground block">Patient (Pet)</span>
-                <span className="font-bold text-foreground text-xs">{petDetails?.name || (appointment as any)?.pets?.name || appointment.pet_name}</span>
-                {petDetails?.species && (
-                  <span className="block text-[11px] text-muted-foreground">
-                    {petDetails.species} • {petDetails.breed || "Mixed"}
-                  </span>
-                )}
+              <div className="flex items-center gap-2.5">
+                <PetAvatar
+                  photoUrl={petDetails?.photo_url || (appointment as any)?.pets?.photo_url}
+                  species={petDetails?.species || (appointment as any)?.pets?.species}
+                  name={petDetails?.name || (appointment as any)?.pets?.name || appointment.pet_name}
+                  size="xs"
+                  className="size-9 rounded-lg shrink-0 shadow-2xs"
+                />
+                <div className="min-w-0">
+                  <span className="text-[10px] text-muted-foreground block">Patient (Pet)</span>
+                  <span className="font-bold text-foreground text-xs truncate block">{petDetails?.name || (appointment as any)?.pets?.name || appointment.pet_name}</span>
+                  {petDetails?.species && (
+                    <span className="block text-[11px] text-muted-foreground truncate">
+                      {petDetails.species} • {petDetails.breed || "Mixed"}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div>

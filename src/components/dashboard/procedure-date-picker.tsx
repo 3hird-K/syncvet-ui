@@ -117,19 +117,19 @@ export function ProcedureDatePicker({
           <Button
             variant={"outline"}
             className={cn(
-              "w-full justify-start text-left font-normal h-11 px-3.5 rounded-xl border-input/80 bg-background hover:bg-muted/50 cursor-pointer shadow-2xs",
+              "w-full justify-start text-left font-normal h-8.5 sm:h-9 px-3 rounded-lg border-input/80 bg-background hover:bg-muted/50 cursor-pointer shadow-2xs text-xs",
               !date && "text-muted-foreground",
               className
             )}
           >
-            <CalendarIcon className="mr-2.5 size-4 text-primary shrink-0" />
+            <CalendarIcon className="mr-2 size-3.5 text-primary shrink-0" />
             <div className="flex-1 truncate">
               {date ? (
-                <span className="font-semibold text-foreground">
+                <span className="font-semibold text-xs text-foreground">
                   {format(date, "EEEE, MMMM do, yyyy")}
                 </span>
               ) : (
-                <span>{placeholder}</span>
+                <span className="text-xs text-muted-foreground">{placeholder}</span>
               )}
             </div>
 
@@ -137,7 +137,7 @@ export function ProcedureDatePicker({
               <Badge
                 variant="outline"
                 className={cn(
-                  "ml-2 text-[10px] font-bold shrink-0",
+                  "ml-2 text-[9px] font-semibold px-1.5 py-0 h-4 shrink-0",
                   !selectedDateStatus.isAvailable
                     ? "bg-destructive/10 text-destructive border-destructive/30"
                     : selectedDateStatus.remainingSlots > 3
