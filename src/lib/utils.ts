@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { parseISO, isValid, startOfDay, isBefore } from "date-fns";
+import { parseISO, isValid, startOfDay, endOfDay, addDays, isBefore, isAfter } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -116,4 +116,52 @@ export function isConsultationOverdue(dateStr?: string | null, status?: string |
     return false;
   }
 }
+
+/**
+ * Evaluates the 1-day grace period for Barangay Field Operations.
+ * Once the operation date is done, 1 full calendar day grace period is granted
+ * for field staff to wrap up logs, vaccination tallies, and notes.
+ *
+ * After that 1-day grace period has elapsed:
+ * - The operation is locked from editing.
+ * - The operation status is automatically marked as "completed".
+ * - The public announcement is archived.
+ */
+export function getFieldOpGracePeriod(dateStr?: string | null, status?: string | null) {
+  if (!dateStr) {
+    return {
+      isPastGracePeriod: false,
+      isGracePeriodActive: false,
+      isLocked: false,
+      gracePeriodEnd: null,
+    };
+  }
+
+  try {
+    const cleanDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
+    const parsed = parseISO(cleanDate);
+    if (!isValid(parsed)) {
+      return { isPastGracePeriod: false, isGracePeriodActive: false, isLocked: false, gracePeriodEnd: null };
+    }
+
+    // Grace period ends at 23:59:59 of the day AFTER the scheduled outreach date.
+    // e.g. Event: Oct 30 -> 1-day grace period is Oct 31 -> Grace period ends Oct 31 23:59:59.
+    const gracePeriodEnd = endOfDay(addDays(startOfDay(parsed), 1));
+    const now = new Date();
+
+    const isPastGracePeriod = isAfter(now, gracePeriodEnd);
+    const isGracePeriodActive = isAfter(now, endOfDay(parsed)) && !isPastGracePeriod;
+    const isLocked = isPastGracePeriod || status === "completed" || status === "cancelled";
+
+    return {
+      isPastGracePeriod,
+      isGracePeriodActive,
+      isLocked,
+      gracePeriodEnd,
+    };
+  } catch {
+    return { isPastGracePeriod: false, isGracePeriodActive: false, isLocked: false, gracePeriodEnd: null };
+  }
+}
+
 

@@ -493,11 +493,11 @@ export function PetOwnerConsultationDialog({
     <form id="pet-owner-consultation-form" onSubmit={handleSubmit} className={cn(embedded ? "space-y-2 pt-0" : "space-y-4 pt-1")}>
       {/* Section 1: Patient & Owner Information */}
       {!hidePetSelector && (
-        <div className="space-y-3.5 rounded-2xl border border-border/70 p-4 sm:p-5 bg-card/60 shadow-2xs">
+        <div className="space-y-3.5">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Heart className="size-3.5 text-primary" />
-                1. Pet Details
+                Pet Details
               </h4>
               <span className="text-[11px] font-medium text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 Free LGU Municipal Care
@@ -648,10 +648,10 @@ export function PetOwnerConsultationDialog({
         )}
 
           {/* Section 2: Services Requested */}
-          <div className={cn("rounded-xl border border-border/70 bg-card/60 shadow-2xs", embedded ? "p-2.5 space-y-1.5" : "p-3 sm:p-3.5 space-y-2")}>
+          <div className={cn("space-y-2", embedded && "space-y-1.5")}>
             <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <FileCheck2 className="size-3 text-emerald-600" />
-              2. Services Requested (Select All That Apply)
+              Services Requested (Select All That Apply)
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 pt-0.5">
               {[
@@ -692,11 +692,11 @@ export function PetOwnerConsultationDialog({
           </div>
 
           {/* Section 3: Preferred Consultation Schedule */}
-          <div className={cn("rounded-xl border border-border/70 bg-card/60 shadow-2xs", embedded ? "p-2.5 space-y-1.5" : "p-3 sm:p-3.5 space-y-2")}>
+          <div className={cn("space-y-2", embedded && "space-y-1.5")}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-0.5">
               <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Calendar className="size-3 text-primary" />
-                3. Preferred Consultation Schedule (Monday – Friday) *
+                Preferred Consultation Schedule (Monday – Friday) *
               </h4>
               <Badge variant="outline" className="text-[9px] font-semibold border-primary/30 text-primary px-2 py-0.5 whitespace-nowrap shrink-0">
                 Mon – Fri • 8:00 AM – 5:00 PM
@@ -730,12 +730,12 @@ export function PetOwnerConsultationDialog({
           </div>
 
           {/* Section 4: Symptoms / Reason for Consultation */}
-          <div className={cn("rounded-xl border border-border/70 bg-card/60 shadow-2xs", embedded ? "p-2.5 space-y-1.5" : "p-3 sm:p-3.5 space-y-2")}>
+          <div className={cn("space-y-2", embedded && "space-y-1.5")}>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Stethoscope className="size-3 text-primary" />
-                  4. Symptoms Observed / Reason for Consultation *
+                  Symptoms Observed / Reason for Consultation *
                 </Label>
                 <span className="text-[10px] text-muted-foreground">Citizen description</span>
               </div>
@@ -745,8 +745,8 @@ export function PetOwnerConsultationDialog({
                 placeholder="Describe your pet's condition, observed symptoms (e.g. vomiting, lethargy, coughing, loss of appetite)..."
                 rows={2}
                 className={cn(
-                  "text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 resize-none bg-background",
-                  embedded ? "h-11 min-h-[44px]" : "min-h-[50px] resize-y"
+                  "text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 bg-background",
+                  embedded ? "h-14 min-h-[56px] resize-none" : "min-h-[60px] resize-y"
                 )}
                 required
               />

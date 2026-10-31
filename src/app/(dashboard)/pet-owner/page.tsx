@@ -34,6 +34,7 @@ import {
   User,
   Plus,
   ArrowRight,
+  ArrowLeft,
   Printer,
   MessageSquare,
   MessageSquareText,
@@ -129,6 +130,7 @@ import { PetOwnerQueueTracker } from "@/components/dashboard/pet-owner-queue-tra
 import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { syncConsultationsToQueue } from "@/lib/cvo-queue";
 import { parsePetWeightKg } from "@/lib/pet-weight";
+import { PetOwnerOutreachCheckInDialog } from "@/components/dashboard/pet-owner-outreach-checkin-dialog";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -175,6 +177,26 @@ export default function PetOwnerPortalPage() {
     window.addEventListener("syncvet-tab-change", handleTabChange);
     return () => window.removeEventListener("syncvet-tab-change", handleTabChange);
   }, []);
+
+  const handleOpenBiteProtocol = () => {
+    setActiveTab("protocols");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "protocols");
+      window.history.pushState({}, "", url.toString());
+      window.dispatchEvent(new CustomEvent("syncvet-tab-change", { detail: "protocols" }));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => {
+        const el = document.getElementById("bite-protocol-section");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 60);
+    }
+  };
+
   const [selectedConsultation, setSelectedConsultation] = useState<CVOConsultation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -196,6 +218,23 @@ export default function PetOwnerPortalPage() {
   const [showEditPetPanel, setShowEditPetPanel] = useState(false);
   const [savingPetAvatar, setSavingPetAvatar] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState<"overview" | "consultation" | "procedure" | "passport">("overview");
+
+  // Field outreach QR scan state
+  const [outreachCheckInOpen, setOutreachCheckInOpen] = useState(false);
+  const [outreachCheckInScannedData, setOutreachCheckInScannedData] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOutreachScanned = (e: any) => {
+      if (e.detail) {
+        setOutreachCheckInScannedData(e.detail);
+        setOutreachCheckInOpen(true);
+      }
+    };
+    window.addEventListener("syncvet-outreach-scanned", handleOutreachScanned);
+    return () => {
+      window.removeEventListener("syncvet-outreach-scanned", handleOutreachScanned);
+    };
+  }, []);
 
   // Inline edit states for pet modal
   const [editPetName, setEditPetName] = useState("");
@@ -2042,11 +2081,31 @@ export default function PetOwnerPortalPage() {
 
           {/* ════ TAB 4: Animal Bite Protocol & Emergency ABTC Guidance ════ */}
           <TabsContent value="protocols" className="space-y-4 pt-2">
-            <div>
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <ShieldAlert className="size-4.5 text-amber-600" />
-                Animal Bite Emergency Protocol & ABTC Centers
-              </h3>
+            <div id="bite-protocol-section" className="scroll-mt-20">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <ShieldAlert className="size-4.5 text-amber-600" />
+                  Animal Bite Emergency Protocol & ABTC Centers
+                </h3>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setActiveTab("feed");
+                    if (typeof window !== "undefined") {
+                      const url = new URL(window.location.href);
+                      url.searchParams.set("tab", "feed");
+                      window.history.pushState({}, "", url.toString());
+                      window.dispatchEvent(new CustomEvent("syncvet-tab-change", { detail: "feed" }));
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <ArrowLeft className="size-3.5 mr-1" />
+                  <span>Back to Bulletins</span>
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Immediate mandatory first-aid steps and certified Animal Bite Treatment Centers in Cagayan de Oro City
               </p>
@@ -2118,8 +2177,19 @@ export default function PetOwnerPortalPage() {
               </div>
 
               <Button
-                onClick={() => openChatWithPet(pets[0])}
-                className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shrink-0"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("syncvet:open-chat", { detail: { contactId: "vet" } })
+                    );
+                  }
+                  if (pets.length > 0) {
+                    openChatWithPet(pets[0]);
+                  } else {
+                    openChatWithPet();
+                  }
+                }}
+                className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shrink-0 shadow-xs"
               >
                 <MessengerIcon className="size-3.5" />
                 <span>Ask a Veterinarian</span>
@@ -2373,12 +2443,13 @@ export default function PetOwnerPortalPage() {
         </CardContent>
       </Card>
 
-      {/* CVO Municipal Clinic Services, Daily Quotas & Emergency Hotline */}
+      {/* CVO Municipal Clinic Services */}
       <CVOClinicInfoCard
         vaxSlots={slotConfig.defaultVaccinationSlots}
         surgerySlots={slotConfig.defaultSpayNeuterSlots}
         isStaff={isStaff}
         currentUserRole={userRole}
+        hideQuotasAndEmergency={true}
       />
 
       {/* 24/7 Animal Bite Emergency & Help Card */}
@@ -2398,7 +2469,7 @@ export default function PetOwnerPortalPage() {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => setActiveTab("protocols")}
+          onClick={handleOpenBiteProtocol}
           className="w-full h-7.5 text-xs font-bold border-amber-500/30 hover:bg-amber-500/15 text-amber-800 dark:text-amber-200 rounded-xl cursor-pointer"
         >
           <span>Open Full Bite Protocol</span>
@@ -3551,6 +3622,15 @@ export default function PetOwnerPortalPage() {
         consultation={selectedConsultation}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+
+      {/* ── Field Outreach QR Attendance Check-In Dialog ── */}
+      <PetOwnerOutreachCheckInDialog
+        open={outreachCheckInOpen}
+        onOpenChange={setOutreachCheckInOpen}
+        scannedData={outreachCheckInScannedData}
+        pets={pets}
+        ownerName={user?.fullName || "Pet Owner"}
       />
     </div>
   );

@@ -893,7 +893,7 @@ export function ScheduleProcedureDialog({
       {/* ── SECTION 1: Service Selection ── */}
       <div className={cn(embedded ? "space-y-1" : "space-y-2")}>
         <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-          1. Select Municipal Veterinary Service *
+          Select Municipal Veterinary Service *
         </Label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {/* Vaccination Card */}
@@ -1038,7 +1038,7 @@ export function ScheduleProcedureDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  2. Select Pet for Procedure *
+                  Select Pet for Procedure *
                 </Label>
                 {pets.length > 0 && (
                   <span className="text-[11px] text-muted-foreground">
@@ -1185,7 +1185,7 @@ export function ScheduleProcedureDialog({
           <div className={cn(embedded ? "space-y-1" : "space-y-2")}>
             <div className="flex items-center justify-between">
               <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                3. Choose Appointment Date (Monday – Friday) *
+                Choose Appointment Date (Monday – Friday) *
               </Label>
               <Badge variant="outline" className="text-[9px] font-semibold text-primary border-primary/30 h-4 px-1.5">
                 {serviceConfig.operatingHours}
@@ -1243,7 +1243,7 @@ export function ScheduleProcedureDialog({
           <div className={cn("rounded-xl border border-border/80 bg-muted/20", embedded ? "p-2 space-y-1" : "p-3.5 space-y-2 rounded-2xl")}>
             <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
               <ShieldCheck className="size-3.5 text-primary" />
-              4. Pre-Procedure Clinical Requirements ({serviceConfig.shortTitle})
+              Pre-Procedure Clinical Requirements ({serviceConfig.shortTitle})
             </h4>
 
             {embedded ? (
@@ -1279,27 +1279,16 @@ export function ScheduleProcedureDialog({
             </div>
           </div>
 
-          {/* ── SECTION 6: Owner Contact & Special Notes ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div className="space-y-0.5">
-              <Label className="text-[10.5px] font-semibold text-foreground">Contact Phone Number</Label>
-              <Input
-                value={ownerContact}
-                onChange={(e) => setOwnerContact(e.target.value)}
-                placeholder="e.g. 0917-xxx-xxxx"
-                className="h-8 text-xs rounded-lg bg-background px-2.5"
-              />
-            </div>
-
-            <div className="space-y-0.5">
-              <Label className="text-[10.5px] font-semibold text-foreground">Special Clinical Notes (Optional)</Label>
-              <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Allergies, prior medication, temperament..."
-                className="h-8 text-xs rounded-lg bg-background px-2.5"
-              />
-            </div>
+          {/* ── Special Clinical Notes ── */}
+          <div className="space-y-0.5">
+            <Label className="text-[10.5px] font-semibold text-foreground">Special Clinical Notes (Optional)</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Allergies, prior medication, temperament, or special handling instructions..."
+              rows={2}
+              className="text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 bg-background min-h-[52px] resize-none w-full"
+            />
           </div>
 
           {/* Submit Actions (Only rendered in standalone dialog mode; embedded view uses top header check button beside Back to Overview) */}

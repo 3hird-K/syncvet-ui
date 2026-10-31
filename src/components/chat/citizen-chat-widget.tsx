@@ -223,7 +223,14 @@ export function CitizenChatWidget() {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
-  const { isOtherTyping, typingInfo, setActiveDesk, setActiveChatId } = useCitizenChat();
+  const {
+    isOtherTyping,
+    typingInfo,
+    setActiveDesk,
+    setActiveChatId,
+    isOpen,
+    setIsOpen,
+  } = useCitizenChat();
 
   // Dynamically fetch users to always resolve up-to-date profile pictures (avatar_url)
   const { data: dbUsers = [] } = useQuery({
@@ -812,14 +819,36 @@ export function CitizenChatWidget() {
     };
   }, [user?.id, isStaff, isVet, supabase]);
 
-  const handleOpenContact = (contactId: string) => {
+  const handleOpenContact = useCallback((contactId: string) => {
     markContactAsRead(contactId);
     setActiveChatHeadIds((prev) => (prev.includes(contactId) ? prev : [...prev, contactId]));
     setOpenChatIds((prev) => {
       if (prev.includes(contactId)) return prev;
       return prev.length >= 2 ? [prev[prev.length - 1], contactId] : [...prev, contactId];
     });
-  };
+  }, [markContactAsRead]);
+
+  // Global listener for syncvet:open-chat custom event
+  useEffect(() => {
+    const handleCustomOpenChat = (event: Event) => {
+      const customEvent = event as CustomEvent<{ contactId?: string }>;
+      const targetContactId = customEvent.detail?.contactId || "vet";
+      handleOpenContact(targetContactId);
+    };
+
+    window.addEventListener("syncvet:open-chat", handleCustomOpenChat);
+    return () => {
+      window.removeEventListener("syncvet:open-chat", handleCustomOpenChat);
+    };
+  }, [handleOpenContact]);
+
+  // Synchronize with chat context isOpen property
+  useEffect(() => {
+    if (isOpen) {
+      handleOpenContact("vet");
+      setIsOpen(false);
+    }
+  }, [isOpen, handleOpenContact, setIsOpen]);
 
   const toggleMinimize = (contactId: string) => {
     setOpenChatIds((prev) => {

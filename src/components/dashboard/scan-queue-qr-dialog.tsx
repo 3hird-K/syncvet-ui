@@ -78,6 +78,15 @@ export function ScanQueueQrDialog({
       onScanSuccess(decodedText);
     }
 
+    // Automatically handle outreach attendance check-in
+    if (decodedText.includes("outreach-checkin") || decodedText.includes("outreach-attendance")) {
+      setTimeout(() => {
+        setOpen(false);
+        window.dispatchEvent(new CustomEvent("syncvet-outreach-scanned", { detail: decodedText }));
+      }, 600);
+      return;
+    }
+
     // Automatically navigate if it's a queue check-in link or standard check-in
     setTimeout(() => {
       setOpen(false);

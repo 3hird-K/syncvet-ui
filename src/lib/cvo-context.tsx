@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
+import { getFieldOpGracePeriod } from "@/lib/utils";
 
 interface CVOContextType {
   consultations: CVOConsultation[];
@@ -39,6 +40,18 @@ interface CVOContextType {
   updateFieldOperationStatus: (id: string, status: CVOFieldOperation["status"]) => Promise<void>;
   updateFieldOperation: (id: string, updates: Partial<CVOFieldOperation>) => Promise<void>;
   deleteFieldOperation: (id: string) => Promise<boolean>;
+  incrementFieldOpSlots: (id: string, count?: number) => Promise<void>;
+  recordFieldOpAttendance: (params: {
+    opId: string;
+    barangay: string;
+    petId: string;
+    petName: string;
+    ownerName: string;
+    ownerId?: string;
+    species?: string;
+    serviceType?: string;
+    vetName?: string;
+  }) => Promise<void>;
   addOfflineRecord: (rec: Omit<CVOOfflineVaccinationRecord, "id" | "timestamp" | "syncStatus">) => void;
   syncOfflineRecords: () => Promise<number>;
   addAuditLog: (log: Omit<CVOAuditLog, "id" | "timestamp">) => void;
@@ -205,6 +218,13 @@ function mapDbFieldOperationToCVO(row: any): CVOFieldOperation {
     } catch {}
   }
 
+  let effectiveStatus: CVOFieldOperation["status"] = row.status || "scheduled";
+  // If 1-day grace period has elapsed and not cancelled, automatically mark as completed
+  const grace = getFieldOpGracePeriod(row.scheduled_date, row.status);
+  if (grace.isPastGracePeriod && effectiveStatus !== "cancelled") {
+    effectiveStatus = "completed";
+  }
+
   return {
     id: row.id,
     opId: row.op_id,
@@ -218,7 +238,7 @@ function mapDbFieldOperationToCVO(row: any): CVOFieldOperation {
     date: row.scheduled_date,
     petsTarget: Number(row.target_pets) || 100,
     petsVaccinated: Number(row.vaccinated_pets) || 0,
-    status: row.status || "scheduled",
+    status: effectiveStatus,
     notes: cleanNotes || undefined,
     announcementId: extraMeta.announcementId || undefined,
   };
@@ -364,7 +384,37 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           .order("scheduled_date", { ascending: false });
 
         if (error) return [];
-        return (data || []).map(mapDbFieldOperationToCVO);
+        const mapped = (data || []).map(mapDbFieldOperationToCVO);
+
+        // Auto-complete operations past the 1-day grace period in DB and auto-archive announcements
+        mapped.forEach((op) => {
+          const grace = getFieldOpGracePeriod(op.date, op.status);
+          if (grace.isPastGracePeriod && op.status === "completed") {
+            const originalRow = (data || []).find((r: any) => r.id === op.id || r.op_id === op.opId);
+            if (originalRow && originalRow.status !== "completed" && originalRow.status !== "cancelled") {
+              void (async () => {
+                try {
+                  await supabase
+                    .from("field_operations")
+                    .update({ status: "completed", updated_at: new Date().toISOString() })
+                    .eq("id", op.id);
+
+                  // When outreach concludes, unpin from top but keep announcement active and visible in public feed
+                  await supabase
+                    .from("announcements")
+                    .update({ is_pinned: false })
+                    .or(`content.ilike.%[OP_ID:${op.opId}]%,title.ilike.%Brgy. ${op.barangay}%`);
+
+                  queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
+                } catch (e) {
+                  console.warn("Grace period auto-sync notice", e);
+                }
+              })();
+            }
+          }
+        });
+
+        return mapped;
       } catch {
         return [];
       }
@@ -1003,7 +1053,7 @@ Reminders for Pet Owners:
       console.warn("Supabase field_operations update notice", err);
     }
 
-    // Auto-delete / auto-archive the announcement when the event is completed or cancelled
+    // When event is completed or cancelled, unpin from top but keep visible in the public bulletin feed
     if (status === "completed" || status === "cancelled") {
       const opIdentifier = currentOp?.opId || id;
       const opBarangay = currentOp?.barangay;
@@ -1011,18 +1061,18 @@ Reminders for Pet Owners:
         if (opIdentifier) {
           await supabase
             .from("announcements")
-            .delete()
+            .update({ is_pinned: false })
             .ilike("content", `%[OP_ID:${opIdentifier}]%`);
         }
         if (opBarangay) {
           await supabase
             .from("announcements")
-            .delete()
+            .update({ is_pinned: false })
             .ilike("title", `%Brgy. ${opBarangay}%`);
         }
         queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-      } catch (delErr) {
-        console.warn("Auto-delete announcement notice", delErr);
+      } catch (archErr) {
+        console.warn("Announcement unpin notice", archErr);
       }
     }
 
@@ -1033,7 +1083,7 @@ Reminders for Pet Owners:
       entity: "Field Operations",
       recordId: currentOp?.opId || id,
       details: `Outreach in Barangay ${currentOp?.barangay || "CDO"} marked as ${status}.${
-        status === "completed" ? " Associated citizen announcement auto-deleted." : ""
+        status === "completed" ? " Associated citizen bulletin moved to Pet Owner's Archive." : ""
       }`,
     });
   };
@@ -1095,6 +1145,90 @@ Reminders for Pet Owners:
     } catch {
       return false;
     }
+  };
+
+  const incrementFieldOpSlots = async (id: string, count: number = 1) => {
+    const targetOp = fieldOperations.find((o) => o.id === id || o.opId === id);
+    if (!targetOp) return;
+
+    const newVaccinated = Math.max(0, (targetOp.petsVaccinated || 0) + count);
+    queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) =>
+      old.map((o) => (o.id === id || o.opId === id ? { ...o, petsVaccinated: newVaccinated } : o))
+    );
+
+    try {
+      await supabase
+        .from("field_operations")
+        .update({ vaccinated_pets: newVaccinated, updated_at: new Date().toISOString() })
+        .or(`id.eq.${id},op_id.eq.${id}`);
+    } catch (e) {
+      console.warn("Increment field op slots notice", e);
+    }
+  };
+
+  const recordFieldOpAttendance = async (params: {
+    opId: string;
+    barangay: string;
+    petId: string;
+    petName: string;
+    ownerName: string;
+    ownerId?: string;
+    species?: string;
+    serviceType?: string;
+    vetName?: string;
+  }) => {
+    // 1. Increment operation slots
+    await incrementFieldOpSlots(params.opId, 1);
+
+    // 2. Add completed clinical encounter for the pet
+    const todayStr = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "Asia/Manila",
+    }).format(new Date());
+
+    const timeStr = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Manila",
+    }).format(new Date());
+
+    const enc = addConsultation({
+      petId: params.petId,
+      petName: params.petName,
+      ownerName: params.ownerName,
+      ownerContact: "",
+      ownerBarangay: params.barangay || "Cagayan de Oro",
+      species: (params.species as any) || "Dog",
+      breed: "Community Pet",
+      vitals: {
+        weightKg: 0,
+        temperatureC: 38.5,
+      },
+      serviceType: "Field Treatment/Consultation",
+      chiefComplaint: "Barangay Veterinary Outreach Attendance",
+      symptoms: [],
+      diagnosis: `Field Outreach Encounter (Brgy. ${params.barangay})`,
+      treatment: `Official verified presence via field QR scan. Service: ${params.serviceType || "Clinical Consultation / Vaccination"}.`,
+      medication: "Preventive Care / Outreach Verification",
+      dosageInstructions: "Routine follow-up at nearest CVO clinic or scheduled outreach.",
+      vetName: params.vetName || "Dr. Jeon Jungkook, DVM",
+      status: "completed",
+      date: todayStr,
+      time: timeStr,
+      veterinarianNotes: `Verified QR attendance check-in for Barangay ${params.barangay} Field Outreach (${params.opId}).`,
+    });
+
+    addAuditLog({
+      user: params.ownerName,
+      role: "Pet Owner",
+      action: "Field Outreach QR Attendance",
+      entity: "Field Operations",
+      recordId: params.opId,
+      details: `${params.ownerName} checked in pet ${params.petName} for ${params.serviceType || "Outreach Services"} at Brgy. ${params.barangay}. Encounter #${enc.encounterNo} recorded.`,
+    });
   };
 
   const deductInventoryStock = async (batchNumberOrId: string, quantity: number = 1): Promise<boolean> => {
@@ -1349,6 +1483,8 @@ Reminders for Pet Owners:
       updateFieldOperationStatus,
       updateFieldOperation,
       deleteFieldOperation,
+      incrementFieldOpSlots,
+      recordFieldOpAttendance,
       addOfflineRecord,
       syncOfflineRecords,
       addAuditLog,
@@ -1371,6 +1507,8 @@ Reminders for Pet Owners:
       updateFieldOperationStatus,
       updateFieldOperation,
       deleteFieldOperation,
+      incrementFieldOpSlots,
+      recordFieldOpAttendance,
       deductInventoryStock,
       addInventoryBatch,
       deleteInventoryBatch,

@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
+  Archive,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, getFieldOpGracePeriod } from "@/lib/utils";
 
 import { useOptionalCVO } from "@/lib/cvo-context";
 import type { CVOFieldOperation } from "@/data/cvo-store";
@@ -152,7 +153,7 @@ export function CVOSocialFeed({
     return (dbFieldOps as CVOFieldOperation[]) || [];
   }, [cvo?.fieldOperations, dbFieldOps]);
 
-  // Fetch announcements from Supabase
+  // Fetch announcements from Supabase (both active and archived)
   const { data: dbAnnouncements } = useQuery<CVOAnnouncement[]>({
     queryKey: ["cvo-announcements"],
     queryFn: async () => {
@@ -160,7 +161,6 @@ export function CVOSocialFeed({
         const { data, error } = await supabase
           .from("announcements")
           .select("*")
-          .eq("is_active", true)
           .order("is_pinned", { ascending: false })
           .order("created_at", { ascending: false });
 
@@ -199,26 +199,6 @@ export function CVOSocialFeed({
     };
   }, [supabase, queryClient]);
 
-  const announcements: CVOAnnouncement[] = useMemo(() => {
-    if (dbAnnouncements && dbAnnouncements.length > 0) {
-      return dbAnnouncements;
-    }
-    return DEFAULT_ANNOUNCEMENTS;
-  }, [dbAnnouncements]);
-
-  const pinnedAnnouncement = useMemo(() => {
-    return announcements.find((a) => a.is_pinned);
-  }, [announcements]);
-
-  const filteredAnnouncements = useMemo(() => {
-    if (selectedCategory === "All") return announcements;
-    return announcements.filter((a) => a.category === selectedCategory);
-  }, [announcements, selectedCategory]);
-
-  const categories = useMemo(() => {
-    return ["All", "Vaccination Drive", "Clinic Schedule", "Public Health", "Urgent Advisory"];
-  }, []);
-
   // Match announcement to corresponding field operation
   const getFieldOp = (item: CVOAnnouncement) => {
     // 1. Try matching [OP_ID:FO-xxxx] in content
@@ -248,6 +228,35 @@ export function CVOSocialFeed({
 
     return null;
   };
+
+  const announcements: CVOAnnouncement[] = useMemo(() => {
+    if (dbAnnouncements && dbAnnouncements.length > 0) {
+      return dbAnnouncements;
+    }
+    return DEFAULT_ANNOUNCEMENTS;
+  }, [dbAnnouncements]);
+
+  const pinnedAnnouncement = useMemo(() => {
+    return announcements.find((a) => a.is_pinned);
+  }, [announcements]);
+
+  const categories = useMemo(() => {
+    return ["All", "Vaccination Drive", "Clinic Schedule", "Public Health", "Urgent Advisory"];
+  }, []);
+
+  const filteredAnnouncements = useMemo(() => {
+    let list = announcements;
+    if (selectedCategory !== "All") {
+      list = announcements.filter((a) => a.category === selectedCategory);
+    }
+    // Float pinned post to the very top (Featured), followed by newest created_at
+    return [...list].sort((a, b) => {
+      const aPinned = a.is_pinned ? 1 : 0;
+      const bPinned = b.is_pinned ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [announcements, selectedCategory]);
 
   // Helper to resolve profile picture
   const getAuthorAvatar = (authorName: string, authorId?: string | null, matchedOp?: any) => {
@@ -393,10 +402,12 @@ export function CVOSocialFeed({
             const avatarUrl = getAuthorAvatar(item.author_name, item.author_id, matchedOp);
             const isVeterinarian = item.author_role.toLowerCase().includes("vet");
 
+            const grace = matchedOp ? getFieldOpGracePeriod(matchedOp.date, matchedOp.status) : null;
+            const isGraceCompleted = grace?.isPastGracePeriod ?? false;
             const opStatus = (matchedOp?.status || "").toLowerCase();
-            const isInProgress = opStatus === "in-progress" || opStatus === "in progress";
-            const isCompleted = opStatus === "completed";
-            const isScheduled = opStatus === "scheduled";
+            const isCompleted = opStatus === "completed" || isGraceCompleted;
+            const isInProgress = (opStatus === "in-progress" || opStatus === "in progress") && !isGraceCompleted && !isCompleted;
+            const isScheduled = opStatus === "scheduled" && !isGraceCompleted && !isCompleted;
 
             // Format hashtags cleanly
             const contentLines = item.content.split("\n");
@@ -411,10 +422,26 @@ export function CVOSocialFeed({
                   isInProgress
                     ? "border-blue-500/50 bg-gradient-to-b from-blue-500/[0.04] via-card to-card ring-1 ring-blue-500/20"
                     : item.is_pinned
-                    ? "border-amber-500/40 bg-gradient-to-b from-amber-500/5 via-card to-card"
+                    ? "border-primary/40 ring-1 ring-primary/20 shadow-xs bg-gradient-to-b from-primary/[0.02] via-card to-card"
                     : "border-border/70"
                 )}
               >
+                {/* ── Facebook-Style Pinned Post Top Bar ── */}
+                {item.is_pinned && (
+                  <div className="flex items-center justify-between px-3.5 sm:px-4 py-2 border-b border-border/60 bg-muted/30">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/90">
+                      <Pin className="size-3.5 fill-primary text-primary rotate-45" />
+                      <span>Pinned post</span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border-primary/25 px-2.5 py-0.5 rounded-full"
+                    >
+                      Featured Announcement
+                    </Badge>
+                  </div>
+                )}
+
                 {/* ── 1. Facebook Post Header ── */}
                 <div className="p-3 sm:p-4 pb-2 sm:pb-2.5 flex items-start justify-between gap-2 sm:gap-3">
                   <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
@@ -447,16 +474,6 @@ export function CVOSocialFeed({
                         >
                           <CheckCircle2 className="size-3.5 fill-[#1877F2] text-white" />
                         </span>
-
-                        {item.is_pinned && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 font-bold rounded-md"
-                          >
-                            <Pin className="size-2.5 fill-amber-500 text-amber-500" />
-                            <span>Pinned</span>
-                          </Badge>
-                        )}
 
                         {/* ── Live Field Operation Status Badge ── */}
                         {isInProgress && (
@@ -613,14 +630,25 @@ export function CVOSocialFeed({
                     </div>
 
                     {onSchedulePetClick && (
-                      <Button
-                        size="sm"
-                        onClick={onSchedulePetClick}
-                        className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs shrink-0 cursor-pointer w-full sm:w-auto"
-                      >
-                        <Calendar className="size-3 sm:size-3.5" />
-                        <span>Schedule</span>
-                      </Button>
+                      isCompleted ? (
+                        <Button
+                          size="sm"
+                          disabled
+                          className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-muted text-muted-foreground border border-border/70 shadow-2xs shrink-0 w-full sm:w-auto cursor-default"
+                        >
+                          <CheckCircle2 className="size-3 sm:size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>Concluded</span>
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={onSchedulePetClick}
+                          className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs shrink-0 cursor-pointer w-full sm:w-auto"
+                        >
+                          <Calendar className="size-3 sm:size-3.5" />
+                          <span>Schedule</span>
+                        </Button>
+                      )
                     )}
                   </div>
                 )}

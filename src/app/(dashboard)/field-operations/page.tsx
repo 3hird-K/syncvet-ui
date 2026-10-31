@@ -22,6 +22,8 @@ import {
   Info,
   Building2,
   Sparkles,
+  Lock,
+  QrCode,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
@@ -64,11 +66,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { cn, getFieldOpGracePeriod } from "@/lib/utils";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { ScheduleDriveDialog } from "@/components/dashboard/schedule-drive-dialog";
+import { FieldOpAttendanceDialog } from "@/components/dashboard/field-op-attendance-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { findVetProfileByName, type CVOVetProfile } from "@/data/cvo-vets";
 import type { CVOFieldOperation } from "@/data/cvo-store";
@@ -95,9 +98,10 @@ export default function FieldOperationsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
-  // Profile modal state
+  // Profile and attendance modal state
   const [profileModalVet, setProfileModalVet] = useState<CVOVetProfile | null>(null);
   const [announcementModalOp, setAnnouncementModalOp] = useState<CVOFieldOperation | null>(null);
+  const [attendanceModalOp, setAttendanceModalOp] = useState<CVOFieldOperation | null>(null);
 
   const inProgressCount = fieldOperations.filter((o) => o.status === "in-progress").length;
   const scheduledCount = fieldOperations.filter((o) => o.status === "scheduled").length;
@@ -387,6 +391,9 @@ export default function FieldOperationsPage() {
                 rows.map((op, idx) => {
                   const pct = op.petsTarget > 0 ? Math.round((op.petsVaccinated / op.petsTarget) * 100) : 0;
                   const vetProfile = findVetProfileByName(op.lead, dbUsers);
+                  const grace = getFieldOpGracePeriod(op.date, op.status);
+                  const isLocked = grace.isPastGracePeriod || op.status === "completed" || op.status === "cancelled";
+                  const effectiveStatus = (grace.isPastGracePeriod && op.status !== "cancelled") ? "completed" : op.status;
 
                   // Extract services list
                   const opServices = op.services || (
@@ -507,34 +514,40 @@ export default function FieldOperationsPage() {
                         </TableCell>
                       )}
 
-                      {/* Slots / Progress */}
+                      {/* Slots / Progress (Clickable for Hybrid Slots & QR) */}
                       {visibleColumns.includes("progress") && (
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAttendanceModalOp(op)}
+                            className="flex items-center gap-2 group hover:opacity-80 transition-opacity cursor-pointer text-left"
+                            title="Click to manage hybrid slots & attendance QR poster"
+                          >
                             <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
                               <div
                                 className="h-full rounded-full bg-primary transition-all"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
-                            <span className="text-[10px] tabular-nums text-muted-foreground">
+                            <span className="text-[10px] tabular-nums text-muted-foreground group-hover:text-primary transition-colors font-medium">
                               {op.petsVaccinated}/{op.petsTarget}
                             </span>
-                          </div>
+                            <QrCode className="size-3 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                          </button>
                         </TableCell>
                       )}
 
                       {/* Public Announcement Status */}
                       {visibleColumns.includes("announcement") && (
                         <TableCell>
-                          {op.status === "completed" ? (
+                          {effectiveStatus === "completed" || isLocked ? (
                             <Badge
                               variant="outline"
                               className="text-[10px] text-muted-foreground border-border bg-muted/20"
                             >
                               Auto-Archived
                             </Badge>
-                          ) : op.status === "cancelled" ? (
+                          ) : effectiveStatus === "cancelled" ? (
                             <Badge
                               variant="outline"
                               className="text-[10px] text-muted-foreground border-border bg-muted/20"
@@ -562,17 +575,17 @@ export default function FieldOperationsPage() {
                           <Badge
                             className={cn(
                               "text-[10px]",
-                              op.status === "completed" && "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25",
-                              op.status === "in-progress" && "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25",
-                              op.status === "scheduled" && "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25",
-                              op.status === "cancelled" && "bg-red-500/15 text-red-500 hover:bg-red-500/25"
+                              effectiveStatus === "completed" && "bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500/25",
+                              effectiveStatus === "in-progress" && "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25",
+                              effectiveStatus === "scheduled" && "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25",
+                              effectiveStatus === "cancelled" && "bg-red-500/15 text-red-500 hover:bg-red-500/25"
                             )}
                           >
-                            {op.status === "in-progress" ? (
+                            {effectiveStatus === "in-progress" ? (
                               <><Clock className="mr-1 size-3" /> In Progress</>
-                            ) : op.status === "completed" ? (
+                            ) : effectiveStatus === "completed" ? (
                               <><CheckCircle2 className="mr-1 size-3" /> Completed</>
-                            ) : op.status === "cancelled" ? (
+                            ) : effectiveStatus === "cancelled" ? (
                               "Cancelled"
                             ) : (
                               "Scheduled"
@@ -594,25 +607,42 @@ export default function FieldOperationsPage() {
                                 <MoreVertical className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48 text-xs">
-                              {op.status === "scheduled" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleStartVisit(op)}
-                                  className="gap-2 cursor-pointer"
-                                >
-                                  <Play className="size-3.5 text-blue-500" />
-                                  <span>Start Visit (In Progress)</span>
-                                </DropdownMenuItem>
-                              )}
+                            <DropdownMenuContent align="end" className="w-52 text-xs">
+                              <DropdownMenuItem
+                                onClick={() => setAttendanceModalOp(op)}
+                                className="gap-2 cursor-pointer font-semibold text-primary"
+                              >
+                                <QrCode className="size-3.5" />
+                                <span>Attendance & QR Poster</span>
+                              </DropdownMenuItem>
 
-                              {op.status !== "completed" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleMarkComplete(op)}
-                                  className="gap-2 cursor-pointer font-semibold text-emerald-600 dark:text-emerald-400"
-                                >
-                                  <CheckCircle2 className="size-3.5" />
-                                  <span>Mark Completed</span>
-                                </DropdownMenuItem>
+                              {isLocked ? (
+                                <div className="px-2 py-1.5 text-[11px] text-muted-foreground flex items-center gap-1.5 font-medium border-t border-b border-border/50 my-1 bg-muted/30">
+                                  <Lock className="size-3 text-rose-500 shrink-0" />
+                                  <span>Locked (Grace Period Ended)</span>
+                                </div>
+                              ) : (
+                                <>
+                                  {op.status === "scheduled" && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleStartVisit(op)}
+                                      className="gap-2 cursor-pointer"
+                                    >
+                                      <Play className="size-3.5 text-blue-500" />
+                                      <span>Start Visit (In Progress)</span>
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {op.status !== "completed" && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleMarkComplete(op)}
+                                      className="gap-2 cursor-pointer font-semibold text-emerald-600 dark:text-emerald-400"
+                                    >
+                                      <CheckCircle2 className="size-3.5" />
+                                      <span>Mark Completed</span>
+                                    </DropdownMenuItem>
+                                  )}
+                                </>
                               )}
 
                               <DropdownMenuItem
@@ -631,15 +661,18 @@ export default function FieldOperationsPage() {
                                 <span>Attending Vet Profile</span>
                               </DropdownMenuItem>
 
-                              <DropdownMenuSeparator />
-
-                              <DropdownMenuItem
-                                onClick={() => handleDelete(op)}
-                                className="gap-2 text-destructive cursor-pointer"
-                              >
-                                <Trash2 className="size-3.5" />
-                                <span>Cancel & Delete Drive</span>
-                              </DropdownMenuItem>
+                              {!isLocked && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => handleDelete(op)}
+                                    className="gap-2 text-destructive cursor-pointer"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    <span>Cancel & Delete Drive</span>
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -856,6 +889,13 @@ export default function FieldOperationsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Modal 3: Field Operation Attendance & Hybrid Slots Dialog ── */}
+      <FieldOpAttendanceDialog
+        open={!!attendanceModalOp}
+        onOpenChange={(open) => !open && setAttendanceModalOp(null)}
+        operation={attendanceModalOp}
+      />
     </div>
   );
 }

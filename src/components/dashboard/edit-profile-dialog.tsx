@@ -1,23 +1,27 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole, type SyncVetRole } from "@/data/syncvet-users";
+import { cvoBarangays } from "@/data/cvo-store";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   User,
   Mail,
-  ShieldCheck,
   ShieldAlert,
   Stethoscope,
-  Syringe,
   Loader2,
   Camera,
   Lock,
+  Save,
+  X,
+  Search,
+  MapPin,
+  Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -25,6 +29,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,6 +113,9 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     phoneNumber?: string;
     mobileNumber?: string;
     barangay?: string;
+    streetAddress?: string;
+    landmark?: string;
+    address?: string;
   } | undefined;
   const initialRole = normalizeSyncVetRole(
     dbUser?.role ||
@@ -119,12 +127,27 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [address, setAddress] = useState("");
+  const [barangay, setBarangay] = useState("");
+  const [barangaySearch, setBarangaySearch] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [landmark, setLandmark] = useState("");
   const [role, setRole] = useState<SyncVetRole>(initialRole);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isRemovingImage, setIsRemovingImage] = useState(false);
+
+  // Filtered Barangays (computed when user starts typing)
+  const filteredBarangays = useMemo(() => {
+    const q = barangaySearch.toLowerCase().trim();
+    if (!q) return [];
+    return cvoBarangays.filter((b) => b.toLowerCase().includes(q));
+  }, [barangaySearch]);
+
+  const popularBarangays = useMemo(
+    () => ["Carmen", "Nazareth", "Lapasan", "Macasandig", "Kauswagan", "Bulua"],
+    []
+  );
 
   useEffect(() => {
     if (open) {
@@ -137,11 +160,59 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
           (user.unsafeMetadata?.mobileNumber as string) ||
           ""
         );
-        setAddress(
-          dbUser?.address ||
-          (user.unsafeMetadata?.barangay as string) ||
-          ""
+
+        // Parse barangay, streetAddress, landmark from metadata or DB address
+        const meta = user.unsafeMetadata as Record<string, unknown> | undefined;
+        let initBrgy = (meta?.barangay as string) || "";
+        let initStreet = (meta?.streetAddress as string) || "";
+        let initLandmark = (meta?.landmark as string) || "";
+        let rawAddr = dbUser?.address || (meta?.address as string) || "";
+
+        if (rawAddr) {
+          const landmarkMatch = rawAddr.match(/\(Near\s+([^)]+)\)/i);
+          if (landmarkMatch) {
+            if (!initLandmark) initLandmark = landmarkMatch[1].trim();
+            rawAddr = rawAddr.replace(/\(Near\s+[^)]+\)/i, "");
+          }
+        }
+
+        // Validate if initBrgy is an actual single CDO barangay name
+        const isBrgyValid = cvoBarangays.some(
+          (b) => b.toLowerCase() === initBrgy.toLowerCase().trim()
         );
+
+        if (!isBrgyValid) {
+          // If initBrgy was stored as a full address string from older saves, search for the real barangay
+          const textToSearch = `${initBrgy} ${rawAddr}`.trim();
+          const match = cvoBarangays.find((b) =>
+            new RegExp(`\\b${b.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i").test(textToSearch)
+          );
+          if (match) {
+            initBrgy = match;
+            if (!initStreet) {
+              const parts = textToSearch.split(new RegExp(match, "i"));
+              const before = parts[0]?.replace(/[,\s]+$/, "").trim();
+              if (before) {
+                initStreet = before;
+              }
+            }
+          } else {
+            initBrgy = "";
+          }
+        } else {
+          if (!initStreet && rawAddr) {
+            const parts = rawAddr.split(new RegExp(initBrgy, "i"));
+            const before = parts[0]?.replace(/[,\s]+$/, "").trim();
+            if (before) {
+              initStreet = before;
+            }
+          }
+        }
+
+        setBarangay(initBrgy);
+        setBarangaySearch(initBrgy);
+        setStreetAddress(initStreet);
+        setLandmark(initLandmark);
       }
       setRole(initialRole);
       setSelectedFile(null);
@@ -199,8 +270,8 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     fileInputRef.current?.click();
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!user) return;
 
     setLoading(true);
@@ -211,6 +282,17 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       } else if (isRemovingImage && user.hasImage) {
         await user.setProfileImage({ file: null });
       }
+
+      // Compute full standardized address like onboarding
+      const fullAddressParts = [
+        streetAddress.trim(),
+        landmark.trim() ? `(Near ${landmark.trim()})` : "",
+        barangay.trim(),
+        "Cagayan de Oro City, Misamis Oriental",
+      ].filter(Boolean);
+      const fullAddress = barangay.trim()
+        ? fullAddressParts.join(", ")
+        : streetAddress.trim();
 
       // 2. Update user name (and role only if user is an Administrator) in Clerk
       const targetRole = isAdmin ? role : initialRole;
@@ -224,7 +306,11 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
         unsafeMetadata: {
           ...user.unsafeMetadata,
           phoneNumber: phoneNumber.trim(),
-          barangay: address.trim(),
+          mobileNumber: phoneNumber.trim(),
+          barangay: barangay.trim(),
+          streetAddress: streetAddress.trim(),
+          landmark: landmark.trim(),
+          address: fullAddress,
           ...(isAdmin
             ? {
                 roleTitle: targetRole,
@@ -250,7 +336,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
         full_name: updatedFullName,
         avatar_url: updatedAvatarUrl,
         phone_number: phoneNumber.trim() || null,
-        address: address.trim() || null,
+        address: fullAddress || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -289,14 +375,50 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[580px] w-full rounded-3xl border border-border/80 bg-card p-6 shadow-2xl overflow-hidden">
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="z-[90] bg-black/60 backdrop-blur-xs"
+        className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[95vw] sm:max-w-[580px] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-border/80 bg-card p-6 shadow-2xl z-[100]"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+        }}
+      >
+        {/* Top-right Action Buttons: Save beside Close X */}
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-1.5">
+          <button
+            type="submit"
+            form="edit-profile-form"
+            disabled={loading || !isLoaded}
+            className="flex size-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500 dark:hover:text-white shadow-2xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+            title="Save Changes"
+            aria-label="Save Changes"
+          >
+            {loading ? (
+              <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <Save className="size-4" />
+            )}
+          </button>
+
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              title="Close dialog"
+              aria-label="Close dialog"
+            >
+              <X className="size-4" />
+            </button>
+          </DialogClose>
+        </div>
+
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
           className="space-y-4"
         >
-          <DialogHeader className="space-y-1.5 pb-2">
+          <DialogHeader className="space-y-1.5 pb-2 pr-20">
             <div className="flex items-center gap-2 text-primary font-bold text-base">
               <User className="size-4.5" />
               <DialogTitle className="text-lg font-extrabold tracking-tight">
@@ -385,10 +507,10 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
             </div>
           </div>
 
-          <form onSubmit={handleSave} className="space-y-4 pt-1">
+          <form id="edit-profile-form" onSubmit={handleSave} className="space-y-3 pt-0.5">
             {/* First Name & Last Name */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="space-y-1">
                 <Label htmlFor="firstName" className="text-xs font-semibold text-foreground">
                   First Name
                 </Label>
@@ -397,11 +519,11 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="e.g. Neil"
-                  className="h-10 rounded-xl text-xs"
+                  className="h-8.5 rounded-lg text-xs px-2.5"
                   required
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <Label htmlFor="lastName" className="text-xs font-semibold text-foreground">
                   Last Name
                 </Label>
@@ -410,42 +532,184 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="e.g. Dime"
-                  className="h-10 rounded-xl text-xs"
+                  className="h-8.5 rounded-lg text-xs px-2.5"
                   required
                 />
               </div>
             </div>
 
-            {/* Contact Number & Barangay / Address */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="phoneNumber" className="text-xs font-semibold text-foreground">
-                  Contact Number
-                </Label>
-                <Input
-                  id="phoneNumber"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="e.g. 0917 123 4567"
-                  className="h-10 rounded-xl text-xs"
-                />
+            {/* Contact Number */}
+            <div className="space-y-1">
+              <Label htmlFor="phoneNumber" className="text-xs font-semibold text-foreground">
+                Contact Number
+              </Label>
+              <Input
+                id="phoneNumber"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g. 0917 123 4567"
+                className="h-8.5 rounded-lg text-xs px-2.5"
+              />
+            </div>
+
+            {/* Location Section - matches Onboarding Wizard location pattern */}
+            <div className="space-y-2.5 pt-0.5">
+              {/* Barangay in CDO */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                    <span>Barangay in CDO</span>
+                  </Label>
+                  {barangay ? (
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Check className="size-2.5" />
+                      Selected: {barangay}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">
+                      Type to see suggestions
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Type CDO Barangay (e.g. Carmen, Nazareth, Lapasan)..."
+                    value={barangaySearch}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBarangaySearch(val);
+                      const match = cvoBarangays.find(
+                        (b) => b.toLowerCase() === val.toLowerCase().trim()
+                      );
+                      if (match) {
+                        setBarangay(match);
+                      } else if (barangay && val !== barangay) {
+                        setBarangay("");
+                      }
+                    }}
+                    className={cn(
+                      "h-8.5 text-xs pl-8 pr-7 rounded-lg bg-background border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all",
+                      barangay && "border-emerald-500/60 font-semibold text-foreground"
+                    )}
+                  />
+                  {barangaySearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBarangaySearch("");
+                        setBarangay("");
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                      title="Clear Barangay"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Suggestions / Popular pills underneath */}
+                {barangaySearch.trim().length > 0 ? (
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar text-xs">
+                    {filteredBarangays.length === 0 ? (
+                      <span className="text-[10.5px] text-muted-foreground italic px-1">
+                        No barangay found matching &ldquo;{barangaySearch}&rdquo;
+                      </span>
+                    ) : (
+                      filteredBarangays.slice(0, 10).map((b) => {
+                        const isSelected = barangay.toLowerCase() === b.toLowerCase();
+                        return (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => {
+                              setBarangay(b);
+                              setBarangaySearch(b);
+                            }}
+                            className={cn(
+                              "shrink-0 px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs",
+                              isSelected
+                                ? "bg-primary text-primary-foreground border-primary font-bold shadow-xs scale-[1.02]"
+                                : "bg-background border-border/80 hover:border-primary/60 hover:bg-primary/5 text-foreground"
+                            )}
+                          >
+                            {isSelected ? (
+                              <Check className="size-2.5" />
+                            ) : (
+                              <MapPin className="size-2.5 text-primary" />
+                            )}
+                            <span>{b}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar text-xs">
+                    <span className="text-[10px] text-muted-foreground font-medium shrink-0">Popular:</span>
+                    {popularBarangays.map((b) => {
+                      const isSelected = barangay.toLowerCase() === b.toLowerCase();
+                      return (
+                        <button
+                          key={b}
+                          type="button"
+                          onClick={() => {
+                            setBarangay(b);
+                            setBarangaySearch(b);
+                          }}
+                          className={cn(
+                            "shrink-0 px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition-all cursor-pointer flex items-center gap-1 border shadow-2xs",
+                            isSelected
+                              ? "bg-primary text-primary-foreground border-primary font-bold shadow-xs scale-[1.02]"
+                              : "bg-background border-border/80 hover:border-primary/60 hover:bg-primary/5 text-foreground"
+                          )}
+                        >
+                          {isSelected ? (
+                            <Check className="size-2" />
+                          ) : (
+                            <MapPin className="size-2 text-primary" />
+                          )}
+                          <span>{b}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="address" className="text-xs font-semibold text-foreground">
-                  Barangay / Address
-                </Label>
-                <Input
-                  id="address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. Carmen, CDO"
-                  className="h-10 rounded-xl text-xs"
-                />
+
+              {/* Street / House No. / Zone and Landmark */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <Label htmlFor="streetAddress" className="text-xs font-semibold text-foreground">
+                    Street / House No. / Zone
+                  </Label>
+                  <Input
+                    id="streetAddress"
+                    placeholder="e.g. Zone 10, Block 4 Lot 12"
+                    value={streetAddress}
+                    onChange={(e) => setStreetAddress(e.target.value)}
+                    className="h-8.5 rounded-lg text-xs px-2.5"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="landmark" className="text-xs font-semibold text-muted-foreground">
+                    Landmark (Optional)
+                  </Label>
+                  <Input
+                    id="landmark"
+                    placeholder="e.g. Near Barangay Hall"
+                    value={landmark}
+                    onChange={(e) => setLandmark(e.target.value)}
+                    className="h-8.5 rounded-lg text-xs px-2.5"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Account Role Field */}
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label htmlFor="accountRole" className="text-xs font-semibold text-foreground">
                   Account Role
@@ -460,7 +724,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
               {isAdmin ? (
                 <Select value={role} onValueChange={(val: SyncVetRole) => setRole(val)}>
-                  <SelectTrigger id="accountRole" className="h-10 rounded-xl text-xs bg-background cursor-pointer">
+                  <SelectTrigger id="accountRole" className="h-8.5 rounded-lg text-xs bg-background cursor-pointer px-2.5">
                     <SelectValue placeholder="Select account role" />
                   </SelectTrigger>
                   <SelectContent>
@@ -485,7 +749,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="h-10 rounded-xl border border-border/70 bg-muted/30 px-3 flex items-center justify-between text-xs text-foreground select-none">
+                <div className="h-8.5 rounded-lg border border-border/70 bg-muted/30 px-2.5 flex items-center justify-between text-xs text-foreground select-none">
                   <div className="flex items-center gap-2 font-medium">
                     {initialRole === "Veterinarian" && <Stethoscope className="size-3.5 text-emerald-500" />}
                     {initialRole === "Pet Owner" && <PawIcon className="size-3.5 text-emerald-600" />}
@@ -501,44 +765,6 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Readonly Verified Email Notice */}
-            <div className="rounded-xl border border-border/50 bg-muted/20 p-2.5 flex items-center justify-between text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
-                <span>Google Account Connected</span>
-              </div>
-              <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/20 bg-emerald-500/5">
-                Verified
-              </Badge>
-            </div>
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
-                className="h-10 w-full rounded-xl text-xs font-semibold hover:bg-muted/80 cursor-pointer"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={loading || !isLoaded}
-                className="h-10 w-full rounded-xl text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin mr-1.5" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
             </div>
           </form>
         </motion.div>

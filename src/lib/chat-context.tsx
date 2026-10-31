@@ -1107,9 +1107,16 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const toggleOpen = useCallback(() => setIsOpen((prev) => !prev), []);
 
-  const openChatWithPet = useCallback((pet?: { id: string; name: string }) => {
+  const openChatWithPet = useCallback((pet?: { id: string; name: string }, contactId: string = "vet") => {
     if (pet) setSelectedPet(pet);
     setIsOpen(true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("syncvet:open-chat", {
+          detail: { contactId, pet },
+        })
+      );
+    }
   }, []);
 
   const clearChat = useCallback(async () => {
