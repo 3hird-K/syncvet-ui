@@ -2408,12 +2408,6 @@ export default function PetOwnerPortalPage() {
     </div>
   </div>
 
-  {/* ── Official Consultation Sheet Dialog (Replica of paper from photo) ── */}
-      <OfficialConsultationSheetDialog
-        consultation={selectedConsultation}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-      />
 
       {/* ── Pet Information & Digital Health Passport Modal ── */}
       <Dialog
@@ -3550,6 +3544,13 @@ export default function PetOwnerPortalPage() {
             setSelectedPetForInfo((prev: any) => ({ ...prev, photo_url: url }));
           }
         }}
+      />
+
+      {/* ── Official Consultation Sheet Dialog (Nested Topmost Modal) ── */}
+      <OfficialConsultationSheetDialog
+        consultation={selectedConsultation}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
       />
     </div>
   );

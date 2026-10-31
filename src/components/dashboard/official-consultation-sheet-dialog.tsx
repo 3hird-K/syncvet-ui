@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Printer, Download, X, Check, Stethoscope, ShieldCheck, FileText, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,13 @@ export function OfficialConsultationSheetDialog({
   onOpenChange,
 }: OfficialConsultationSheetDialogProps) {
   const [downloading, setDownloading] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [open]);
 
   if (!consultation) return null;
 
@@ -180,52 +188,80 @@ export function OfficialConsultationSheetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] max-w-5xl sm:max-w-5xl lg:max-w-6xl max-h-[94vh] overflow-y-auto p-3 sm:p-6 bg-background pointer-events-auto">
-        <DialogHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b pr-10 sm:pr-12">
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+      <DialogContent
+        ref={scrollContainerRef}
+        showCloseButton={false}
+        overlayClassName="z-[90] bg-black/60 backdrop-blur-xs"
+        className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 bg-background pointer-events-auto rounded-2xl shadow-2xl z-[100]"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = 0;
+          }
+        }}
+      >
+        {/* Top Action Buttons: Download PDF, Print Document, and Close (Beside X Icon) */}
+        <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+            title={downloading ? "Generating PDF..." : "Download PDF"}
+            aria-label="Download PDF"
+          >
+            {downloading ? (
+              <Loader2 className="size-4 animate-spin text-primary" />
+            ) : (
+              <Download className="size-4 text-emerald-600 dark:text-emerald-400" />
+            )}
+            <span className="sr-only">Download PDF</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+            title="Print Document"
+            aria-label="Print Document"
+          >
+            <Printer className="size-4" />
+            <span className="sr-only">Print Document</span>
+          </button>
+
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              title="Close"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </button>
+          </DialogClose>
+        </div>
+
+        <DialogHeader className="pb-3 border-b pr-32 sm:pr-36">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 shrink-0">
               <FileText className="size-4.5" />
             </div>
-            <div>
-              <DialogTitle className="text-sm sm:text-base font-bold">
+            <div className="min-w-0">
+              <DialogTitle className="text-sm sm:text-base font-bold truncate">
                 City Veterinary Office Field Treatment / Consultation Form
               </DialogTitle>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground truncate">
                 Official Cagayan de Oro Municipal Clinical Examination Record • Encounter #{consultation.encounterNo}
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 self-start sm:self-center">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleDownloadPdf}
-              disabled={downloading}
-              className="h-8 gap-1.5 text-xs font-semibold cursor-pointer bg-primary text-primary-foreground shadow-2xs hover:bg-primary/90"
-            >
-              {downloading ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Download className="size-3.5" />
-              )}
-              <span>{downloading ? "Generating PDF..." : "Download PDF"}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrint}
-              className="h-8 gap-1.5 text-xs font-semibold cursor-pointer border-border hover:bg-muted"
-            >
-              <Printer className="size-3.5" />
-              <span>Print Document</span>
-            </Button>
           </div>
         </DialogHeader>
 
         {/* ── Official Government Form Container (Fidelity reproduction of physical paper) ── */}
         <div
           id="cvo-consultation-sheet"
-          className="bg-white text-black p-5 sm:p-8 md:p-10 rounded-xl border-2 border-slate-400 font-sans shadow-md text-[11px] leading-tight select-text w-full max-w-5xl mx-auto [accent-color:#000000] accent-black"
+          className="bg-white text-black p-4 sm:p-6 md:p-8 rounded-xl border-2 border-slate-400 font-sans shadow-md text-[11px] leading-tight select-text w-full max-w-4xl mx-auto [accent-color:#000000] accent-black"
         >
           {/* Top Form Header with City Veterinary Department Logo & Official Title */}
           <div className="flex items-center gap-3 sm:gap-4 border-b-2 border-black pb-2.5 mb-2.5">
