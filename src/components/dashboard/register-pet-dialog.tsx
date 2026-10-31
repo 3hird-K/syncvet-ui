@@ -346,13 +346,20 @@ export function RegisterPetDialog({
               </div>
 
               <DialogHeader className="pb-2.5 border-b border-border/60 pr-36 sm:pr-40">
-                <div className="flex items-center gap-2 text-primary">
-                  <PawIcon className="size-5" />
-                  <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
+                <div className="flex items-center gap-2.5">
+                  <div className="relative size-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/25 shrink-0 shadow-xs">
+                    <PawPrint className="size-4.5" />
+                    <span className="absolute -bottom-1 -right-1 size-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs ring-2 ring-background">
+                      <Plus className="size-2.5 stroke-[3]" />
+                    </span>
+                  </div>
+                  <div>
+                    <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
+                    <DialogDescription className="text-xs text-muted-foreground">
+                      Official registration for municipal digital passport and anti-rabies immunity records.
+                    </DialogDescription>
+                  </div>
                 </div>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Official registration for municipal digital passport and anti-rabies immunity records.
-                </DialogDescription>
               </DialogHeader>
 
               <div className="grid gap-3.5 py-1">

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { parseISO, isValid, startOfDay, isBefore } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -96,5 +97,23 @@ export function getNextAvailableClinicDate(): Date {
   }
 
   return d;
+}
+
+/**
+ * Checks if a clinical consultation or encounter schedule has elapsed past its date
+ * without being completed or cancelled (matching the Admin Queue Overdue status).
+ */
+export function isConsultationOverdue(dateStr?: string | null, status?: string | null): boolean {
+  if (!dateStr) return false;
+  if (status === "completed" || status === "cancelled") return false;
+  try {
+    const cleanDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
+    const parsed = parseISO(cleanDate);
+    if (!isValid(parsed)) return false;
+    const todayStart = startOfDay(new Date());
+    return isBefore(startOfDay(parsed), todayStart);
+  } catch {
+    return false;
+  }
 }
 

@@ -1399,7 +1399,7 @@ export function ScheduleProcedureDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
+      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
         <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
           <div className="flex items-center gap-2">
             <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">

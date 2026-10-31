@@ -68,7 +68,7 @@ import {
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
-import { cn } from "@/lib/utils";
+import { cn, isConsultationOverdue } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessengerIcon } from "@/components/icons/messenger-icon";
@@ -130,91 +130,6 @@ import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { syncConsultationsToQueue } from "@/lib/cvo-queue";
 import { parsePetWeightKg } from "@/lib/pet-weight";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-
-function AnimatedModalContent({
-  activeKey,
-  children,
-  className,
-  isSidePanelOpen = false,
-}: {
-  activeKey: string;
-  children: React.ReactNode;
-  className?: string;
-  isSidePanelOpen?: boolean;
-}) {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | undefined>(undefined);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  useEffect(() => {
-    if (!contentRef.current) return;
-
-    const updateHeight = () => {
-      if (contentRef.current) {
-        const measured = Math.round(contentRef.current.offsetHeight);
-        if (measured > 0) {
-          setHeight(measured);
-        }
-      }
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const measured = Math.round(
-          entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
-        );
-        if (measured > 0) {
-          setHeight(measured);
-        }
-      }
-    });
-
-    resizeObserver.observe(contentRef.current);
-    return () => resizeObserver.disconnect();
-  }, [activeKey]);
-
-  if (isSidePanelOpen) {
-    return (
-      <div className={cn("flex-1 min-h-0 overflow-y-auto overscroll-contain", className)}>
-        {children}
-      </div>
-    );
-  }
-
-  return (
-    <motion.div
-      style={{ height: height ?? "auto" }}
-      animate={height !== undefined ? { height } : undefined}
-      transition={{
-        duration: 0.35,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      className={cn(
-        "w-full transition-colors",
-        isTransitioning
-          ? "overflow-hidden"
-          : "overflow-y-auto max-h-[calc(92vh-185px)] overscroll-contain",
-        className
-      )}
-      onAnimationStart={() => setIsTransitioning(true)}
-      onAnimationComplete={() => setIsTransitioning(false)}
-    >
-      <div ref={contentRef} className="w-full">
-        <motion.div
-          key={activeKey}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-        >
-          {children}
-        </motion.div>
-      </div>
-    </motion.div>
-  );
-}
 
 interface ChatMessage {
   id: string;
@@ -1205,7 +1120,9 @@ export default function PetOwnerPortalPage() {
 
   const activeConsultationsCount = useMemo(() => {
     return ownerConsultations.filter(
-      (c: any) => c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment"
+      (c: any) =>
+        (c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment") &&
+        !isConsultationOverdue(c.date, c.status)
     ).length;
   }, [ownerConsultations]);
 
@@ -1402,42 +1319,33 @@ export default function PetOwnerPortalPage() {
               const resolvedPhotoUrl = getPetAvatarUrl(pet.photo_url, pet.species);
 
               // Curated companion card gradients with atmospheric depth
-              const topVibrantBg = isCat
-                ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-transparent"
+              const gradientBg = isCat
+                ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-slate-950"
                 : idx % 2 === 0
-                ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-transparent"
-                : "bg-gradient-to-b from-cyan-700 via-slate-900 to-transparent";
+                ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-slate-950"
+                : "bg-gradient-to-b from-cyan-700 via-slate-900 to-slate-950";
 
               return (
                 <div
                   key={pet.id}
                   onClick={() => handleOpenPetInfo(pet)}
-                  className="w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-2xl hover:border-white/30 transition-all duration-500 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-end p-2.5 sm:p-3 snap-start bg-transparent"
+                  className={cn(
+                    "w-[124px] sm:w-[144px] md:w-[158px] h-48 sm:h-52 md:h-56 rounded-2xl sm:rounded-3xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-xl hover:border-white/25 transition-all duration-300 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-end p-2.5 sm:p-3 snap-start",
+                    gradientBg
+                  )}
                   title={`${pet.name} (${pet.species}) — Click to view Pet Details & Passport`}
                 >
-                  {/* Bottom Half Card Dark Base (Supports name and breed readability) */}
-                  <div className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pointer-events-none z-0" />
-
-                  {/* Top-to-Half Background Color (100% opacity at rest, fades to 0 opacity on hover) */}
-                  <div
-                    className={cn(
-                      "absolute inset-x-0 top-0 h-[60%] pointer-events-none transition-opacity duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] z-0",
-                      topVibrantBg,
-                      "opacity-100 group-hover/story:opacity-0"
-                    )}
-                  />
-
-                  {/* Atmospheric Top Spotlight & Glowing Halo (Fades to 0 opacity on hover) */}
-                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-36 rounded-full bg-white/20 blur-2xl pointer-events-none opacity-100 group-hover/story:opacity-0 transition-opacity duration-500" />
-                  <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-28 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none opacity-100 group-hover/story:opacity-0 transition-opacity duration-500" />
+                  {/* Atmospheric Top Spotlight & Glowing Halo */}
+                  <div className="absolute -top-12 left-1/2 -translate-x-1/2 size-36 rounded-full bg-white/20 blur-2xl pointer-events-none" />
+                  <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-28 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none" />
                   <div className="absolute -bottom-8 -right-8 size-28 bg-white/[0.04] rounded-full blur-xl pointer-events-none" />
 
-                  {/* Middle / Bottom: Transparent Pet Cutout Anchored at bottom-0, occupying 90% of card height with scale up animation on hover */}
+                  {/* Middle / Bottom: Transparent Pet Cutout Anchored at bottom-0, occupying 90% of card height */}
                   <div className="absolute inset-x-0 bottom-0 top-0 flex items-end justify-center pointer-events-none overflow-hidden z-10">
                     <img
                       src={resolvedPhotoUrl}
                       alt={pet.name}
-                      className="h-[90%] w-auto max-w-none object-contain object-bottom origin-bottom filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)] group-hover/story:scale-115 group-hover/story:drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)] transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-transform"
+                      className="h-[90%] w-auto max-w-none object-contain object-bottom origin-bottom filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.65)] group-hover/story:scale-108 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
                       loading="lazy"
                     />
                   </div>
@@ -1561,7 +1469,9 @@ export default function PetOwnerPortalPage() {
         {(() => {
           const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
           const nextApt = activeAppointments[0];
-          const waitingConsultation = ownerConsultations.find((c: any) => c.status === "waiting");
+          const waitingConsultation = ownerConsultations.find(
+            (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
+          );
           if (!nextApt && !waitingConsultation) return null;
 
           return (
@@ -1666,7 +1576,8 @@ export default function PetOwnerPortalPage() {
               <div className="space-y-3">
                 {ownerConsultations.map((c) => {
                   const isCompleted = c.status === "completed";
-                  const isWaiting = c.status === "waiting";
+                  const isOverdue = isConsultationOverdue(c.date, c.status);
+                  const isWaiting = c.status === "waiting" && !isOverdue;
                   const cPet = pets.find((p) => (c.petId && p.id === c.petId) || (c.petName && p.name.toLowerCase() === c.petName.toLowerCase()));
 
                   return (
@@ -1697,12 +1608,19 @@ export default function PetOwnerPortalPage() {
                                   className={`text-[10px] font-bold pointer-events-none select-none shadow-none gap-1 ${
                                     isCompleted
                                       ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
+                                      : isOverdue
+                                      ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-700"
                                       : isWaiting
                                       ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700"
                                       : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
                                   }`}
                                 >
-                                  {c.status === "in-consultation" ? (
+                                  {isOverdue ? (
+                                    <>
+                                      <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
+                                      OVERDUE
+                                    </>
+                                  ) : c.status === "in-consultation" ? (
                                     <>
                                       <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
                                       IN CONSULTATION
@@ -2333,38 +2251,16 @@ export default function PetOwnerPortalPage() {
           {(() => {
             const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
             const nextApt = activeAppointments[0];
-            const waitingConsultation = ownerConsultations.find((c: any) => c.status === "waiting");
+            const waitingConsultation = ownerConsultations.find(
+              (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
+            );
 
             if (!nextApt && !waitingConsultation) {
               return (
-                <div className="p-3.5 rounded-xl bg-muted/20 border border-border/50 text-center space-y-2.5">
+                <div className="p-3.5 py-4 rounded-xl bg-muted/20 border border-border/50 text-center">
                   <p className="text-xs text-muted-foreground">
                     No active appointments or waiting encounters.
                   </p>
-                  <div className="flex items-center justify-center gap-2 pt-0.5">
-                    <PetOwnerConsultationDialog
-                      pets={pets}
-                      initialPet={pets[0]}
-                      ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                      trigger={
-                        <Button size="sm" variant="outline" className="h-7.5 px-2.5 text-[11px] font-semibold gap-1.5 rounded-xl cursor-pointer">
-                          <Stethoscope className="size-3 text-primary" />
-                          <span>Request Care</span>
-                        </Button>
-                      }
-                    />
-                    <ScheduleProcedureDialog
-                      pets={pets}
-                      initialPet={pets[0]}
-                      ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                      trigger={
-                        <Button size="sm" className="h-7.5 px-2.5 text-[11px] font-semibold gap-1.5 rounded-xl cursor-pointer bg-primary text-primary-foreground">
-                          <Calendar className="size-3" />
-                          <span>Book Visit</span>
-                        </Button>
-                      }
-                    />
-                  </div>
                 </div>
               );
             }
@@ -2534,10 +2430,12 @@ export default function PetOwnerPortalPage() {
         <DialogContent
           showCloseButton={false}
           className={cn(
-            "w-full p-0 bg-transparent border-0 shadow-none",
+            "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out",
             showAvatarPickerPanel || showEditPetPanel
-              ? "max-w-5xl sm:max-w-5xl h-[88vh] max-h-[88vh] flex flex-col transition-all duration-300"
-              : "max-w-4xl sm:max-w-4xl max-h-[95vh] h-auto flex flex-col"
+              ? "max-w-5xl sm:max-w-5xl h-[88vh] max-h-[88vh] flex flex-col"
+              : activeProfileTab !== "overview"
+              ? "max-w-4xl sm:max-w-4xl h-[88vh] max-h-[88vh] flex flex-col"
+              : "max-w-3xl sm:max-w-3xl h-[88vh] max-h-[88vh] flex flex-col"
           )}
         >
           <DialogHeader className="sr-only">
@@ -2557,10 +2455,21 @@ export default function PetOwnerPortalPage() {
               (a.pet_name && a.pet_name.toLowerCase() === pet.name.toLowerCase())
             );
 
-            const petPendingConsultations = ownerConsultations.filter((c: any) =>
-              (c.petId && c.petId.toLowerCase() === pet.id.toLowerCase()) ||
-              (c.petName && c.petName.toLowerCase() === pet.name.toLowerCase())
-            );
+            const petActiveConsultations = ownerConsultations.filter((c: any) => {
+              const matches = (c.petId && c.petId.toLowerCase() === pet.id.toLowerCase()) ||
+                (c.petName && c.petName.toLowerCase() === pet.name.toLowerCase());
+              if (!matches) return false;
+              const isOverdue = isConsultationOverdue(c.date, c.status);
+              return (c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment") && !isOverdue;
+            });
+
+            const petHistoryConsultations = ownerConsultations.filter((c: any) => {
+              const matches = (c.petId && c.petId.toLowerCase() === pet.id.toLowerCase()) ||
+                (c.petName && c.petName.toLowerCase() === pet.name.toLowerCase());
+              if (!matches) return false;
+              const isOverdue = isConsultationOverdue(c.date, c.status);
+              return c.status === "completed" || c.status === "cancelled" || isOverdue;
+            });
 
             const availableSpeciesAvatars = isCat ? PET_CAT_AVATARS : PET_DOG_AVATARS;
             const baseBreeds: string[] = isCat ? [...CAT_BREEDS] : [...DOG_BREEDS];
@@ -2577,23 +2486,11 @@ export default function PetOwnerPortalPage() {
               weightChanged
             );
 
-            const isSidePanelOpen = Boolean(showAvatarPickerPanel || showEditPetPanel);
-
             return (
-              <div
-                className={cn(
-                  "flex items-stretch gap-1.5 sm:gap-2 w-full min-h-0 flex-1",
-                  isSidePanelOpen ? "h-full overflow-hidden" : "h-auto"
-                )}
-              >
+              <div className="flex items-stretch gap-1.5 sm:gap-2 w-full h-full min-h-0 flex-1 overflow-hidden">
                 {/* Left Side: Pet Info & Passport Card */}
-                <div
-                  className={cn(
-                    "flex-1 flex flex-col min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl",
-                    isSidePanelOpen ? "h-full" : "h-auto"
-                  )}
-                >
-                {/* Header Card with Gradient & Crest */}
+                <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl">
+                {/* Header Card with Gradient & Crest (Persistent header for Overview, Passport, Consultation, Procedure) */}
                 <div
                   className={cn(
                     "p-5 text-white relative overflow-hidden shrink-0",
@@ -2605,7 +2502,7 @@ export default function PetOwnerPortalPage() {
                   <div className="absolute -bottom-10 -right-10 size-40 bg-white/[0.05] rounded-full blur-2xl pointer-events-none" />
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
 
-                  {/* Top Action Icons: Digital Passport, Request Care, Book Slot, 3 Dots, Save, Close */}
+                  {/* Top Action Icons: Digital Passport, Request Care, Book Slot, Save, Delete, Close */}
                   <div className="flex items-center justify-end relative z-10 mb-3 gap-1.5">
                     <button
                       type="button"
@@ -2629,7 +2526,7 @@ export default function PetOwnerPortalPage() {
                       className={cn(
                         "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
                         activeProfileTab === "passport"
-                          ? "bg-purple-600 text-white border-purple-300 ring-2 ring-purple-400/50 shadow-md scale-105"
+                          ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                           : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                       )}
                       title={activeProfileTab === "passport" ? "Close Digital Health Passport" : "Official Digital Health Passport"}
@@ -2641,17 +2538,21 @@ export default function PetOwnerPortalPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveProfileTab((prev) => (prev === "consultation" ? "overview" : "consultation"));
-                        setShowEditPetPanel(false);
-                        setShowAvatarPickerPanel(false);
+                        if (activeProfileTab === "consultation") {
+                          setActiveProfileTab("overview");
+                        } else {
+                          setActiveProfileTab("consultation");
+                          setShowEditPetPanel(false);
+                          setShowAvatarPickerPanel(false);
+                        }
                       }}
                       className={cn(
                         "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
                         activeProfileTab === "consultation"
-                          ? "bg-emerald-500 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md scale-105"
+                          ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                           : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                       )}
-                      title={activeProfileTab === "consultation" ? "Close Request Care" : "Request Care (Consultation)"}
+                      title={activeProfileTab === "consultation" ? "Close Clinical Care View" : "Request Care (Consultation)"}
                     >
                       <Stethoscope className="size-4 text-white" />
                       <span className="sr-only">Request Care</span>
@@ -2660,200 +2561,200 @@ export default function PetOwnerPortalPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveProfileTab((prev) => (prev === "procedure" ? "overview" : "procedure"));
-                        setShowEditPetPanel(false);
-                        setShowAvatarPickerPanel(false);
+                        if (activeProfileTab === "procedure") {
+                          setActiveProfileTab("overview");
+                        } else {
+                          setActiveProfileTab("procedure");
+                          setShowEditPetPanel(false);
+                          setShowAvatarPickerPanel(false);
+                        }
                       }}
                       className={cn(
                         "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
                         activeProfileTab === "procedure"
-                          ? "bg-indigo-500 text-white border-indigo-300 ring-2 ring-indigo-400/50 shadow-md scale-105"
+                          ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                           : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                       )}
-                      title={activeProfileTab === "procedure" ? "Close Book Slot" : "Book Slot (Vaccination & Kapon)"}
+                      title={activeProfileTab === "procedure" ? "Close Procedure Booking View" : "Book Slot (Vaccination & Kapon)"}
                     >
                       <Calendar className="size-4 text-white" />
                       <span className="sr-only">Book Slot</span>
                     </button>
 
-                    {/* Save Profile Button */}
-                    <button
-                      type="button"
-                      onClick={handleSavePetUpdates}
-                      disabled={savingPetUpdates}
-                      className={cn(
-                        "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                        hasUnsavedChanges
-                          ? "bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md animate-pulse"
-                          : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                      )}
-                      title={hasUnsavedChanges ? "Save profile changes" : "Save Profile"}
-                    >
-                      {savingPetUpdates ? (
-                        <Loader2 className="size-4 animate-spin text-white" />
-                      ) : (
-                        <Save className="size-4 text-white" />
-                      )}
-                      <span className="sr-only">Save Profile</span>
-                    </button>
-
-                    {/* Delete Pet Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPetToDelete(pet);
-                        setDeleteDialogOpen(true);
-                        setPetInfoOpen(false);
-                      }}
-                      className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white hover:text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-                      title="Delete Pet"
-                    >
-                      <Trash2 className="size-4 text-white" />
-                      <span className="sr-only">Delete Pet</span>
-                    </button>
-
-                    <DialogClose asChild>
+                      {/* Save Profile Button */}
                       <button
                         type="button"
-                        className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
-                        title="Close"
-                      >
-                        <X className="size-4 text-white" />
-                        <span className="sr-only">Close</span>
-                      </button>
-                    </DialogClose>
-                  </div>
-
-                  {/* Hero Identity */}
-                  <div className="flex items-center gap-4 relative z-10">
-                    <PetAvatar
-                      photoUrl={pet.photo_url}
-                      species={pet.species}
-                      name={pet.name}
-                      size="xl"
-                    />
-
-                    <div className="space-y-1.5 min-w-0 flex-1">
-                      {/* Clean Pet Name with Clickable Edit and Photo Icon Buttons */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">
-                          {pet.name}
-                        </h2>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowEditPetPanel((prev) => {
-                                const nextState = !prev;
-                                if (nextState) {
-                                  setEditPetName(pet.name || "");
-                                  setEditPetBreed(pet.breed || "");
-                                  setEditPetWeight(pet.weightKg != null ? String(pet.weightKg) : "");
-                                }
-                                return nextState;
-                              });
-                              setShowAvatarPickerPanel(false);
-                            }}
-                            className={cn(
-                              "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
-                              showEditPetPanel
-                                ? "bg-white text-slate-900 border-white shadow-md scale-105"
-                                : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                            )}
-                            title={showEditPetPanel ? "Close edit panel" : "Edit Pet Information"}
-                          >
-                            <Pencil className="size-3.5" />
-                            <span className="sr-only">Edit Pet</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowAvatarPickerPanel((prev) => !prev);
-                              setShowEditPetPanel(false);
-                            }}
-                            className={cn(
-                              "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
-                              showAvatarPickerPanel
-                                ? "bg-white text-slate-900 border-white shadow-md scale-105"
-                                : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                            )}
-                            title={showAvatarPickerPanel ? "Close photo panel" : "Change Profile Picture"}
-                          >
-                            <ImageIcon className="size-3.5" />
-                            <span className="sr-only">Change Profile Picture</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Basic Info Line */}
-                      <p className="text-xs text-white/90 font-medium flex items-center gap-1.5 flex-wrap">
-                        <span>{pet.breed || pet.species}</span>
-                        <span className="text-white/40">•</span>
-                        <span>{pet.gender === "Female" ? "Female ♀" : "Male ♂"}</span>
-                        <span className="text-white/40">•</span>
-                        <span>{pet.age}</span>
-                        {pet.weightKg && (
-                          <>
-                            <span className="text-white/40">•</span>
-                            <span className="font-semibold text-white">{pet.weightKg} kg</span>
-                          </>
+                        onClick={handleSavePetUpdates}
+                        disabled={savingPetUpdates}
+                        className={cn(
+                          "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                          hasUnsavedChanges
+                            ? "bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-300 ring-2 ring-emerald-400/50 shadow-md animate-pulse"
+                            : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                         )}
-                      </p>
+                        title={hasUnsavedChanges ? "Save profile changes" : "Save Profile"}
+                      >
+                        {savingPetUpdates ? (
+                          <Loader2 className="size-4 animate-spin text-white" />
+                        ) : (
+                          <Save className="size-4 text-white" />
+                        )}
+                        <span className="sr-only">Save Profile</span>
+                      </button>
 
-                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                        <span
-                          className={cn(
-                            "text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md inline-flex items-center gap-1",
-                            vaxStatus.isOverdue
-                              ? "bg-rose-600 text-white"
-                              : vaxStatus.isDueSoon
-                              ? "bg-amber-500 text-black font-bold"
-                              : vaxStatus.isVaccinated
-                              ? "bg-emerald-500 text-white"
-                              : "bg-amber-600 text-white"
-                          )}
+                      {/* Delete Pet Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPetToDelete(pet);
+                          setDeleteDialogOpen(true);
+                          setPetInfoOpen(false);
+                        }}
+                        className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white hover:text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                        title="Delete Pet"
+                      >
+                        <Trash2 className="size-4 text-white" />
+                        <span className="sr-only">Delete Pet</span>
+                      </button>
+
+                      <DialogClose asChild>
+                        <button
+                          type="button"
+                          className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
+                          title="Close"
                         >
-                          {vaxStatus.isVaccinated ? (
-                            <ShieldCheck className="size-3" />
-                          ) : (
-                            <AlertTriangle className="size-3" />
+                          <X className="size-4 text-white" />
+                          <span className="sr-only">Close</span>
+                        </button>
+                      </DialogClose>
+                    </div>
+
+                    {/* Hero Identity */}
+                    <div className="flex items-center gap-4 relative z-10">
+                      <PetAvatar
+                        photoUrl={pet.photo_url}
+                        species={pet.species}
+                        name={pet.name}
+                        size="xl"
+                      />
+
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        {/* Clean Pet Name with Clickable Edit and Photo Icon Buttons */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">
+                            {pet.name}
+                          </h2>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowEditPetPanel((prev) => {
+                                  const nextState = !prev;
+                                  if (nextState) {
+                                    setEditPetName(pet.name || "");
+                                    setEditPetBreed(pet.breed || "");
+                                    setEditPetWeight(pet.weightKg != null ? String(pet.weightKg) : "");
+                                  }
+                                  return nextState;
+                                });
+                                setShowAvatarPickerPanel(false);
+                              }}
+                              className={cn(
+                                "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
+                                showEditPetPanel
+                                  ? "bg-white text-slate-900 border-white shadow-md scale-105"
+                                  : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                              )}
+                              title={showEditPetPanel ? "Close edit panel" : "Edit Pet Information"}
+                            >
+                              <Pencil className="size-3.5" />
+                              <span className="sr-only">Edit Pet</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAvatarPickerPanel((prev) => !prev);
+                                setShowEditPetPanel(false);
+                              }}
+                              className={cn(
+                                "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
+                                showAvatarPickerPanel
+                                  ? "bg-white text-slate-900 border-white shadow-md scale-105"
+                                  : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
+                              )}
+                              title={showAvatarPickerPanel ? "Close photo panel" : "Change Profile Picture"}
+                            >
+                              <ImageIcon className="size-3.5" />
+                              <span className="sr-only">Change Profile Picture</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Basic Info Line */}
+                        <p className="text-xs text-white/90 font-medium flex items-center gap-1.5 flex-wrap">
+                          <span>{pet.breed || pet.species}</span>
+                          <span className="text-white/40">•</span>
+                          <span>{pet.gender === "Female" ? "Female ♀" : "Male ♂"}</span>
+                          <span className="text-white/40">•</span>
+                          <span>{pet.age}</span>
+                          {pet.weightKg && (
+                            <>
+                              <span className="text-white/40">•</span>
+                              <span className="font-semibold text-white">{pet.weightKg} kg</span>
+                            </>
                           )}
-                          <span>
-                            {vaxStatus.isOverdue
-                              ? "Rabies Overdue"
-                              : vaxStatus.isDueSoon
-                              ? `Due Soon (${vaxStatus.daysUntilBooster}d)`
-                              : vaxStatus.isVaccinated
-                              ? "Rabies Protected"
-                              : "Unvaccinated"}
+                        </p>
+
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span
+                            className={cn(
+                              "text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md inline-flex items-center gap-1",
+                              vaxStatus.isOverdue
+                                ? "bg-rose-600 text-white"
+                                : vaxStatus.isDueSoon
+                                ? "bg-amber-500 text-black font-bold"
+                                : vaxStatus.isVaccinated
+                                ? "bg-emerald-500 text-white"
+                                : "bg-amber-600 text-white"
+                            )}
+                          >
+                            {vaxStatus.isVaccinated ? (
+                              <ShieldCheck className="size-3" />
+                            ) : (
+                              <AlertTriangle className="size-3" />
+                            )}
+                            <span>
+                              {vaxStatus.isOverdue
+                                ? "Rabies Overdue"
+                                : vaxStatus.isDueSoon
+                                ? `Due Soon (${vaxStatus.daysUntilBooster}d)`
+                                : vaxStatus.isVaccinated
+                                ? "Rabies Protected"
+                                : "Unvaccinated"}
+                            </span>
                           </span>
-                        </span>
 
-                        <span
-                          className={cn(
-                            "text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md border inline-flex items-center gap-1",
-                            pet.isSpayedNeutered
-                              ? "bg-cyan-500/20 text-cyan-200 border-cyan-400/30"
-                              : "bg-white/10 text-white/90 border-white/20"
-                          )}
-                        >
-                          {pet.isSpayedNeutered ? "Neutered/Spayed" : "Intact (Not Sterilized)"}
-                        </span>
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md border inline-flex items-center gap-1",
+                              pet.isSpayedNeutered
+                                ? "bg-cyan-500/20 text-cyan-200 border-cyan-400/30"
+                                : "bg-white/10 text-white/90 border-white/20"
+                            )}
+                          >
+                            {pet.isSpayedNeutered ? "Neutered/Spayed" : "Intact (Not Sterilized)"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Animated Content Area */}
-                <AnimatedModalContent
-                  activeKey={activeProfileTab}
-                  isSidePanelOpen={isSidePanelOpen}
-                  className="bg-background"
-                >
-                  <div className={cn(
-                    activeProfileTab !== "overview" ? "p-3 sm:p-3.5 space-y-2" : "p-3 sm:p-4 space-y-3"
-                  )}>
+                {/* Content Area */}
+                <div className={cn(
+                  "flex-1 min-h-0 overflow-y-auto overscroll-contain",
+                  activeProfileTab !== "overview" ? "p-3 sm:p-3.5 space-y-2" : "p-3 sm:p-4 space-y-3"
+                )}>
                   {activeProfileTab === "overview" && (
                     <>
                       {/* Rabies Immunization Status Card */}
@@ -2914,7 +2815,7 @@ export default function PetOwnerPortalPage() {
                       </div>
 
                       {/* Active Appointments & Consultations for this pet */}
-                      {(petUpcomingAppointments.length > 0 || petPendingConsultations.length > 0) && (
+                      {(petUpcomingAppointments.length > 0 || petActiveConsultations.length > 0) && (
                         <div className="space-y-2">
                           <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                             <CalendarClock className="size-3.5 text-primary" />
@@ -2944,7 +2845,7 @@ export default function PetOwnerPortalPage() {
                             </div>
                           ))}
 
-                          {petPendingConsultations.map((c: any) => (
+                          {petActiveConsultations.map((c: any) => (
                             <div key={c.id} className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-center justify-between gap-2">
                               <div className="space-y-0.5 text-xs">
                                 <span className="font-bold text-foreground block">{c.serviceType || "Clinical Assessment"}</span>
@@ -2966,12 +2867,131 @@ export default function PetOwnerPortalPage() {
                           ))}
                         </div>
                       )}
+
+                      {/* Clinical Encounters & Consultation History for this pet */}
+                      {petHistoryConsultations.length > 0 && (
+                        <div className="space-y-2 pt-1 border-t border-border/50">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                              <Stethoscope className="size-3.5 text-primary" />
+                              <span>Clinical Encounters & Consultation History</span>
+                            </h4>
+                            <Badge variant="outline" className="text-[10px] font-semibold text-muted-foreground border-border/80">
+                              {petHistoryConsultations.length} {petHistoryConsultations.length === 1 ? "Record" : "Records"}
+                            </Badge>
+                          </div>
+
+                          <div className="space-y-2">
+                            {petHistoryConsultations.map((c: any) => {
+                              const isCompleted = c.status === "completed";
+                              const isOverdue = isConsultationOverdue(c.date, c.status);
+
+                              return (
+                                <div
+                                  key={c.id}
+                                  className={cn(
+                                    "p-3 rounded-xl border space-y-2 transition-all",
+                                    isOverdue
+                                      ? "bg-rose-500/5 border-rose-500/20"
+                                      : isCompleted
+                                      ? "bg-emerald-500/5 border-emerald-500/20"
+                                      : "bg-muted/30 border-border/70"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono text-[10.5px] font-bold text-foreground bg-background px-1.5 py-0.5 rounded border border-border/70">
+                                        #{c.encounterNo}
+                                      </span>
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          "text-[9px] font-bold uppercase tracking-wider gap-1 select-none pointer-events-none",
+                                          isOverdue
+                                            ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                                            : isCompleted
+                                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                            : "bg-muted text-muted-foreground border-border/60"
+                                        )}
+                                      >
+                                        {isOverdue ? (
+                                          <>
+                                            <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
+                                            Overdue
+                                          </>
+                                        ) : isCompleted ? (
+                                          <>
+                                            <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                            Completed
+                                          </>
+                                        ) : (
+                                          c.status.toUpperCase()
+                                        )}
+                                      </Badge>
+                                    </div>
+
+                                    <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
+                                      <Calendar className="size-3" />
+                                      {c.date} • {c.time || "Intake"}
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="font-bold text-foreground text-xs">
+                                        {c.serviceType || "Clinical Assessment"}
+                                      </p>
+                                      {c.vetName && (
+                                        <span className="text-[10px] text-muted-foreground italic font-serif">
+                                          Attending Vet: {c.vetName}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
+                                      <strong className="text-foreground">Reason:</strong> {c.chiefComplaint || "General checkup"}
+                                    </p>
+
+                                    {c.diagnosis && c.diagnosis !== "Pending Clinical Examination" && (
+                                      <div className="text-[11px] text-foreground bg-background/80 p-2 rounded-lg border border-border/60 space-y-0.5 mt-1">
+                                        <p className="font-semibold text-emerald-700 dark:text-emerald-400">
+                                          Official Diagnosis: {c.diagnosis}
+                                        </p>
+                                        {c.treatment && (
+                                          <p className="text-muted-foreground text-[10.5px]">
+                                            Treatment: {c.treatment}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/40">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setSelectedConsultation(c);
+                                        setSheetOpen(true);
+                                      }}
+                                      className="h-7 px-2.5 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-background hover:bg-muted"
+                                    >
+                                      <FileText className="size-3 text-primary" />
+                                      <span>Official CVO Paper</span>
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
 
                   {/* Consultation Scheduling View */}
                   {activeProfileTab === "consultation" && (
-                    <div className="space-y-2">
+                    <div className="space-y-3 animate-in fade-in-0 duration-200">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -3029,7 +3049,7 @@ export default function PetOwnerPortalPage() {
 
                   {/* Procedure Scheduling View */}
                   {activeProfileTab === "procedure" && (
-                    <div className="space-y-2">
+                    <div className="space-y-3 animate-in fade-in-0 duration-200">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
@@ -3088,7 +3108,7 @@ export default function PetOwnerPortalPage() {
 
                   {/* Digital Pet Passport QR View */}
                   {activeProfileTab === "passport" && (
-                    <div className="space-y-3">
+                    <div className="space-y-3 animate-in fade-in-0 duration-200">
                       <div className="flex items-center justify-between pb-2 border-b border-border/70">
                         <div className="flex items-center gap-2">
                           <div className="size-7 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center">
@@ -3163,8 +3183,7 @@ export default function PetOwnerPortalPage() {
                       </div>
                     </div>
                   )}
-                  </div>
-                </AnimatedModalContent>
+                </div>
               </div>
 
               {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}

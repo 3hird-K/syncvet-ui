@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn, isClinicDateDisabled, getNextAvailableClinicDate } from "@/lib/utils";
+import { cn, isClinicDateDisabled, getNextAvailableClinicDate, isConsultationOverdue } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -316,8 +316,9 @@ export function PetOwnerConsultationDialog({
     if (!targetPetName && !targetPetId) return null;
 
     return consultations.find((c) => {
-      // Active queue statuses: waiting, in-consultation, treatment
-      const isActive = c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment";
+      // Active queue statuses: waiting, in-consultation, treatment (exclude overdue schedules)
+      const isOverdue = isConsultationOverdue(c.date, c.status);
+      const isActive = (c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment") && !isOverdue;
       if (!isActive) return false;
 
       const cPetId = (c.petId || "").toLowerCase().trim();
@@ -831,7 +832,7 @@ export function PetOwnerConsultationDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
+      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
         <DialogHeader className="border-b pb-3.5">
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
