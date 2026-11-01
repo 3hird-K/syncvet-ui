@@ -13,12 +13,14 @@ import {
   AlertTriangle,
   History,
   UserCheck,
+  Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { NewAnimalControlDialog } from "@/components/dashboard/new-animal-control-dialog";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOAnimalControlCase } from "@/data/cvo-store";
 import { Badge } from "@/components/ui/badge";
@@ -61,8 +63,67 @@ export default function AnimalControlPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedCase, setSelectedCase] = useState<CVOAnimalControlCase | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const handleExportCsv = (filteredData: CVOAnimalControlCase[], summary: string) => {
+    if (filteredData.length === 0) {
+      toast.error("No animal control cases match the selected filter criteria.");
+      return;
+    }
+
+    const headers = [
+      "Case ID",
+      "Intake Date",
+      "Barangay",
+      "Specific Location",
+      "Animal Description",
+      "Reason for Intake",
+      "Intake Officer",
+      "Holding Days Elapsed",
+      "Max Holding Days",
+      "Status",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredData.map((c) =>
+        [
+          escapeCsv(c.caseId),
+          escapeCsv(c.dateCaptured),
+          escapeCsv(c.barangay),
+          escapeCsv(c.specificLocation),
+          escapeCsv(c.animalDescription),
+          escapeCsv(c.reason),
+          escapeCsv(c.intakeOfficer),
+          escapeCsv(c.holdingDaysElapsed),
+          escapeCsv(c.maxHoldingDays),
+          escapeCsv(c.status),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `CVO-Animal-Control-Cases-${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("Animal Control Cases Exported", {
+      description: `Exported ${filteredData.length} records (${summary}).`,
+    });
+  };
 
   const columns = [
     { id: "caseId", label: "Case ID", required: true },
@@ -198,7 +259,20 @@ export default function AnimalControlPage() {
         supertitle="Animal Control & Regulatory"
         title="Animal Control & Impound"
         subtitle={<>Municipal stray animal apprehension, humane intake, <span className="text-foreground">rabies quarantine observation</span>, owner redemptions, and community adoption programs.</>}
-        actions={<NewAnimalControlDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" /> Export CSV
+            </Button>
+            <NewAnimalControlDialog />
+          </div>
+        }
       />
 
       {/* ── Metrics ── */}
@@ -463,6 +537,29 @@ export default function AnimalControlPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Animal Control & Impound Cases"
+        description="Filter intake cases by date, barangay, or status before exporting to CSV."
+        data={animalControlCases}
+        dateExtractor={(c) => c.dateCaptured}
+        customFilters={[
+          {
+            id: "status",
+            label: "Status",
+            options: [
+              { label: "Impounded", value: "impounded" },
+              { label: "Claimed", value: "claimed" },
+              { label: "Adopted", value: "adopted" },
+              { label: "Released", value: "released" },
+            ],
+            predicate: (c, val) => c.status === val,
+          },
+        ]}
+        onExport={handleExportCsv}
+      />
     </div>
   );
 }

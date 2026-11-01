@@ -25,6 +25,7 @@ import {
   ArrowDown,
   ArrowUp,
   Loader2,
+  Download,
 } from "lucide-react";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -36,6 +37,7 @@ import { OfficialConsultationSheetDialog } from "@/components/dashboard/official
 import { ClinicalExaminationDialog } from "@/components/dashboard/clinical-examination-dialog";
 import { AdministerVaccinationDialog } from "@/components/dashboard/administer-vaccination-dialog";
 import { CompleteSurgeryDialog } from "@/components/dashboard/complete-surgery-dialog";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { toast } from "sonner";
@@ -112,9 +114,78 @@ function ConsultationsContent() {
   const [examDialogOpen, setExamDialogOpen] = useState(false);
   const [vaxDialogOpen, setVaxDialogOpen] = useState(false);
   const [surgeryDialogOpen, setSurgeryDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
+
+  const handleExportCsv = (filteredData: QueueEncounter[], summary: string) => {
+    if (filteredData.length === 0) {
+      toast.error("No clinical encounters match the selected filter criteria.");
+      return;
+    }
+
+    const headers = [
+      "Encounter / Transaction No",
+      "Date",
+      "Time",
+      "Category",
+      "Pet Name",
+      "Species",
+      "Breed",
+      "Owner Name",
+      "Contact",
+      "Barangay",
+      "Attending Veterinarian",
+      "Diagnosis / Service",
+      "Treatment",
+      "Medication",
+      "Status",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredData.map((enc) =>
+        [
+          escapeCsv(enc.encounterNo),
+          escapeCsv(enc.date),
+          escapeCsv(enc.time),
+          escapeCsv(enc.category),
+          escapeCsv(enc.petName),
+          escapeCsv(enc.species),
+          escapeCsv(enc.breed),
+          escapeCsv(enc.ownerName),
+          escapeCsv(enc.ownerContact),
+          escapeCsv(enc.ownerBarangay),
+          escapeCsv(enc.vetName),
+          escapeCsv(enc.diagnosis),
+          escapeCsv(enc.treatment),
+          escapeCsv(enc.medication),
+          escapeCsv(enc.status),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `CVO-Clinical-Encounters-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("Clinical Encounters Exported", {
+      description: `Exported ${filteredData.length} records (${summary}).`,
+    });
+  };
 
   const columns = [
     { id: "transaction", label: "Transaction ID & Type", required: true },
@@ -971,7 +1042,20 @@ function ConsultationsContent() {
         supertitle="Clinical & Preventive Operations"
         title="Clinical Queue & Procedures"
         subtitle={<>Municipal veterinary consultations, clinical diagnosis, <span className="text-foreground">electronic medical records (EMR)</span>, rabies vaccinations, and spay/neuter encounters for Cagayan de Oro pet owners.</>}
-        actions={<NewConsultationDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" /> Export CSV
+            </Button>
+            <NewConsultationDialog />
+          </div>
+        }
       />
 
       {/* ── Metrics ── */}
@@ -1753,6 +1837,39 @@ function ConsultationsContent() {
         open={surgeryDialogOpen}
         onOpenChange={setSurgeryDialogOpen}
         onCompleted={(updated) => setSelectedConsultation(updated)}
+      />
+
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Clinical Queue & Encounters"
+        description="Filter clinical encounters by day, month, year, date range, encounter category, or status before exporting."
+        data={allUnifiedQueue}
+        dateExtractor={(enc) => enc.date}
+        customFilters={[
+          {
+            id: "category",
+            label: "Encounter Category",
+            options: [
+              { label: "EMR Consultations", value: "consultation" },
+              { label: "Anti-Rabies Vaccination", value: "vaccination" },
+              { label: "Spay & Neuter (Kapon)", value: "spay-neuter" },
+            ],
+            predicate: (enc, val) => enc.category === val,
+          },
+          {
+            id: "status",
+            label: "Encounter Status",
+            options: [
+              { label: "Waiting", value: "waiting" },
+              { label: "In Consultation", value: "in-consultation" },
+              { label: "Treatment", value: "treatment" },
+              { label: "Completed", value: "completed" },
+            ],
+            predicate: (enc, val) => enc.status === val,
+          },
+        ]}
+        onExport={handleExportCsv}
       />
     </div>
   );

@@ -13,8 +13,10 @@ import {
   Trash2,
   Loader2,
   PackageCheck,
+  Download,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,6 +125,63 @@ export default function VaccineInventoryPage() {
   // Delete state
   const [batchToDelete, setBatchToDelete] = useState<CVOInventoryItem | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  const handleExportCsv = (filteredData: CVOInventoryItem[], summary: string) => {
+    if (filteredData.length === 0) {
+      toast.error("No inventory batches match the selected filter criteria.");
+      return;
+    }
+
+    const headers = [
+      "Batch Number",
+      "Item / Vaccine Name",
+      "Category",
+      "Stock Level",
+      "Unit",
+      "Minimum Alert Level",
+      "Expiration Date",
+      "Storage Location",
+      "Manufacturer",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredData.map((item) =>
+        [
+          escapeCsv(item.batchNumber),
+          escapeCsv(item.name),
+          escapeCsv(item.category),
+          escapeCsv(item.stock),
+          escapeCsv(item.unit || "doses"),
+          escapeCsv(item.minimumStock),
+          escapeCsv(item.expirationDate),
+          escapeCsv(item.storageLocation),
+          escapeCsv(item.manufacturer),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `CVO-Inventory-Ledger-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("Inventory Ledger Exported", {
+      description: `Exported ${filteredData.length} batches (${summary}).`,
+    });
+  };
 
   // Automatically populate and enter edit state whenever a row is clicked
   useEffect(() => {
@@ -362,7 +421,20 @@ export default function VaccineInventoryPage() {
             Government cold-chain management with <span className="text-foreground">FEFO (First-Expire, First-Out)</span> prioritization, batch traceability, and automated reorder triggers.
           </>
         }
-        actions={<AddBatchDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" /> Export CSV
+            </Button>
+            <AddBatchDialog />
+          </div>
+        }
       />
 
       <PageMetricCards metrics={metrics} />
@@ -835,6 +907,42 @@ export default function VaccineInventoryPage() {
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         onDeleted={() => setSelectedBatch(null)}
+      />
+
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Vaccine & Supply Inventory"
+        description="Filter cold-chain inventory items by expiration date, category, or stock level before exporting to CSV."
+        data={effectiveInventory}
+        dateExtractor={(item) => item.expirationDate}
+        customFilters={[
+          {
+            id: "category",
+            label: "Category",
+            options: [
+              { label: "Vaccines", value: "Vaccines" },
+              { label: "Dewormers", value: "Dewormers" },
+              { label: "Vitamins", value: "Vitamins" },
+              { label: "Antibiotics", value: "Antibiotics" },
+              { label: "Anesthetics", value: "Anesthetics" },
+              { label: "Surgical Supplies", value: "Surgical Supplies" },
+            ],
+            predicate: (item, val) => item.category === val,
+          },
+          {
+            id: "status",
+            label: "Stock Status",
+            options: [
+              { label: "Adequate Stock", value: "in-stock" },
+              { label: "Low Stock Alert", value: "low-stock" },
+              { label: "Near Expiry", value: "expiring-soon" },
+              { label: "Expired", value: "expired" },
+            ],
+            predicate: (item, val) => item.status === val,
+          },
+        ]}
+        onExport={handleExportCsv}
       />
     </div>
   );

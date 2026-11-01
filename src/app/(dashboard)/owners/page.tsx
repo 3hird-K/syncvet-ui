@@ -14,11 +14,14 @@ import {
   Stethoscope,
   Plus,
   BadgeCheck,
+  Download,
 } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { type SupabaseUser } from "@/data/syncvet-users";
@@ -75,8 +78,63 @@ export default function OwnersPage() {
   const { consultations } = useCVO();
   const [query, setQuery] = useState("");
   const [selectedOwner, setSelectedOwner] = useState<OwnerProfile | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const handleExportCsv = (filteredData: OwnerProfile[], summary: string) => {
+    if (filteredData.length === 0) {
+      toast.error("No pet owner records match the selected filter criteria.");
+      return;
+    }
+
+    const headers = [
+      "Owner ID",
+      "Full Legal Name",
+      "Contact Number",
+      "Barangay",
+      "Address",
+      "Residency Verified",
+      "Registration Date",
+      "Animals Registered",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredData.map((o) =>
+        [
+          escapeCsv(o.id),
+          escapeCsv(o.name),
+          escapeCsv(o.contact),
+          escapeCsv(o.barangay),
+          escapeCsv(o.address),
+          escapeCsv(o.residencyVerified ? "Verified" : "Unverified"),
+          escapeCsv(o.registeredDate),
+          escapeCsv(o.animals.map((a) => `${a.name} (${a.species})`).join("; ")),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `CVO-Owner-Registry-${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("Owner Registry Exported", {
+      description: `Exported ${filteredData.length} owner profiles (${summary}).`,
+    });
+  };
 
   const columns = [
     { id: "id", label: "Owner ID", required: true },
@@ -244,11 +302,22 @@ export default function OwnersPage() {
         title="Owner Registry"
         subtitle={<>Official directory of registered pet owners and livestock holders in Cagayan de Oro City with <span className="text-foreground">LGU residency verification</span> and multi-animal portfolio management.</>}
         actions={
-          <Link href="/pet-registry">
-            <Button size="sm" className="gap-1.5 text-xs">
-              <PawPrint className="size-3.5" /> Register Animal
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" /> Export CSV
             </Button>
-          </Link>
+            <Link href="/pet-registry">
+              <Button size="sm" className="gap-1.5 text-xs">
+                <PawPrint className="size-3.5" /> Register Animal
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -516,6 +585,27 @@ export default function OwnersPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Pet Owner Registry"
+        description="Filter pet owner directory by date registered or residency status before exporting to CSV."
+        data={allOwners}
+        dateExtractor={(o) => o.registeredDate}
+        customFilters={[
+          {
+            id: "residency",
+            label: "Residency Status",
+            options: [
+              { label: "Verified Resident", value: "verified" },
+              { label: "Pending Verification", value: "pending" },
+            ],
+            predicate: (o, val) => (val === "verified" ? o.residencyVerified : !o.residencyVerified),
+          },
+        ]}
+        onExport={handleExportCsv}
+      />
     </div>
   );
 }

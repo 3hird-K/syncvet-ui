@@ -7,10 +7,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -20,23 +20,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
   Download,
-  Calendar,
-  Filter,
+  Calendar as CalendarIcon,
   FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
-  FileText,
+  X,
 } from "lucide-react";
-import {
-  format,
-  isSameDay,
-  isSameMonth,
-  isSameYear,
-  isWithinInterval,
-  startOfDay,
-  endOfDay,
-} from "date-fns";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export interface CustomFilterDef<T> {
   id: string;
@@ -88,11 +86,13 @@ export function ExportTableDialog<T>({
   defaultDateMode = "ALL",
 }: ExportTableDialogProps<T>) {
   const [dateMode, setDateMode] = useState<"ALL" | "DAY" | "MONTH" | "YEAR" | "RANGE">(defaultDateMode);
-  const [selectedDay, setSelectedDay] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [selectedDayDate, setSelectedDayDate] = useState<Date>(new Date());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR.toString());
-  const [dateRangeStart, setDateRangeStart] = useState(format(new Date(), "yyyy-MM-01"));
-  const [dateRangeEnd, setDateRangeEnd] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [dateRangeStartDate, setDateRangeStartDate] = useState<Date>(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+  const [dateRangeEndDate, setDateRangeEndDate] = useState<Date>(() => new Date());
 
   // Track values for custom filters
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
@@ -103,6 +103,10 @@ export function ExportTableDialog<T>({
       [filterId]: val,
     }));
   };
+
+  const selectedDayStr = useMemo(() => format(selectedDayDate, "yyyy-MM-dd"), [selectedDayDate]);
+  const dateRangeStartStr = useMemo(() => format(dateRangeStartDate, "yyyy-MM-dd"), [dateRangeStartDate]);
+  const dateRangeEndStr = useMemo(() => format(dateRangeEndDate, "yyyy-MM-dd"), [dateRangeEndDate]);
 
   // Compute filtered dataset live
   const filteredData = useMemo(() => {
@@ -116,7 +120,7 @@ export function ExportTableDialog<T>({
 
         if (dateMode === "DAY") {
           const itemDayStr = format(itemDate, "yyyy-MM-dd");
-          if (itemDayStr !== selectedDay) return false;
+          if (itemDayStr !== selectedDayStr) return false;
         } else if (dateMode === "MONTH") {
           const m = parseInt(selectedMonth, 10);
           const y = parseInt(selectedYear, 10);
@@ -127,8 +131,8 @@ export function ExportTableDialog<T>({
         } else if (dateMode === "RANGE") {
           try {
             const itemDayStr = format(itemDate, "yyyy-MM-dd");
-            if (dateRangeStart && itemDayStr < dateRangeStart) return false;
-            if (dateRangeEnd && itemDayStr > dateRangeEnd) return false;
+            if (dateRangeStartStr && itemDayStr < dateRangeStartStr) return false;
+            if (dateRangeEndStr && itemDayStr > dateRangeEndStr) return false;
           } catch {
             return false;
           }
@@ -151,11 +155,11 @@ export function ExportTableDialog<T>({
     data,
     dateExtractor,
     dateMode,
-    selectedDay,
+    selectedDayStr,
     selectedMonth,
     selectedYear,
-    dateRangeStart,
-    dateRangeEnd,
+    dateRangeStartStr,
+    dateRangeEndStr,
     customFilters,
     filterValues,
   ]);
@@ -164,10 +168,10 @@ export function ExportTableDialog<T>({
   const filterSummary = useMemo(() => {
     const parts: string[] = [];
     if (dateMode === "ALL") parts.push("All Time");
-    else if (dateMode === "DAY") parts.push(`Day: ${selectedDay}`);
+    else if (dateMode === "DAY") parts.push(`Day: ${format(selectedDayDate, "MMMM d, yyyy")}`);
     else if (dateMode === "MONTH") parts.push(`Month: ${MONTHS[parseInt(selectedMonth, 10)]?.label} ${selectedYear}`);
     else if (dateMode === "YEAR") parts.push(`Year: ${selectedYear}`);
-    else if (dateMode === "RANGE") parts.push(`${dateRangeStart} to ${dateRangeEnd}`);
+    else if (dateMode === "RANGE") parts.push(`${format(dateRangeStartDate, "MMM d, yyyy")} to ${format(dateRangeEndDate, "MMM d, yyyy")}`);
 
     for (const filterDef of customFilters) {
       const val = filterValues[filterDef.id];
@@ -177,7 +181,16 @@ export function ExportTableDialog<T>({
       }
     }
     return parts.join(", ");
-  }, [dateMode, selectedDay, selectedMonth, selectedYear, dateRangeStart, dateRangeEnd, customFilters, filterValues]);
+  }, [
+    dateMode,
+    selectedDayDate,
+    selectedMonth,
+    selectedYear,
+    dateRangeStartDate,
+    dateRangeEndDate,
+    customFilters,
+    filterValues,
+  ]);
 
   const handleExecuteExport = () => {
     onExport(filteredData, filterSummary);
@@ -186,35 +199,75 @@ export function ExportTableDialog<T>({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-md rounded-2xl bg-card border-border p-6 shadow-2xl">
-        <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
-          <div className="flex items-center gap-2 text-primary font-bold text-sm">
-            <FileSpreadsheet className="size-4.5" />
-            <DialogTitle className="text-base font-extrabold text-foreground">
-              {title}
-            </DialogTitle>
+      <DialogContent
+        showCloseButton={false}
+        className="w-[95vw] sm:max-w-[540px] md:max-w-[560px] rounded-2xl bg-card border-border p-5 sm:p-6 shadow-2xl overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <DialogHeader className="space-y-0 pb-3 border-b border-border/60 !pr-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-primary font-bold min-w-0">
+              <FileSpreadsheet className="size-5 shrink-0" />
+              <DialogTitle className="text-base sm:text-lg font-bold text-foreground truncate">
+                {title}
+              </DialogTitle>
+            </div>
+
+            {/* Header Action Buttons: Download icon and X close icon */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleExecuteExport}
+                disabled={filteredData.length === 0}
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs cursor-pointer",
+                  filteredData.length === 0
+                    ? "opacity-40 cursor-not-allowed"
+                    : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title={filteredData.length === 0 ? "No records to export" : `Export CSV (${filteredData.length} records)`}
+                aria-label="Export CSV"
+              >
+                <Download className="size-4" />
+              </Button>
+
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all hover:scale-105 active:scale-95"
+                  title="Close"
+                  aria-label="Close"
+                >
+                  <X className="size-4" />
+                </Button>
+              </DialogClose>
+            </div>
           </div>
-          <DialogDescription className="text-xs text-muted-foreground leading-snug">
+
+          <DialogDescription className="text-xs text-muted-foreground leading-snug pt-1">
             {description}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-3 text-xs">
-          {/* ── 1. Date Filter Section (if applicable) ── */}
+        <div className="space-y-4 pt-3 text-xs">
+          {/* ── 1. Date Filter Section (Clean, without container box) ── */}
           {dateExtractor && (
-            <div className="space-y-2 rounded-xl bg-muted/20 p-3 border border-border/50">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <Calendar className="size-3.5 text-primary" />
+                  <CalendarIcon className="size-3.5 text-primary" />
                   <span>Timeframe / Date Filter</span>
                 </Label>
-                <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0">
+                <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 font-semibold">
                   {dateMode}
                 </Badge>
               </div>
 
               {/* Mode selector */}
-              <div className="grid grid-cols-5 gap-1 pt-1">
+              <div className="grid grid-cols-5 gap-1.5 pt-0.5">
                 {[
                   { value: "ALL", label: "All" },
                   { value: "DAY", label: "Day" },
@@ -226,7 +279,7 @@ export function ExportTableDialog<T>({
                     key={mode.value}
                     type="button"
                     onClick={() => setDateMode(mode.value as any)}
-                    className={`h-7 rounded-lg text-[11px] font-semibold transition-all border cursor-pointer ${
+                    className={`h-8 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
                       dateMode === mode.value
                         ? "bg-primary text-primary-foreground border-primary shadow-xs font-bold"
                         : "bg-background text-muted-foreground hover:bg-muted border-border/70 hover:text-foreground"
@@ -237,32 +290,45 @@ export function ExportTableDialog<T>({
                 ))}
               </div>
 
-              {/* Dynamic Inputs depending on Date Mode */}
+              {/* Dynamic Inputs with shadcn Calendar */}
               {dateMode === "DAY" && (
-                <div className="pt-2">
-                  <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                <div className="pt-1.5 space-y-1">
+                  <Label className="text-[11px] text-muted-foreground block font-medium">
                     Select Specific Date
                   </Label>
-                  <Input
-                    type="date"
-                    value={selectedDay}
-                    onChange={(e) => setSelectedDay(e.target.value)}
-                    className="h-8.5 text-xs bg-background"
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-start text-left font-medium h-9 text-xs bg-background hover:bg-muted/50 border-border/70 cursor-pointer"
+                      >
+                        <CalendarIcon className="mr-2 size-3.5 text-primary shrink-0" />
+                        <span>{format(selectedDayDate, "EEEE, MMMM d, yyyy")}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 z-[170]" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDayDate}
+                        onSelect={(date) => date && setSelectedDayDate(date)}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
 
               {dateMode === "MONTH" && (
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <div>
-                    <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                <div className="grid grid-cols-2 gap-2.5 pt-1.5">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground block font-medium">
                       Month
                     </Label>
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                      <SelectTrigger className="h-8.5 text-xs bg-background">
+                      <SelectTrigger className="h-9 text-xs bg-background">
                         <SelectValue placeholder="Month" />
                       </SelectTrigger>
-                      <SelectContent className="z-[160] max-h-56">
+                      <SelectContent className="z-[170] max-h-56">
                         {MONTHS.map((m) => (
                           <SelectItem key={m.value} value={m.value} className="text-xs">
                             {m.label}
@@ -271,15 +337,15 @@ export function ExportTableDialog<T>({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground block font-medium">
                       Year
                     </Label>
                     <Select value={selectedYear} onValueChange={setSelectedYear}>
-                      <SelectTrigger className="h-8.5 text-xs bg-background">
+                      <SelectTrigger className="h-9 text-xs bg-background">
                         <SelectValue placeholder="Year" />
                       </SelectTrigger>
-                      <SelectContent className="z-[160] max-h-56">
+                      <SelectContent className="z-[170] max-h-56">
                         {YEARS.map((y) => (
                           <SelectItem key={y} value={y} className="text-xs">
                             {y}
@@ -292,15 +358,15 @@ export function ExportTableDialog<T>({
               )}
 
               {dateMode === "YEAR" && (
-                <div className="pt-2">
-                  <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                <div className="pt-1.5 space-y-1">
+                  <Label className="text-[11px] text-muted-foreground block font-medium">
                     Select Year
                   </Label>
                   <Select value={selectedYear} onValueChange={setSelectedYear}>
-                    <SelectTrigger className="h-8.5 text-xs bg-background">
+                    <SelectTrigger className="h-9 text-xs bg-background">
                       <SelectValue placeholder="Year" />
                     </SelectTrigger>
-                    <SelectContent className="z-[160] max-h-56">
+                    <SelectContent className="z-[170] max-h-56">
                       {YEARS.map((y) => (
                         <SelectItem key={y} value={y} className="text-xs">
                           {y}
@@ -312,28 +378,54 @@ export function ExportTableDialog<T>({
               )}
 
               {dateMode === "RANGE" && (
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <div>
-                    <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                <div className="grid grid-cols-2 gap-2.5 pt-1.5">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground block font-medium">
                       From Date
                     </Label>
-                    <Input
-                      type="date"
-                      value={dateRangeStart}
-                      onChange={(e) => setDateRangeStart(e.target.value)}
-                      className="h-8.5 text-xs bg-background"
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full justify-start text-left font-medium h-9 text-xs bg-background hover:bg-muted/50 border-border/70 cursor-pointer"
+                        >
+                          <CalendarIcon className="mr-2 size-3.5 text-primary shrink-0" />
+                          <span className="truncate">{format(dateRangeStartDate, "MMM d, yyyy")}</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[170]" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateRangeStartDate}
+                          onSelect={(date) => date && setDateRangeStartDate(date)}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
-                  <div>
-                    <Label className="text-[10.5px] text-muted-foreground block mb-1">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground block font-medium">
                       To Date
                     </Label>
-                    <Input
-                      type="date"
-                      value={dateRangeEnd}
-                      onChange={(e) => setDateRangeEnd(e.target.value)}
-                      className="h-8.5 text-xs bg-background"
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full justify-start text-left font-medium h-9 text-xs bg-background hover:bg-muted/50 border-border/70 cursor-pointer"
+                        >
+                          <CalendarIcon className="mr-2 size-3.5 text-primary shrink-0" />
+                          <span className="truncate">{format(dateRangeEndDate, "MMM d, yyyy")}</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[170]" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateRangeEndDate}
+                          onSelect={(date) => date && setDateRangeEndDate(date)}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               )}
@@ -342,7 +434,7 @@ export function ExportTableDialog<T>({
 
           {/* ── 2. Table-Specific Filters ── */}
           {customFilters.length > 0 && (
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 pt-1">
               {customFilters.map((filter) => {
                 const currentVal = filterValues[filter.id] || "ALL";
                 return (
@@ -354,10 +446,10 @@ export function ExportTableDialog<T>({
                       value={currentVal}
                       onValueChange={(val) => handleCustomFilterChange(filter.id, val)}
                     >
-                      <SelectTrigger className="h-8.5 text-xs bg-background">
+                      <SelectTrigger className="h-9 text-xs bg-background">
                         <SelectValue placeholder={filter.placeholder || `All ${filter.label}`} />
                       </SelectTrigger>
-                      <SelectContent className="z-[160] max-h-56">
+                      <SelectContent className="z-[170] max-h-56">
                         <SelectItem value="ALL" className="text-xs font-semibold">
                           All {filter.label}
                         </SelectItem>
@@ -409,29 +501,6 @@ export function ExportTableDialog<T>({
               {Math.round((filteredData.length / (data.length || 1)) * 100)}%
             </Badge>
           </div>
-        </div>
-
-        {/* ── Actions ── */}
-        <div className="pt-2 flex items-center justify-end gap-2 border-t border-border/50">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="h-8 text-xs font-semibold cursor-pointer"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleExecuteExport}
-            disabled={filteredData.length === 0}
-            className="h-8 text-xs font-bold gap-1.5 cursor-pointer shadow-xs"
-          >
-            <Download className="size-3.5" />
-            <span>Download CSV ({filteredData.length})</span>
-          </Button>
         </div>
       </DialogContent>
     </Dialog>

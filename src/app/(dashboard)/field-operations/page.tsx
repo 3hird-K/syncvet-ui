@@ -25,8 +25,10 @@ import {
   Lock,
   QrCode,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,6 +238,66 @@ export default function FieldOperationsPage() {
     }
   };
 
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+
+  const handleExportCsv = (filteredData: CVOFieldOperation[], summary: string) => {
+    if (filteredData.length === 0) {
+      toast.error("No field operations match the selected filter criteria.");
+      return;
+    }
+
+    const headers = [
+      "Operation ID",
+      "Target Barangay",
+      "Venue / Site",
+      "Date",
+      "Time Window",
+      "Operation Type",
+      "Assigned Lead / Team",
+      "Target Slots",
+      "Registered Attendees",
+      "Status",
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return "";
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvRows = [
+      headers.join(","),
+      ...filteredData.map((op) =>
+        [
+          escapeCsv(op.opId),
+          escapeCsv(op.barangay),
+          escapeCsv(op.venue),
+          escapeCsv(op.date),
+          escapeCsv(op.timeWindow ?? ""),
+          escapeCsv(op.type),
+          escapeCsv(op.lead),
+          escapeCsv(op.petsTarget),
+          escapeCsv(op.petsVaccinated ?? 0),
+          escapeCsv(op.status),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `CVO-Field-Operations-${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("Field Operations Exported", {
+      description: `Exported ${filteredData.length} outreach deployments (${summary}).`,
+    });
+  };
+
   const handleDelete = (op: CVOFieldOperation) => {
     setOpToDelete(op);
   };
@@ -268,6 +330,15 @@ export default function FieldOperationsPage() {
         }
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
+            >
+              <Download className="size-3.5" /> Export CSV
+            </Button>
             <ScheduleDriveDialog />
           </div>
         }
@@ -959,6 +1030,30 @@ export default function FieldOperationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Export Table Dialog */}
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Barangay Field Operations"
+        description="Filter outreach deployments by date, barangay, or status before exporting to CSV."
+        data={fieldOperations}
+        dateExtractor={(op) => op.date}
+        customFilters={[
+          {
+            id: "status",
+            label: "Status",
+            options: [
+              { label: "Scheduled", value: "scheduled" },
+              { label: "In Progress", value: "in-progress" },
+              { label: "Completed", value: "completed" },
+              { label: "Cancelled", value: "cancelled" },
+            ],
+            predicate: (op, val) => op.status === val,
+          },
+        ]}
+        onExport={handleExportCsv}
+      />
     </div>
   );
 }
