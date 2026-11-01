@@ -28,6 +28,7 @@ import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +80,7 @@ export interface VaccinationRecordItem {
   status: "complete" | "overdue" | "scheduled";
   source?: "database" | "emr" | "manual";
   notes?: string;
+  petPhotoUrl?: string;
 }
 
 export default function VaccinationRecordsPage() {
@@ -107,7 +109,7 @@ export default function VaccinationRecordsPage() {
       try {
         const { data, error } = await supabase
           .from("vaccination_records")
-          .select("*, pets:pet_id(id, name, species, breed), users:owner_id(id, full_name, phone_number, address)")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, address)")
           .order("administered_date", { ascending: false });
 
         if (error || !data) return [];
@@ -132,6 +134,7 @@ export default function VaccinationRecordsPage() {
             nextDue: r.next_due_date || "—",
             status: (r.status || "complete").toLowerCase() as any,
             source: "database" as const,
+            petPhotoUrl: petData?.photo_url || null,
           };
         });
       } catch {
@@ -148,7 +151,7 @@ export default function VaccinationRecordsPage() {
       try {
         const { data, error } = await supabase
           .from("appointments")
-          .select("id, pet_id, pet_name, owner_id, service_id, status, date, notes, users(full_name, phone_number, address), pets(name, species, breed)")
+          .select("id, pet_id, pet_name, owner_id, service_id, status, date, notes, users(full_name, phone_number, address), pets(name, species, breed, photo_url)")
           .eq("service_id", "vaccination")
           .eq("status", "completed")
           .order("date", { ascending: false });
@@ -206,6 +209,7 @@ export default function VaccinationRecordsPage() {
             status: "complete" as const,
             source: "emr" as const,
             notes: apt.notes || "Administered via Consultations & EMR",
+            petPhotoUrl: petObj?.photo_url || null,
           };
         });
       } catch {
@@ -327,7 +331,7 @@ export default function VaccinationRecordsPage() {
       try {
         const { data } = await supabase
           .from("pets")
-          .select("id, name, owner_id, is_vaccinated, last_vaccination_date, next_vaccination_date, users(email, full_name)");
+          .select("id, name, owner_id, is_vaccinated, last_vaccination_date, next_vaccination_date, photo_url, users(email, full_name)");
         if (!data) return [];
         const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
         const userFullName = (user?.fullName || "").toLowerCase();
@@ -376,6 +380,7 @@ export default function VaccinationRecordsPage() {
         nextDue: p.next_vaccination_date || "2027-05-10",
         status: "complete" as const,
         source: "database" as const,
+        petPhotoUrl: p.photo_url || null,
       }));
   }, [isPetOwner, allRecords, userPets, user]);
 
@@ -871,9 +876,13 @@ export default function VaccinationRecordsPage() {
                       {visibleColumns.includes("pet") && (
                         <TableCell className="py-3">
                           <div className="flex items-center gap-2 max-w-[170px]">
-                            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                              <PawPrint className="size-4" />
-                            </div>
+                            <PetAvatar
+                              photoUrl={r.petPhotoUrl}
+                              species={r.species}
+                              name={r.petName}
+                              size="sm"
+                              className="size-8 shrink-0"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight truncate">
                                 {r.petName}

@@ -38,6 +38,7 @@ import { ClinicalExaminationDialog } from "@/components/dashboard/clinical-exami
 import { AdministerVaccinationDialog } from "@/components/dashboard/administer-vaccination-dialog";
 import { CompleteSurgeryDialog } from "@/components/dashboard/complete-surgery-dialog";
 import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { toast } from "sonner";
@@ -87,6 +88,7 @@ export interface QueueEncounter extends CVOConsultation {
   isOverdue: boolean;
   ownerAvatarUrl?: string;
   vetAvatarUrl?: string;
+  petPhotoUrl?: string;
 }
 
 function ConsultationsContent() {
@@ -384,7 +386,7 @@ function ConsultationsContent() {
     queryFn: async () => {
       try {
         const supabase = getPublicSupabaseClient();
-        const { data } = await supabase.from("pets").select("id, name, species, breed, owner_id");
+        const { data } = await supabase.from("pets").select("id, name, species, breed, owner_id, photo_url");
         return data || [];
       } catch {
         return [];
@@ -478,6 +480,12 @@ function ConsultationsContent() {
         return uName === vName || vName.includes(uName) || uName.includes(vName);
       });
 
+      const matchedPet = dbPets.find(
+        (p: any) =>
+          (c.petId && p.id === c.petId) ||
+          (p.name && c.petName && p.name.trim().toLowerCase() === c.petName.trim().toLowerCase())
+      );
+
       return {
         ...c,
         vetName: validVetName,
@@ -485,9 +493,10 @@ function ConsultationsContent() {
         isOverdue: isItemOverdue(c.date, c.status),
         ownerAvatarUrl: matchedUser?.avatar_url,
         vetAvatarUrl: matchedVet?.avatar_url,
+        petPhotoUrl: matchedPet?.photo_url,
       };
     });
-  }, [allConsultations, dbUsers, isRecognizedAttendingVet]);
+  }, [allConsultations, dbPets, dbUsers, isRecognizedAttendingVet]);
 
   // Consolidate procedure appointments into QueueEncounter[]
   const appointmentItems = useMemo<QueueEncounter[]>(() => {
@@ -594,6 +603,7 @@ function ConsultationsContent() {
           ownerAvatarUrl: matchedUser?.avatar_url,
           vetName: resolvedVet,
           vetAvatarUrl: matchedVetUser?.avatar_url,
+          petPhotoUrl: apt.pets?.photo_url || matchedPet?.photo_url,
           date: apt.date || "",
           time: timeStr,
           chiefComplaint:
@@ -1266,9 +1276,13 @@ function ConsultationsContent() {
                     {visibleColumns.includes("animal") && (
                       <TableCell className="py-3 align-middle">
                         <div className="flex items-center gap-2 max-w-[150px]">
-                          <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                            <PawPrint className="size-4" />
-                          </div>
+                          <PetAvatar
+                            photoUrl={c.petPhotoUrl}
+                            species={c.species}
+                            name={c.petName}
+                            size="sm"
+                            className="size-8 shrink-0"
+                          />
                           <div className="min-w-0 flex-1">
                             <p className="font-bold text-xs text-foreground group-hover:text-primary transition-colors leading-tight truncate">
                               {c.petName}

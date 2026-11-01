@@ -707,33 +707,15 @@ export default function PetRegistryPage() {
                             photoUrl={pet.photo_url}
                             species={pet.species}
                             name={pet.name}
-                            size="sm"
+                            size="xs"
                           />
                           <span className="font-semibold text-foreground">{pet.name}</span>
                         </div>
                       </TableCell>
                     )}
                     {visibleColumns.includes("species") && (
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <div
-                            className={cn(
-                              "size-6 rounded-md flex items-center justify-center shrink-0 border",
-                              pet.species === "Dog"
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                                : "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
-                            )}
-                          >
-                            {pet.species === "Dog" ? (
-                              <Dog className="size-3.5" />
-                            ) : (
-                              <Cat className="size-3.5" />
-                            )}
-                          </div>
-                          <span className="text-xs font-semibold text-foreground">
-                            {pet.species}
-                          </span>
-                        </div>
+                      <TableCell className="text-xs font-semibold text-foreground">
+                        {pet.species}
                       </TableCell>
                     )}
                     {visibleColumns.includes("breed") && (
