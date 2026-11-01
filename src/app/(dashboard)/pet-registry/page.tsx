@@ -82,6 +82,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { EditPetDialog } from "@/components/dashboard/edit-pet-dialog";
 import { DeletePetDialog } from "@/components/dashboard/delete-pet-dialog";
@@ -114,6 +115,7 @@ interface PetRecord {
   photo_url?: string | null;
   lastVaccinationDate?: string;
   nextVaccinationDate?: string;
+  createdAt?: string;
 }
 
 export default function PetRegistryPage() {
@@ -133,6 +135,7 @@ export default function PetRegistryPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [petToDelete, setPetToDelete] = useState<any>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
@@ -204,6 +207,7 @@ export default function PetRegistryPage() {
           photo_url: p.photo_url || null,
           lastVaccinationDate: p.last_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2026-05-10" : undefined),
           nextVaccinationDate: p.next_vaccination_date || ((p.is_vaccinated || p.rabies_vaccinated) ? "2027-05-10" : undefined),
+          createdAt: p.created_at || new Date().toISOString(),
         }));
       } catch {
         return [];
@@ -354,28 +358,28 @@ export default function PetRegistryPage() {
       .catch((e) => console.error(e));
   }, [selectedPet]);
 
-  const handleExport = () => {
-    toast.promise(new Promise((resolve) => setTimeout(resolve, 800)), {
-      loading: "Generating municipal animal registry CSV...",
-      success: () => {
-        const content =
-          "Pet ID,Name,Species,Breed,Owner,Barangay,Vaccinated,Sterilized\n" +
-          userPets
-            .map(
-              (p: PetRecord) =>
-                `${p.id},${p.name},${p.species},${p.breed},${p.owner},${p.barangay},${p.vaccinated},${p.sterilized}`
-            )
-            .join("\n");
-        const blob = new Blob([content], { type: "text/csv" });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `cvo_animal_registry_${new Date().toISOString().split("T")[0]}.csv`;
-        a.click();
-        return "Registry exported successfully";
-      },
-      error: "Export failed",
-    });
+  const handleExport = (petsToExport: PetRecord[], filterSummary?: string) => {
+    if (petsToExport.length === 0) {
+      toast.error("No pet records match the selected export filter.");
+      return;
+    }
+
+    const content =
+      "Pet ID,Name,Species,Breed,Sex,Owner,Barangay,Vaccinated,Sterilized\n" +
+      petsToExport
+        .map(
+          (p: PetRecord) =>
+            `"${p.id}","${p.name}","${p.species}","${p.breed}","${p.sex}","${p.owner}","${p.barangay}","${p.vaccinated ? "Yes" : "No"}","${p.sterilized ? "Yes" : "No"}"`
+        )
+        .join("\n");
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cvo_animal_registry_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success(`Exported ${petsToExport.length} animal records to CSV${filterSummary ? ` (${filterSummary})` : ""}`);
   };
 
   // Find linked consultations
@@ -559,8 +563,8 @@ export default function PetRegistryPage() {
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 text-xs cursor-pointer"
-              onClick={handleExport}
+              className="gap-2 text-xs cursor-pointer shadow-xs"
+              onClick={() => setExportDialogOpen(true)}
             >
               <Download className="size-3.5" /> Export CSV
             </Button>
@@ -1479,6 +1483,76 @@ export default function PetRegistryPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Pre-Export Filter Dialog ── */}
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Animal Registry"
+        description="Filter registered pets by day, month, year, date range, species, sex, or vaccination status before exporting to CSV."
+        data={userPets}
+        dateExtractor={(p) => p.createdAt || p.lastVaccinationDate}
+        customFilters={[
+          {
+            id: "species",
+            label: "Species",
+            placeholder: "All Species",
+            options: [
+              { label: "All Species", value: "ALL" },
+              { label: "Canine / Dog", value: "Dog" },
+              { label: "Feline / Cat", value: "Cat" },
+              { label: "Livestock", value: "Livestock" },
+            ],
+            predicate: (p, val) => {
+              if (val === "ALL") return true;
+              return p.species === val;
+            },
+          },
+          {
+            id: "sex",
+            label: "Sex / Gender",
+            placeholder: "All",
+            options: [
+              { label: "All", value: "ALL" },
+              { label: "Male", value: "Male" },
+              { label: "Female", value: "Female" },
+            ],
+            predicate: (p, val) => {
+              if (val === "ALL") return true;
+              return p.sex === val;
+            },
+          },
+          {
+            id: "vaccinated",
+            label: "Vaccination Status",
+            placeholder: "All Records",
+            options: [
+              { label: "All Records", value: "ALL" },
+              { label: "Vaccinated Only", value: "VACCINATED" },
+              { label: "Unvaccinated Only", value: "UNVACCINATED" },
+            ],
+            predicate: (p, val) => {
+              if (val === "ALL") return true;
+              return val === "VACCINATED" ? p.vaccinated : !p.vaccinated;
+            },
+          },
+          {
+            id: "sterilized",
+            label: "Sterilization (Spayed/Neutered)",
+            placeholder: "All Records",
+            options: [
+              { label: "All Records", value: "ALL" },
+              { label: "Sterilized (Spayed / Neutered)", value: "STERILIZED" },
+              { label: "Intact", value: "INTACT" },
+            ],
+            predicate: (p, val) => {
+              if (val === "ALL") return true;
+              return val === "STERILIZED" ? p.sterilized : !p.sterilized;
+            },
+          },
+        ]}
+        onExport={handleExport}
+      />
     </div>
   );
 }

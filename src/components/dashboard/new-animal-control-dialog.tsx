@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ShieldAlert, Loader2 } from "lucide-react";
+import { Plus, ShieldAlert, Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
+import { cn } from "@/lib/utils";
 import { cvoBarangays, type CVOAnimalControlCase } from "@/data/cvo-store";
 import { toast } from "sonner";
 
@@ -107,18 +109,49 @@ export function NewAnimalControlDialog() {
           <Plus className="size-3.5" /> Log Animal Intake
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-primary">
-              <ShieldAlert className="size-5" />
-              <DialogTitle className="text-lg font-bold">Animal Control & Impound Intake</DialogTitle>
+      <DialogContent showCloseButton={false} className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 bg-background rounded-2xl shadow-xl">
+        <DialogHeader className="border-b pb-3 space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-primary font-bold min-w-0">
+              <ShieldAlert className="size-5 shrink-0" />
+              <DialogTitle className="text-base sm:text-lg font-bold truncate">Animal Control & Impound Intake</DialogTitle>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Record stray apprehension, rabies bite observation quarantine, or animal welfare rescue cases.
-            </DialogDescription>
-          </DialogHeader>
 
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="submit"
+                form="animal-control-intake-form"
+                variant="ghost"
+                size="icon"
+                disabled={loading}
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs cursor-pointer",
+                  loading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title="Save Case Record"
+              >
+                {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              </Button>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all hover:scale-105 active:scale-95"
+                >
+                  <X className="size-4" />
+                </Button>
+              </DialogClose>
+            </div>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Record stray apprehension, rabies bite observation quarantine, or animal welfare rescue cases.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="animal-control-intake-form" onSubmit={handleSubmit} className="space-y-4 pt-2">
           {/* Reason & Location */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -163,9 +196,12 @@ export function NewAnimalControlDialog() {
 
           {/* Animal Physical Description */}
           <div className="p-3 rounded-lg border border-border/60 bg-muted/15 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Animal Identification & Physical Description
-            </p>
+            <div className="flex items-center gap-2">
+              <PetAvatar species={species === "Livestock" ? "Dog" : species} name={breedEstimate || "Animal"} size="xs" className="size-4.5 shrink-0" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Animal Identification & Physical Description
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Species</Label>
@@ -250,25 +286,6 @@ export function NewAnimalControlDialog() {
             />
           </div>
 
-          <DialogFooter className="pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 size-3.5 animate-spin" /> Saving...
-                </>
-              ) : (
-                "Save Case Record"
-              )}
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

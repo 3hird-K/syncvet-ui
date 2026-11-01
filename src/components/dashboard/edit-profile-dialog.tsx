@@ -724,24 +724,24 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
               {isAdmin ? (
                 <Select value={role} onValueChange={(val: SyncVetRole) => setRole(val)}>
-                  <SelectTrigger id="accountRole" className="h-8.5 rounded-lg text-xs bg-background cursor-pointer px-2.5">
+                  <SelectTrigger id="accountRole" className="h-9 rounded-xl text-xs bg-background cursor-pointer px-3 border-border/80 shadow-2xs hover:border-primary/50 transition-colors">
                     <SelectValue placeholder="Select account role" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pet Owner" className="text-xs cursor-pointer">
-                      <div className="flex items-center gap-2">
+                  <SelectContent position="popper" side="top" align="start" sideOffset={6} className="z-[160] rounded-xl shadow-xl border border-border/80 bg-popover">
+                    <SelectItem value="Pet Owner" className="text-xs cursor-pointer py-2 rounded-lg">
+                      <div className="flex items-center gap-2 font-medium">
                         <PawIcon className="size-3.5 text-emerald-600" />
                         <span>Pet Owner (Citizen)</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="Administrator" className="text-xs cursor-pointer">
-                      <div className="flex items-center gap-2">
+                    <SelectItem value="Administrator" className="text-xs cursor-pointer py-2 rounded-lg">
+                      <div className="flex items-center gap-2 font-medium">
                         <ShieldAlert className="size-3.5 text-rose-500" />
                         <span>Administrator (CVO Admin)</span>
                       </div>
                     </SelectItem>
-                    <SelectItem value="Veterinarian" className="text-xs cursor-pointer">
-                      <div className="flex items-center gap-2">
+                    <SelectItem value="Veterinarian" className="text-xs cursor-pointer py-2 rounded-lg">
+                      <div className="flex items-center gap-2 font-medium">
                         <Stethoscope className="size-3.5 text-emerald-500" />
                         <span>Veterinarian (Clinician)</span>
                       </div>

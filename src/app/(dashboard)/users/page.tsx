@@ -20,6 +20,7 @@ import { useUser } from "@clerk/nextjs";
 import { UsersDirectoryTable } from "./users-directory-table";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ import { toast } from "sonner";
 
 export default function UsersPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
   const { user: currentClerkUser, isLoaded } = useUser();
@@ -114,20 +116,9 @@ export default function UsersPage() {
   const stats = useMemo(() => syncVetUserStats(users), [users]);
 
   // Export Users to CSV Handler
-  const handleExport = (category: string) => {
-    let exportList: SupabaseUser[] = [];
-    let filenameSuffix = "all-users";
-
-    if (category === "all") {
-      exportList = users;
-      filenameSuffix = "all-users";
-    } else {
-      exportList = users.filter((u) => normalizeSyncVetRole(u.role) === category);
-      filenameSuffix = category.toLowerCase().replace(/\s+/g, "-");
-    }
-
+  const handleExportCSV = (exportList: SupabaseUser[], filterSummary?: string) => {
     if (exportList.length === 0) {
-      toast.error(`No user records found to export under "${category}".`);
+      toast.error("No user records found to export with selected filters.");
       return;
     }
 
@@ -175,13 +166,13 @@ export default function UsersPage() {
     const link = document.createElement("a");
     const dateStr = new Date().toISOString().slice(0, 10);
     link.setAttribute("href", url);
-    link.setAttribute("download", `syncvet-${filenameSuffix}-${dateStr}.csv`);
+    link.setAttribute("download", `syncvet-users-${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    toast.success(`Exported ${exportList.length} user records to CSV successfully`);
+    toast.success(`Exported ${exportList.length} user records to CSV${filterSummary ? ` (${filterSummary})` : ""}`);
   };
 
   const metrics: PageMetric[] = [
@@ -287,52 +278,15 @@ export default function UsersPage() {
         actions={
           <div className="flex items-center gap-2">
             {/* Export Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs rounded-lg shadow-sm font-semibold border-border/60 hover:bg-muted/60"
-                >
-                  <Download className="size-3.5 text-primary" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 text-xs p-1">
-                <DropdownMenuLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1.5">
-                  Export Data to CSV
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleExport("all")}
-                >
-                  <UsersIcon className="size-3.5 mr-2 text-indigo-400" />
-                  <span>All Users ({stats.total})</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleExport("Administrator")}
-                >
-                  <ShieldCheck className="size-3.5 mr-2 text-rose-500" />
-                  <span>Administrators Only ({stats.admins})</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleExport("Veterinarian")}
-                >
-                  <Stethoscope className="size-3.5 mr-2 text-emerald-500" />
-                  <span>Veterinarians Only ({stats.veterinarians})</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs"
-                  onClick={() => handleExport("Pet Owner")}
-                >
-                  <PawPrint className="size-3.5 mr-2 text-purple-400" />
-                  <span>Pet Owners Only ({stats.petOwners})</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExportDialogOpen(true)}
+              className="h-8 gap-1.5 text-xs rounded-lg shadow-sm font-semibold border-border/60 hover:bg-muted/60 cursor-pointer"
+            >
+              <Download className="size-3.5 text-primary" />
+              Export CSV
+            </Button>
 
             {/* Refresh Action */}
             <Button
@@ -365,6 +319,34 @@ export default function UsersPage() {
             old.filter((u) => u.id !== deletedId)
           );
         }}
+      />
+
+      {/* ── Pre-Export Filter Dialog ── */}
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Users Directory"
+        description="Filter users by registration date (day, month, year, or range) and assigned role before exporting to CSV."
+        data={users}
+        dateExtractor={(u) => u.created_at}
+        customFilters={[
+          {
+            id: "role",
+            label: "User Role",
+            placeholder: "All Roles",
+            options: [
+              { label: "All Roles", value: "ALL" },
+              { label: "Administrators", value: "Administrator" },
+              { label: "Veterinarians", value: "Veterinarian" },
+              { label: "Pet Owners", value: "Pet Owner" },
+            ],
+            predicate: (u, val) => {
+              if (val === "ALL") return true;
+              return normalizeSyncVetRole(u.role) === val;
+            },
+          },
+        ]}
+        onExport={handleExportCSV}
       />
     </div>
   );

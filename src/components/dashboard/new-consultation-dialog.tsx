@@ -21,6 +21,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, getTodayDateString } from "@/lib/utils";
@@ -166,7 +167,7 @@ export function NewConsultationDialog() {
         const supabase = getPublicSupabaseClient();
         const { data, error } = await supabase
           .from("pets")
-          .select("id, name, species, breed, weight_kg, weight_category, gender, owner_id, microchip_number, is_vaccinated, is_spayed_neutered")
+          .select("id, name, species, breed, weight_kg, weight_category, gender, owner_id, microchip_number, is_vaccinated, is_spayed_neutered, photo_url")
           .order("name", { ascending: true });
         if (error || !data) return [];
         return data;
@@ -252,6 +253,7 @@ export function NewConsultationDialog() {
       breed: string;
       weightKg?: number | string;
       microchip?: string;
+      photo_url?: string | null;
     }> = [];
 
     // Match in dbPets
@@ -265,6 +267,7 @@ export function NewConsultationDialog() {
           breed: p.breed || "Aspin (Mixed)",
           weightKg: p.weight_kg || (p.weight_category === "small" ? 4.5 : p.weight_category === "large" ? 22 : 12.5),
           microchip: p.microchip_number || p.id,
+          photo_url: p.photo_url || p.avatar_url || null,
         });
       }
     });
@@ -276,13 +279,14 @@ export function NewConsultationDialog() {
           c.ownerName.toLowerCase() === selectedOwner.name.toLowerCase() &&
           !pets.some((p) => p.name.toLowerCase() === c.petName.toLowerCase())
         ) {
-          pets.push({
-            id: c.petId || `pet-${c.petName.toLowerCase()}`,
-            name: c.petName,
-            species: (c.species === "Cat" ? "Cat" : c.species === "Livestock" ? "Livestock" : "Dog") as any,
-            breed: c.breed || "Mixed",
-            weightKg: c.vitals?.weightKg || 12.5,
-          });
+            pets.push({
+              id: c.petId || `pet-${c.petName.toLowerCase()}`,
+              name: c.petName,
+              species: (c.species === "Cat" ? "Cat" : c.species === "Livestock" ? "Livestock" : "Dog") as any,
+              breed: c.breed || "Mixed",
+              weightKg: c.vitals?.weightKg || 12.5,
+              photo_url: null,
+            });
         }
       });
     }
@@ -867,31 +871,27 @@ export function NewConsultationDialog() {
                 </DialogDescription>
               </div>
 
-              {/* Action Buttons: Save Record and X close button perfectly aligned side-by-side */}
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Action Buttons: Save Record icon and X close button perfectly aligned side-by-side */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 <Button
                   type="submit"
-                  size="sm"
+                  variant="ghost"
+                  size="icon"
                   disabled={loading || isSaveDisabled}
                   className={cn(
-                    "h-8 px-3.5 text-xs font-bold rounded-xl transition-all shadow-xs gap-1.5",
+                    "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
                     isSaveDisabled
-                      ? "opacity-45 cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted"
-                      : "cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground"
+                      ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                      : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
                   )}
                   title={isSaveDisabled ? "Select a registered pet owner, pet patient, and enter a diagnosis to save" : "Save Clinical Record"}
                 >
                   {loading ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
-                    <>
-                      <Save className="size-3.5" />
-                      <span>Save Record</span>
-                    </>
+                    <Save className="size-4" />
                   )}
+                  <span className="sr-only">Save Record</span>
                 </Button>
 
                 <DialogClose asChild>
@@ -910,8 +910,8 @@ export function NewConsultationDialog() {
             </div>
           </DialogHeader>
 
-          {/* Scrollable Form Body */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-w-0 space-y-4">
+          {/* Scrollable Form Body with invisible scrollbar */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-w-0 space-y-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {/* 2-Column Responsive Layout: Left (Main Form) & Right (Sidebar) on desktop, stacked on mobile */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start min-w-0">
             {/* ── LEFT: Main Clinical Form (8 cols on lg) ── */}
@@ -1038,9 +1038,13 @@ export function NewConsultationDialog() {
                           <div className="flex items-center gap-2 min-w-0 truncate">
                             {selectedPet ? (
                               <>
-                                <div className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                                  <PawPrint className="size-3" />
-                                </div>
+                                <PetAvatar
+                                  photoUrl={selectedPet.photo_url}
+                                  species={selectedPet.species}
+                                  name={selectedPet.name}
+                                  size="xs"
+                                  className="size-5 shrink-0"
+                                />
                                 <span className="font-semibold truncate">{selectedPet.name}</span>
                                 <span className="text-muted-foreground text-[11px] truncate">
                                   ({selectedPet.species} • {selectedPet.breed})
@@ -1057,9 +1061,13 @@ export function NewConsultationDialog() {
                           {availablePetsForSelectedOwner.map((p) => (
                             <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
                               <div className="flex items-center gap-2 min-w-0">
-                                <div className="size-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                                  <PawPrint className="size-3.5" />
-                                </div>
+                                <PetAvatar
+                                  photoUrl={p.photo_url}
+                                  species={p.species}
+                                  name={p.name}
+                                  size="xs"
+                                  className="size-6 shrink-0"
+                                />
                                 <div className="flex flex-col text-left min-w-0 truncate">
                                   <span className="font-semibold text-foreground text-xs leading-tight truncate">{p.name}</span>
                                   <span className="text-[11px] text-muted-foreground leading-tight truncate">
@@ -1083,9 +1091,13 @@ export function NewConsultationDialog() {
                 {selectedOwner && (selectedPet || petName) ? (
                   <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                        <PawPrint className="size-4.5" />
-                      </div>
+                      <PetAvatar
+                        photoUrl={selectedPet?.photo_url}
+                        species={species || selectedPet?.species}
+                        name={petName || selectedPet?.name || "Patient"}
+                        size="sm"
+                        className="size-9 shrink-0"
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-sm text-foreground truncate">{petName || selectedPet?.name}</span>
@@ -1561,8 +1573,15 @@ export function NewConsultationDialog() {
 
                     {selectedPet && (
                       <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-2 text-[11px] min-w-0">
-                        <span className="flex items-center gap-1 font-semibold text-foreground truncate min-w-0">
-                          <PawPrint className="size-3 text-primary shrink-0" /> <span className="truncate">{selectedPet.name}</span>
+                        <span className="flex items-center gap-1.5 font-semibold text-foreground truncate min-w-0">
+                          <PetAvatar
+                            photoUrl={selectedPet.photo_url}
+                            species={selectedPet.species}
+                            name={selectedPet.name}
+                            size="xs"
+                            className="size-4.5 shrink-0"
+                          />
+                          <span className="truncate">{selectedPet.name}</span>
                         </span>
                         <Badge variant="outline" className="text-[10px] font-normal shrink-0">
                           {selectedPet.species} • {selectedPet.breed}
@@ -1658,7 +1677,13 @@ export function NewConsultationDialog() {
                   {/* Patient & Owner summary */}
                   <div className="p-3 rounded-xl bg-muted/30 border border-border/60 space-y-1">
                     <p className="font-semibold text-foreground flex items-center gap-1.5">
-                      <PawPrint className="size-3.5 text-primary" />
+                      <PetAvatar
+                        photoUrl={selectedPet?.photo_url}
+                        species={species || selectedPet?.species}
+                        name={petName || selectedPet?.name || "Patient"}
+                        size="xs"
+                        className="size-4 shrink-0"
+                      />
                       <span>{petName || selectedPet?.name} ({species} • {breed})</span>
                     </p>
                     <p className="text-muted-foreground">

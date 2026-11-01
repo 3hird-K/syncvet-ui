@@ -38,7 +38,9 @@ import {
   X,
   RotateCw,
   Lock,
+  Save,
 } from "lucide-react";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { format, addYears, parseISO } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useCVO } from "@/lib/cvo-context";
@@ -559,7 +561,7 @@ export function AdministerVaccinationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className="w-[95vw] sm:max-w-[760px] max-h-[92vh] overflow-y-auto p-5 sm:p-6 bg-background rounded-2xl shadow-2xl">
+      <DialogContent showCloseButton={false} className="w-[95vw] sm:max-w-[760px] max-h-[92vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 bg-background rounded-2xl shadow-2xl">
         <DialogHeader className="space-y-0 pb-3 border-b border-border/60 !pr-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -573,42 +575,42 @@ export function AdministerVaccinationDialog({
                     RA 9482
                   </Badge>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground truncate">
-                  Record cold-chain batch, verify triage, and complete immunization.
+                <DialogDescription className="text-xs text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+                  <PetAvatar species={consultation?.species} name={consultation?.petName} size="xs" className="size-4 shrink-0" />
+                  <span className="font-semibold text-foreground">{consultation?.petName || "Pet"}</span>
+                  <span>({consultation?.species || "Dog"} • {consultation?.breed || "Aspin"}) • Owner: {consultation?.ownerName || "Pet Owner"}</span>
                 </DialogDescription>
               </div>
             </div>
 
-            {/* Header Action Buttons (Eliminating bottom footer gap) */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Header Action Buttons: Save icon and X close button aligned side-by-side */}
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="submit"
                 form="administer-vaccine-form"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 disabled={submitting || isLockedPast24Hours || isFebrile || isOutOfStock || !batchNo || !tagNumber || !clinicallyCleared}
-                className="h-8 px-3.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs gap-1.5 shrink-0 whitespace-nowrap"
-              >
-                {isLockedPast24Hours ? (
-                  <>
-                    <Lock className="size-3.5" />
-                    <span>Locked (Past 24h)</span>
-                  </>
-                ) : isOutOfStock ? (
-                  <>
-                    <AlertTriangle className="size-3.5" />
-                    <span>Out of Stock</span>
-                  </>
-                ) : submitting ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Recording...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="size-3.5" />
-                    <span>Administer Vaccine</span>
-                  </>
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                  submitting || isLockedPast24Hours || isFebrile || isOutOfStock || !batchNo || !tagNumber || !clinicallyCleared
+                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "cursor-pointer bg-blue-600/15 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white hover:scale-105 active:scale-95"
                 )}
+                title={
+                  isLockedPast24Hours
+                    ? "Locked (Past 24h)"
+                    : isOutOfStock
+                    ? "Out of Stock"
+                    : "Administer Vaccine & Complete Record"
+                }
+              >
+                {submitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                <span className="sr-only">Administer Vaccine</span>
               </Button>
 
               <Button

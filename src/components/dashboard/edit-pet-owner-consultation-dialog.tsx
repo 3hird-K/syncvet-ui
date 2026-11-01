@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Edit3, CheckCircle2, FileCheck2, Stethoscope } from "lucide-react";
+import { Loader2, Edit3, CheckCircle2, FileCheck2, Stethoscope, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,11 +12,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
+import { cn } from "@/lib/utils";
 import { type CVOConsultation } from "@/data/cvo-store";
 
 interface EditPetOwnerConsultationDialogProps {
@@ -96,23 +98,54 @@ export function EditPetOwnerConsultationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg p-5 sm:p-6 bg-background rounded-2xl shadow-xl">
+      <DialogContent showCloseButton={false} className="sm:max-w-lg p-5 sm:p-6 bg-background rounded-2xl shadow-xl overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden max-h-[90vh]">
         <DialogHeader className="border-b pb-3 space-y-1">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-primary font-bold">
-              <Edit3 className="size-4.5" />
-              <DialogTitle className="text-base sm:text-lg">Edit Consultation Request</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-primary font-bold min-w-0">
+              <Edit3 className="size-4.5 shrink-0" />
+              <DialogTitle className="text-base sm:text-lg truncate">Edit Consultation Request</DialogTitle>
+              <Badge variant="outline" className="font-mono text-[10px] shrink-0">
+                #{consultation.encounterNo}
+              </Badge>
             </div>
-            <Badge variant="outline" className="font-mono text-[10px]">
-              #{consultation.encounterNo}
-            </Badge>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="submit"
+                form="edit-pet-owner-consultation-form"
+                variant="ghost"
+                size="icon"
+                disabled={loading}
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs cursor-pointer",
+                  loading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title="Save Changes"
+              >
+                {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              </Button>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all hover:scale-105 active:scale-95"
+                >
+                  <X className="size-4" />
+                </Button>
+              </DialogClose>
+            </div>
           </div>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Update your reason for visit or requested services for {consultation.petName} ({consultation.species})
+
+          <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
+            <PetAvatar species={consultation.species} name={consultation.petName} size="xs" className="size-5 shrink-0" />
+            <span>Update reason for visit or requested services for <strong className="text-foreground">{consultation.petName}</strong> ({consultation.species})</span>
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleUpdate} className="space-y-4 pt-2">
+        <form id="edit-pet-owner-consultation-form" onSubmit={handleUpdate} className="space-y-4 pt-2">
           {/* Services Requested */}
           <div className="space-y-2 p-3.5 rounded-xl border border-border/70 bg-card/60">
             <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -175,36 +208,6 @@ export function EditPetOwnerConsultationDialog({
               className="h-8.5 text-xs rounded-xl bg-background"
             />
           </div>
-
-          <DialogFooter className="gap-2 pt-2 border-t flex flex-row items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="h-8.5 px-3 text-xs font-semibold rounded-lg cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={loading}
-              className="h-8.5 px-4 text-xs font-bold bg-primary text-primary-foreground gap-1.5 rounded-lg cursor-pointer shadow-xs"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="size-3.5" />
-                  <span>Save Changes</span>
-                </>
-              )}
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

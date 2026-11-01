@@ -21,9 +21,10 @@ import {
   CalendarClock,
   ChevronRight,
   Phone,
-  User,
   PawPrint,
   Heart,
+  Save,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
@@ -36,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -1290,84 +1292,6 @@ export function ScheduleProcedureDialog({
               className="text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 bg-background min-h-[52px] resize-none w-full"
             />
           </div>
-
-          {/* Submit Actions (Only rendered in standalone dialog mode; embedded view uses top header check button beside Back to Overview) */}
-          {!embedded && (
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60">
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                <Info className="size-3.5 text-primary" />
-                <span>Free municipal service provided by Cagayan de Oro City Veterinary Office.</span>
-              </p>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setOpen(false);
-                    onCancel?.();
-                  }}
-                  className="w-full sm:w-auto text-xs rounded-lg h-8 px-3 cursor-pointer"
-                >
-                  Cancel
-                </Button>
-
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={
-                    submitting ||
-                    !checklistConfirmed ||
-                    !appointmentDate ||
-                    isSelectedDateUnavailable ||
-                    pets.length === 0 ||
-                    isVaccinationBlocked ||
-                    isAlreadyScheduled ||
-                    isSameDayConflict
-                  }
-                  className="w-full sm:w-auto text-xs font-bold rounded-lg h-8 px-4 gap-1.5 bg-primary text-primary-foreground shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                      <span>Booking Slot...</span>
-                    </>
-                  ) : isSelectedDateUnavailable ? (
-                    <>
-                      <AlertCircle className="size-3.5" />
-                      <span>Date Closed / Unavailable</span>
-                    </>
-                  ) : isSameDayConflict ? (
-                    <>
-                      <ShieldAlert className="size-3.5" />
-                      <span>Blocked: Same-Day {conflictingServiceTitle} Conflict</span>
-                    </>
-                  ) : isAlreadyScheduled ? (
-                    <>
-                      <AlertTriangle className="size-3.5" />
-                      <span>Already Scheduled for {currentPet?.name}</span>
-                    </>
-                  ) : isVaccinationBlocked ? (
-                    <>
-                      <ShieldCheck className="size-3.5" />
-                      <span>Vaccination Not Due (Protected)</span>
-                    </>
-                  ) : (existingMissedAppointment || rescheduleAppointmentId) ? (
-                    <>
-                      <CalendarClock className="size-3.5" />
-                      <span>Reschedule Missed {serviceConfig.shortTitle} Slot</span>
-                    </>
-                  ) : (
-                    <>
-                      <Calendar className="size-3.5" />
-                      <span>Confirm {serviceConfig.shortTitle} Slot</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
         </form>
   );
 
@@ -1388,27 +1312,74 @@ export function ScheduleProcedureDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
+      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
         <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
-          <div className="flex items-center gap-2">
-            <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
-              {service === "vaccination" ? (
-                <Syringe className="size-5" />
-              ) : (
-                <Scissors className="size-5" />
-              )}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+                {service === "vaccination" ? (
+                  <Syringe className="size-5" />
+                ) : (
+                  <Scissors className="size-5" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-lg font-bold text-foreground truncate">
+                  {rescheduleAppointmentId
+                    ? "Reschedule Procedure Appointment"
+                    : "City Veterinary Office Procedure Scheduler"}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground truncate">
+                  {rescheduleAppointmentId
+                    ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
+                    : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
+                </DialogDescription>
+              </div>
             </div>
-            <div>
-              <DialogTitle className="text-lg font-bold text-foreground">
-                {rescheduleAppointmentId
-                  ? "Reschedule Procedure Appointment"
-                  : "City Veterinary Office Procedure Scheduler"}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                {rescheduleAppointmentId
-                  ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
-                  : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
-              </DialogDescription>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="submit"
+                form="schedule-procedure-form"
+                variant="ghost"
+                size="icon"
+                disabled={!isFormValid || submitting}
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                  !isFormValid || submitting
+                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title={
+                  !isFormValid
+                    ? isAlreadyScheduled
+                      ? "Appointment already scheduled"
+                      : isSameDayConflict
+                      ? "Same-day conflict"
+                      : "Select an available date and confirm pre-op checklist"
+                    : `Confirm ${serviceConfig.shortTitle} Slot`
+                }
+              >
+                {submitting ? (
+                  <CalendarClock className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                <span className="sr-only">Confirm {serviceConfig.shortTitle} Slot</span>
+              </Button>
+
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                  title="Close"
+                >
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </DialogClose>
             </div>
           </div>
         </DialogHeader>

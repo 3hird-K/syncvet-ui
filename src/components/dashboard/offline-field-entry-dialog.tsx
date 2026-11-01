@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, WifiOff, Loader2, Lock } from "lucide-react";
+import { Plus, WifiOff, Loader2, Lock, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,10 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { cvoBarangays } from "@/data/cvo-store";
+import { cn } from "@/lib/utils";
 
 export function OfflineFieldEntryDialog() {
   const [open, setOpen] = useState(false);
@@ -105,18 +107,49 @@ export function OfflineFieldEntryDialog() {
           <WifiOff className="size-3.5" /> Offline Field Intake
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-amber-500">
-              <WifiOff className="size-5" />
-              <DialogTitle className="text-lg font-bold">Offline Field Vaccination Entry</DialogTitle>
+      <DialogContent showCloseButton={false} className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 bg-background rounded-2xl shadow-xl">
+        <DialogHeader className="border-b pb-3 space-y-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-amber-500 font-bold min-w-0">
+              <WifiOff className="size-5 shrink-0" />
+              <DialogTitle className="text-base sm:text-lg font-bold truncate">Offline Field Vaccination Entry</DialogTitle>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Record anti-rabies vaccinations during mobile barangay deployments with zero cellular connectivity. Records store in your device&apos;s local cache until synchronized.
-            </DialogDescription>
-          </DialogHeader>
 
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="submit"
+                form="offline-field-entry-form"
+                variant="ghost"
+                size="icon"
+                disabled={loading}
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs cursor-pointer",
+                  loading
+                    ? "opacity-50 cursor-not-allowed"
+                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white hover:scale-105 active:scale-95"
+                )}
+                title="Save to Local Cache"
+              >
+                {loading ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              </Button>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all hover:scale-105 active:scale-95"
+                >
+                  <X className="size-4" />
+                </Button>
+              </DialogClose>
+            </div>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Record anti-rabies vaccinations during mobile barangay deployments with zero connectivity. Records store locally until synchronized.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="offline-field-entry-form" onSubmit={handleSubmit} className="space-y-3.5 pt-2">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Barangay</Label>
@@ -142,9 +175,12 @@ export function OfflineFieldEntryDialog() {
           </div>
 
           <div className="p-3 rounded-lg border border-border/60 bg-muted/15 space-y-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Animal & Citizen
-            </p>
+            <div className="flex items-center gap-2">
+              <PetAvatar species={species} name={petName || "Pet"} size="xs" className="size-4.5 shrink-0" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Animal & Citizen Identification
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-2.5">
               <div className="space-y-1">
                 <Label className="text-xs">Pet Name *</Label>
@@ -246,26 +282,6 @@ export function OfflineFieldEntryDialog() {
               />
             )}
           </div>
-
-          <DialogFooter className="pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 size-3.5 animate-spin" /> Saving...
-                </>
-              ) : (
-                "Save to Local Cache"
-              )}
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

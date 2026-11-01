@@ -33,6 +33,7 @@ import {
   Save,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -178,6 +179,7 @@ export function UsersDirectoryTable({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   // Match or resolve complete barangay address
   const selectedBarangayValue = useMemo(() => {
@@ -558,10 +560,10 @@ export function UsersDirectoryTable({
     }
   };
 
-  // Export current table view
-  const handleExportCurrentView = () => {
-    if (filtered.length === 0) {
-      toast.error("No users to export in current view.");
+  // Export CSV Handler
+  const handleExportCSV = (exportList: SupabaseUser[], filterSummary?: string) => {
+    if (exportList.length === 0) {
+      toast.error("No users to export in current selection.");
       return;
     }
 
@@ -583,7 +585,7 @@ export function UsersDirectoryTable({
       return `"${str}"`;
     };
 
-    const rows = filtered.map((u) => [
+    const rows = exportList.map((u) => [
       escapeCSV(u.id),
       escapeCSV(u.full_name || "SyncVet User"),
       escapeCSV(u.first_name || ""),
@@ -600,13 +602,13 @@ export function UsersDirectoryTable({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `syncvet-filtered-users-${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `syncvet-users-${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    toast.success(`Exported ${filtered.length} filtered users to CSV`);
+    toast.success(`Exported ${exportList.length} users to CSV${filterSummary ? ` (${filterSummary})` : ""}`);
   };
 
   const renderRoleBadge = (rawRole: string | null) => {
@@ -734,9 +736,9 @@ export function UsersDirectoryTable({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExportCurrentView}
-              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5 rounded-lg border-border/60"
-              title="Download current filtered list to CSV"
+              onClick={() => setExportDialogOpen(true)}
+              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5 rounded-lg border-border/60 cursor-pointer"
+              title="Download filtered users to CSV"
             >
               <Download className="size-3.5 text-primary" />
               <span className="hidden sm:inline">CSV</span>
@@ -1834,6 +1836,34 @@ export function UsersDirectoryTable({
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* ── Pre-Export Filter Dialog ── */}
+        <ExportTableDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          title="Export Users Directory"
+          description="Filter users by registration date (day, month, year, or range) and assigned role before exporting to CSV."
+          data={users}
+          dateExtractor={(u) => u.created_at}
+          customFilters={[
+            {
+              id: "role",
+              label: "User Role",
+              placeholder: "All Roles",
+              options: [
+                { label: "All Roles", value: "ALL" },
+                { label: "Administrators", value: "Administrator" },
+                { label: "Veterinarians", value: "Veterinarian" },
+                { label: "Pet Owners", value: "Pet Owner" },
+              ],
+              predicate: (u, val) => {
+                if (val === "ALL") return true;
+                return normalizeSyncVetRole(u.role) === val;
+              },
+            },
+          ]}
+          onExport={handleExportCSV}
+        />
       </CardContent>
     </Card>
   );

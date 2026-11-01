@@ -23,6 +23,7 @@ const STAFF_ONLY_ROUTES = [
   "/animal-control",
   "/barangay-analytics",
   "/certificates",
+  "/audit-logs",
 ];
 
 // Routes reserved for Pet Owners

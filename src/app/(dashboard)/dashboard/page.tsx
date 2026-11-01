@@ -23,9 +23,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { NewConsultationDialog } from "@/components/dashboard/new-consultation-dialog";
-import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
-import { LogVaccinationDialog } from "@/components/dashboard/log-vaccination-dialog";
+import { Badge } from "@/components/ui/badge";
 import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
 import { useCVO } from "@/lib/cvo-context";
 
@@ -118,88 +116,106 @@ export default function DashboardHomePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 sm:gap-4">
           {/* Service 1: Anti-Rabies Vaccination */}
-          <div className="p-4 rounded-xl border border-emerald-500/20 bg-card hover:border-emerald-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="size-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                  <Syringe className="size-4.5" />
+          <Link
+            href="/vaccination-records"
+            className="group p-4 sm:p-5 rounded-2xl border border-emerald-500/20 bg-card hover:border-emerald-500/50 hover:bg-emerald-500/[0.03] transition-all duration-200 shadow-xs hover:shadow-md flex flex-col justify-between space-y-4 min-w-0 cursor-pointer"
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
+                  <Syringe className="size-5" />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                >
                   Free Service
-                </span>
+                </Badge>
               </div>
-              <h4 className="font-bold text-sm text-foreground">Anti-Rabies Immunization</h4>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                Annual rabies vaccination, booster schedules, and cold-chain lot tracking for dogs and cats.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
-              <div className="min-w-0 shrink">
-                <LogVaccinationDialog />
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-foreground group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+                  Anti-Rabies Immunization
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                  Annual rabies vaccination, booster schedules, and cold-chain lot tracking for dogs and cats.
+                </p>
               </div>
-              <Link href="/vaccination-records" className="shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
-                  Ledger <ArrowRight className="size-3 ml-1" />
-                </Button>
-              </Link>
             </div>
-          </div>
+            <div className="pt-3 border-t border-border/50 flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="font-bold">View Vaccination Ledger</span>
+              <span className="size-7 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-all duration-200 group-hover:translate-x-1 group-hover:bg-emerald-600 group-hover:text-white">
+                <ArrowRight className="size-3.5" />
+              </span>
+            </div>
+          </Link>
 
           {/* Service 2: Free Consultation & Clinical EMR */}
-          <div className="p-4 rounded-xl border border-blue-500/20 bg-card hover:border-blue-500/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="size-9 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
-                  <Stethoscope className="size-4.5" />
+          <Link
+            href="/consultations"
+            className="group p-4 sm:p-5 rounded-2xl border border-blue-500/20 bg-card hover:border-blue-500/50 hover:bg-blue-500/[0.03] transition-all duration-200 shadow-xs hover:shadow-md flex flex-col justify-between space-y-4 min-w-0 cursor-pointer"
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
+                  <Stethoscope className="size-5" />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600">
-                  Walk-in Clinic
-                </span>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                >
+                  Queue ({consultations.length})
+                </Badge>
               </div>
-              <h4 className="font-bold text-sm text-foreground">Veterinary Consultation</h4>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                Free clinical examination, diagnosis, wound care, basic treatment, and prescriptions.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
-              <div className="min-w-0 shrink">
-                <NewConsultationDialog />
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-foreground group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
+                  Veterinary Consultation
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                  Free clinical examination, diagnosis, wound care, basic treatment, and prescriptions.
+                </p>
               </div>
-              <Link href="/consultations" className="shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
-                  Queue ({consultations.length}) <ArrowRight className="size-3 ml-1" />
-                </Button>
-              </Link>
             </div>
-          </div>
+            <div className="pt-3 border-t border-border/50 flex items-center justify-between text-xs font-semibold text-blue-600 dark:text-blue-400">
+              <span className="font-bold">Open Clinical Queue</span>
+              <span className="size-7 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center transition-all duration-200 group-hover:translate-x-1 group-hover:bg-blue-600 group-hover:text-white">
+                <ArrowRight className="size-3.5" />
+              </span>
+            </div>
+          </Link>
 
           {/* Service 3: Pet Registration & Digital Passports */}
-          <div className="p-4 rounded-xl border border-primary/20 bg-card hover:border-primary/40 transition-all shadow-xs flex flex-col justify-between space-y-3 min-w-0">
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="size-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                  <PawPrint className="size-4.5" />
+          <Link
+            href="/pet-registry"
+            className="group p-4 sm:p-5 rounded-2xl border border-primary/20 bg-card hover:border-primary/50 hover:bg-primary/[0.03] transition-all duration-200 shadow-xs hover:shadow-md flex flex-col justify-between space-y-4 min-w-0 cursor-pointer"
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
+                  <PawPrint className="size-5" />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                  Official ID
-                </span>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border-primary/20"
+                >
+                  Official Registry
+                </Badge>
               </div>
-              <h4 className="font-bold text-sm text-foreground">Pet Registration & QR Passports</h4>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                City-wide animal registry, ownership records, and digital QR collar passports for lost pet recovery.
-              </p>
-            </div>
-            <div className="pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
-              <div className="min-w-0 shrink">
-                <RegisterPetDialog />
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors">
+                  Pet Registration & QR Passports
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                  City-wide animal registry, ownership records, and digital QR collar passports for lost pet recovery.
+                </p>
               </div>
-              <Link href="/pet-registry" className="shrink-0">
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground px-2">
-                  Registry <ArrowRight className="size-3 ml-1" />
-                </Button>
-              </Link>
             </div>
-          </div>
+            <div className="pt-3 border-t border-border/50 flex items-center justify-between text-xs font-semibold text-primary">
+              <span className="font-bold">Open Pet Registry</span>
+              <span className="size-7 rounded-full bg-primary/10 text-primary flex items-center justify-center transition-all duration-200 group-hover:translate-x-1 group-hover:bg-primary group-hover:text-primary-foreground">
+                <ArrowRight className="size-3.5" />
+              </span>
+            </div>
+          </Link>
         </div>
       </div>
 

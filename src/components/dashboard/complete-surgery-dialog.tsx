@@ -31,10 +31,12 @@ import {
   CheckCircle2,
   Heart,
   Pill,
-  Sparkles,
   X,
   Lock,
+  Save,
 } from "lucide-react";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
+import { cn } from "@/lib/utils";
 import { format, addDays, parseISO, isValid } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useCVO } from "@/lib/cvo-context";
@@ -400,7 +402,7 @@ export function CompleteSurgeryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className="sm:max-w-4xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 bg-background rounded-2xl shadow-2xl">
+      <DialogContent showCloseButton={false} className="sm:max-w-4xl max-h-[92vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 bg-background rounded-2xl shadow-2xl">
         <DialogHeader className="space-y-0 pb-3 border-b border-border/60 !pr-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -420,26 +422,28 @@ export function CompleteSurgeryDialog({
               </div>
             </div>
 
-            {/* Action Buttons: Save button beside the X button */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Action Buttons: Save icon beside the X button */}
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="submit"
                 form="complete-surgery-form"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 disabled={submitting || !fastingVerified || !cardiopulmonaryClear}
-                className="h-8 px-3.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs gap-1.5"
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                  submitting || !fastingVerified || !cardiopulmonaryClear
+                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title="Complete Surgery Protocol & Certify"
               >
                 {submitting ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <>
-                    <CheckCircle2 className="size-3.5" />
-                    <span>Complete Surgery</span>
-                  </>
+                  <Save className="size-4" />
                 )}
+                <span className="sr-only">Complete Surgery</span>
               </Button>
 
               <Button
@@ -447,7 +451,7 @@ export function CompleteSurgeryDialog({
                 variant="ghost"
                 size="icon"
                 onClick={() => onOpenChange(false)}
-                className="size-8 rounded-full border border-border/60 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all"
+                className="size-8 rounded-full border border-border/60 bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-all shrink-0"
                 title="Close"
               >
                 <X className="size-4" />
@@ -461,15 +465,16 @@ export function CompleteSurgeryDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 items-start">
             {/* ── LEFT COLUMN ── */}
             <div className="space-y-3.5">
-              {/* Patient Profile Strip */}
+              {/* Patient Profile Strip with PetAvatar */}
               <div className="px-3.5 py-2 rounded-lg bg-muted/25 border border-border/60 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-foreground">{consultation.petName}</span>
-                  <span className="text-muted-foreground font-medium">
+                <div className="flex items-center gap-2 min-w-0">
+                  <PetAvatar species={consultation.species} name={consultation.petName} size="xs" className="size-5 shrink-0" />
+                  <span className="font-bold text-foreground truncate">{consultation.petName}</span>
+                  <span className="text-muted-foreground font-medium truncate">
                     ({consultation.species} • {consultation.breed})
                   </span>
                 </div>
-                <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground border-border/60">
+                <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground border-border/60 shrink-0">
                   {consultation.encounterNo}
                 </Badge>
               </div>

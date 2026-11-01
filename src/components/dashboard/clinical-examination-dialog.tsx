@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 
 export interface RegisteredVet {
   id: string;
@@ -474,8 +475,10 @@ export function ClinicalExaminationDialog({
                   {consultation.encounterNo}
                 </Badge>
               </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground truncate">
-                Official CVO Examination Form • Patient: {consultation.petName} ({consultation.species}) • Owner: {consultation.ownerName}
+              <DialogDescription className="text-xs text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+                <PetAvatar species={consultation.species} name={consultation.petName} size="xs" className="size-4 shrink-0" />
+                <span className="font-semibold text-foreground">{consultation.petName || "Pet"}</span>
+                <span>({consultation.species || "Dog"} • {consultation.breed || "Aspin"}) • Owner: {consultation.ownerName}</span>
               </DialogDescription>
             </div>
           </div>
@@ -533,8 +536,8 @@ export function ClinicalExaminationDialog({
           </div>
         </div>
 
-        {/* Scrollable Form Body */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4">
+        {/* Scrollable Form Body with invisible scrollbar */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <form id="clinical-examination-form" onSubmit={handleSave} className="space-y-4 pb-2">
           {/* Update Encounter Lifecycle */}
           <div className="p-3.5 rounded-xl border border-border/80 bg-muted/20 space-y-2">

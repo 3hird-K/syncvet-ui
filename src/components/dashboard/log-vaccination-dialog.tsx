@@ -16,21 +16,23 @@ import {
   ShieldCheck,
   Sparkles,
   MapPin,
-  Phone,
   FileCheck2,
+  Save,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -241,7 +243,7 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
       try {
         const { data } = await supabase
           .from("pets")
-          .select("id, name, species, breed, owner_id, weight_kg, weight_category, microchip_number, is_vaccinated, rabies_vaccinated, users(full_name, phone_number, address, avatar_url)");
+          .select("id, name, species, breed, owner_id, weight_kg, weight_category, microchip_number, is_vaccinated, rabies_vaccinated, photo_url, users(full_name, phone_number, address, avatar_url)");
         return data || [];
       } catch {
         return [];
@@ -664,49 +666,59 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
           <Syringe className="size-3.5" /> Log Vaccination
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl lg:max-w-3xl w-[96vw] max-h-[92vh] overflow-y-auto p-5 sm:p-7 bg-background rounded-2xl shadow-2xl pointer-events-auto">
-        <DialogHeader className="border-b pb-3.5 pr-10 sm:pr-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
+      <DialogContent showCloseButton={false} className="sm:max-w-2xl lg:max-w-3xl w-[96vw] max-h-[92vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-2xl pointer-events-auto">
+        <DialogHeader className="border-b pb-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
                 <Syringe className="size-4.5" />
               </div>
-              <div>
-                <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+              <div className="min-w-0">
+                <DialogTitle className="text-base sm:text-lg font-bold text-foreground truncate">
                   Log Vaccination Record
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+                <DialogDescription className="text-xs text-muted-foreground truncate">
                   Directly records an administered dose into the official CVO municipal immunization ledger.
                 </DialogDescription>
               </div>
             </div>
 
-            {/* Save Button at the top beside X icon */}
-            <div className="flex items-center gap-2 self-end sm:self-center">
+            {/* Action Buttons: Save Record icon and X close button perfectly aligned side-by-side */}
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="submit"
                 form="log-vaccination-form"
+                variant="ghost"
+                size="icon"
                 disabled={loading || isOutOfStock}
-                size="sm"
-                className="h-8.5 px-3.5 text-xs font-bold bg-primary text-primary-foreground gap-1.5 rounded-lg shadow-xs cursor-pointer hover:bg-primary/90 disabled:opacity-50"
-              >
-                {isOutOfStock ? (
-                  <>
-                    <AlertTriangle className="size-3.5" />
-                    <span>Out of Stock</span>
-                  </>
-                ) : loading ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Recording...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="size-3.5" />
-                    <span>Save & Issue Record</span>
-                  </>
+                className={cn(
+                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                  isOutOfStock
+                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
                 )}
+                title={isOutOfStock ? "Vaccine is out of stock" : "Save & Issue Record"}
+              >
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                <span className="sr-only">Save & Issue Record</span>
               </Button>
+
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                  title="Close"
+                >
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </DialogClose>
             </div>
           </div>
         </DialogHeader>
@@ -854,9 +866,13 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
                       <div className="flex items-center gap-2 min-w-0 truncate">
                         {selectedPet ? (
                           <>
-                            <div className="size-5 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                              <PawPrint className="size-3" />
-                            </div>
+                            <PetAvatar
+                              photoUrl={selectedPet.photo_url}
+                              species={selectedPet.species}
+                              name={selectedPet.name}
+                              size="xs"
+                              className="size-5 shrink-0"
+                            />
                             <span className="font-semibold truncate">{selectedPet.name}</span>
                             <span className="text-muted-foreground text-[11px] truncate">
                               ({selectedPet.species} • {selectedPet.breed})
@@ -878,9 +894,13 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
                       {availablePetsForOwner.map((p: any) => (
                         <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="size-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                              <PawPrint className="size-3.5" />
-                            </div>
+                            <PetAvatar
+                              photoUrl={p.photo_url}
+                              species={p.species}
+                              name={p.name}
+                              size="xs"
+                              className="size-6 shrink-0"
+                            />
                             <div className="flex flex-col text-left min-w-0 truncate">
                               <span className="font-semibold text-foreground text-xs leading-tight truncate">{p.name}</span>
                               <span className="text-[11px] text-muted-foreground leading-tight truncate">
@@ -1215,41 +1235,6 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
               </div>
             </div>
           </div>
-
-          <DialogFooter className="gap-2 pt-3 border-t flex flex-row items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(false)}
-              className="h-8.5 px-3 text-xs font-semibold rounded-lg cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading || isOutOfStock}
-              size="sm"
-              className="h-8.5 px-4 text-xs font-bold bg-primary text-primary-foreground gap-1.5 rounded-lg cursor-pointer shadow-xs hover:bg-primary/90 disabled:opacity-50"
-            >
-              {isOutOfStock ? (
-                <>
-                  <AlertTriangle className="size-3.5" />
-                  <span>Vaccine Out of Stock</span>
-                </>
-              ) : loading ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  <span>Recording into Ledger...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="size-3.5" />
-                  <span>Save & Issue Record</span>
-                </>
-              )}
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

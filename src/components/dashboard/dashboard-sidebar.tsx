@@ -17,6 +17,7 @@ import {
   Sun,
   PanelLeft,
   Megaphone,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -372,28 +373,27 @@ export function SidebarContent({
             <OperationalNotifications sidebarMode collapsed={collapsed} />
           )}
 
-          {/* Theme switcher placed above Get Help */}
-          <button
-            type="button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className={cn(
-              "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150 cursor-pointer text-muted-foreground hover:bg-accent hover:text-foreground w-full outline-none",
-              collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
-            )}
-            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            aria-label="Toggle theme mode"
-          >
-            {mounted && theme === "dark" ? (
-              <Sun className="size-4 text-muted-foreground shrink-0 transition-transform duration-150" strokeWidth={2} />
-            ) : (
-              <Moon className="size-4 text-muted-foreground shrink-0 transition-transform duration-150" strokeWidth={2} />
-            )}
-            {!collapsed && (
-              <span className="truncate">
-                {mounted && theme === "dark" ? "Light Mode" : "Dark Mode"}
-              </span>
-            )}
-          </button>
+          {/* Audit Logs for Staff Accounts */}
+          {userRole !== "Pet Owner" && !pathname?.startsWith("/pet-owner") && (
+            <Link
+              href="/audit-logs"
+              className={cn(
+                "flex items-center rounded-lg text-[12px] font-semibold transition-colors duration-150",
+                collapsed ? "justify-center px-0 py-2" : "gap-3 px-3 py-2",
+                pathname === "/audit-logs"
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+              title={collapsed ? "Audit Logs" : undefined}
+              onClick={onItemClick}
+            >
+              <History 
+                className={cn("size-4", pathname === "/audit-logs" ? "text-white" : "text-muted-foreground")} 
+                strokeWidth={2} 
+              />
+              {!collapsed && <span>Audit Logs</span>}
+            </Link>
+          )}
 
           <Link
             href="/get-help"
@@ -485,6 +485,24 @@ export function SidebarContent({
             >
               <CircleUser className="size-4 text-muted-foreground" />
               <span>Edit Profile</span>
+            </DropdownMenuItem>
+
+            {/* Theme Switcher Toggle */}
+            <DropdownMenuItem
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="flex items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium text-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                {mounted && theme === "dark" ? (
+                  <Sun className="size-4 text-foreground shrink-0" strokeWidth={2} />
+                ) : (
+                  <Moon className="size-4 text-foreground shrink-0" strokeWidth={2} />
+                )}
+                <span>{mounted && theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+              </div>
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/50">
+                {mounted && theme === "dark" ? "Dark" : "Light"}
+              </span>
             </DropdownMenuItem>
 
             {/* Logout Action */}

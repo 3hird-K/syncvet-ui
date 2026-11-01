@@ -27,6 +27,7 @@ import {
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
+import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,7 @@ export default function VaccinationRecordsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [selectedRecord, setSelectedRecord] = useState<VaccinationRecordItem | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
 
@@ -512,28 +514,28 @@ export default function VaccinationRecordsPage() {
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const handleExport = () => {
-    toast.promise(new Promise((resolve) => setTimeout(resolve, 1000)), {
-      loading: "Generating CVO immunization ledger...",
-      success: () => {
-        const content =
-          "Record No,Pet Name,Species,Breed,Owner Name,Barangay,Vaccine,Batch No,Date Administered,Next Due,Veterinarian,Status\n" +
-          records
-            .map(
-              (r) =>
-                `"${r.id}","${r.petName}","${r.species}","${r.breed}","${r.ownerName}","${r.barangay}","${r.vaccine}","${r.batch}","${r.date}","${r.nextDue}","${r.vet}","${r.status}"`
-            )
-            .join("\n");
-        const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `cvo_vaccination_ledger_${new Date().toISOString().split("T")[0]}.csv`;
-        a.click();
-        return "Immunization ledger exported successfully";
-      },
-      error: "Export failed",
-    });
+  const handleExport = (recordsToExport: VaccinationRecordItem[], filterSummary?: string) => {
+    if (recordsToExport.length === 0) {
+      toast.error("No immunization records match the selected export filter.");
+      return;
+    }
+
+    const content =
+      "Record No,Pet Name,Species,Breed,Owner Name,Barangay,Vaccine,Batch No,Date Administered,Next Due,Veterinarian,Status\n" +
+      recordsToExport
+        .map(
+          (r) =>
+            `"${r.id}","${r.petName}","${r.species}","${r.breed}","${r.ownerName}","${r.barangay}","${r.vaccine}","${r.batch}","${r.date}","${r.nextDue}","${r.vet}","${r.status}"`
+        )
+        .join("\n");
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cvo_vaccination_ledger_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success(`Exported ${recordsToExport.length} immunization records to CSV${filterSummary ? ` (${filterSummary})` : ""}`);
   };
 
   const handlePrintCertificate = () => {
@@ -733,7 +735,7 @@ export default function VaccinationRecordsPage() {
             variant="outline"
             size="sm"
             className="gap-2 text-xs cursor-pointer shadow-xs"
-            onClick={handleExport}
+            onClick={() => setExportDialogOpen(true)}
           >
             <Download className="size-3.5" /> Export Ledger CSV
           </Button>
@@ -1174,6 +1176,67 @@ export default function VaccinationRecordsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Pre-Export Filter Dialog ── */}
+      <ExportTableDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        title="Export Immunization Ledger"
+        description="Filter vaccination logs by day, month, year, date range, species, vaccine type, or status before exporting to CSV."
+        data={records}
+        dateExtractor={(r) => r.date}
+        customFilters={[
+          {
+            id: "species",
+            label: "Species",
+            placeholder: "All Species",
+            options: [
+              { label: "All Species", value: "ALL" },
+              { label: "Canine / Dog", value: "Canine" },
+              { label: "Feline / Cat", value: "Feline" },
+              { label: "Livestock", value: "Livestock" },
+            ],
+            predicate: (r, val) => {
+              if (val === "ALL") return true;
+              if (val === "Canine") return r.species.toLowerCase().includes("canine") || r.species.toLowerCase().includes("dog");
+              if (val === "Feline") return r.species.toLowerCase().includes("feline") || r.species.toLowerCase().includes("cat");
+              return r.species.toLowerCase().includes(val.toLowerCase());
+            },
+          },
+          {
+            id: "vaccine",
+            label: "Vaccine Type",
+            placeholder: "All Vaccines",
+            options: [
+              { label: "All Vaccines", value: "ALL" },
+              { label: "Anti-Rabies", value: "Rabies" },
+              { label: "5-in-1 / DHPP", value: "DHPP" },
+              { label: "4-in-1 / FVRCP", value: "FVRCP" },
+              { label: "Deworming", value: "Deworming" },
+            ],
+            predicate: (r, val) => {
+              if (val === "ALL") return true;
+              return r.vaccine.toLowerCase().includes(val.toLowerCase());
+            },
+          },
+          {
+            id: "status",
+            label: "Immunization Status",
+            placeholder: "All Statuses",
+            options: [
+              { label: "All Statuses", value: "ALL" },
+              { label: "Complete / Up to Date", value: "complete" },
+              { label: "Scheduled / Due Soon", value: "scheduled" },
+              { label: "Overdue", value: "overdue" },
+            ],
+            predicate: (r, val) => {
+              if (val === "ALL") return true;
+              return r.status === val;
+            },
+          },
+        ]}
+        onExport={handleExport}
+      />
     </div>
   );
 }

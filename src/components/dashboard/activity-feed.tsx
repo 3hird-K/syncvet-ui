@@ -10,7 +10,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Clock, ShieldCheck, Stethoscope, FileCheck2, MapPin } from "lucide-react";
+import { Clock, ShieldCheck, Stethoscope, FileCheck2, MapPin, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export function ActivityFeed({ className }: { className?: string }) {
   const { auditLogs } = useCVO();
@@ -47,9 +49,21 @@ export function ActivityFeed({ className }: { className?: string }) {
               </CardDescription>
             </div>
           </div>
-          <Badge variant="outline" className="text-[9px] text-muted-foreground font-mono shrink-0">
-            CVO Audit v2
-          </Badge>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="outline" className="hidden sm:inline-flex text-[9px] text-muted-foreground font-mono">
+              CVO Audit v2
+            </Badge>
+            <Link href="/audit-logs">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7.5 text-xs font-semibold gap-1 px-2.5 rounded-lg border-border hover:bg-muted text-foreground cursor-pointer shadow-2xs"
+              >
+                <span>All Logs</span>
+                <ArrowRight className="size-3" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </CardHeader>
 
@@ -90,6 +104,18 @@ export function ActivityFeed({ className }: { className?: string }) {
                 </div>
               </div>
             ))}
+
+            {auditLogs.length > 3 && (
+              <div className="pt-2 text-center border-t border-border/40">
+                <Link
+                  href="/audit-logs"
+                  className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1.5 transition-all group"
+                >
+                  <span>View complete audit history ({auditLogs.length} total logged events)</span>
+                  <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
