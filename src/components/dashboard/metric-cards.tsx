@@ -126,7 +126,7 @@ export function MetricCards() {
           },
         ];
 
-      case "Staff":
+      case "Pet Owner":
         return [
           {
             title: "Registered Animals",

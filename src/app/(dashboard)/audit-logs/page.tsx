@@ -647,14 +647,17 @@ export default function AuditLogsPage() {
             placeholder: "All Roles",
             options: [
               { label: "All Roles", value: "ALL" },
-              { label: "City Veterinarian", value: "City Veterinarian" },
-              { label: "Veterinarian", value: "Veterinarian" },
-              { label: "Staff", value: "Staff" },
               { label: "Admin", value: "Admin" },
+              { label: "Veterinarian", value: "Veterinarian" },
+              { label: "Pet Owner", value: "Pet Owner" },
             ],
             predicate: (log, val) => {
               if (val === "ALL") return true;
-              return log.role.toLowerCase().includes(val.toLowerCase());
+              const r = (log.role || "").toLowerCase();
+              if (val === "Admin") return r.includes("admin");
+              if (val === "Veterinarian") return r.includes("vet");
+              if (val === "Pet Owner") return r.includes("owner") || r.includes("citizen") || r.includes("pet");
+              return r.includes(val.toLowerCase());
             },
           },
         ]}

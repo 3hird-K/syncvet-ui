@@ -27,8 +27,8 @@ interface CVOContextType {
   fieldOperations: CVOFieldOperation[];
   auditLogs: CVOAuditLog[];
   offlineRecords: CVOOfflineVaccinationRecord[];
-  activeRoleView: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner";
-  setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner") => void;
+  activeRoleView: "Administrator" | "Veterinarian" | "Pet Owner";
+  setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Pet Owner") => void;
   addConsultation: (consultation: Omit<CVOConsultation, "id" | "encounterNo">) => CVOConsultation;
   updateConsultationStatus: (id: string, status: CVOConsultation["status"]) => void;
   updateConsultation: (id: string, updates: Partial<CVOConsultation>) => void;
@@ -253,7 +253,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [offlineRecords, setOfflineRecords] = useState<CVOOfflineVaccinationRecord[]>([]);
-  const [activeRoleView, setActiveRoleView] = useState<"Administrator" | "Veterinarian" | "Staff" | "Pet Owner">("Administrator");
+  const [activeRoleView, setActiveRoleView] = useState<"Administrator" | "Veterinarian" | "Pet Owner">("Administrator");
 
   // Sync role view with logged in user role (e.g. Administrator, Pet Owner)
   useEffect(() => {
@@ -1466,7 +1466,7 @@ Reminders for Pet Owners:
       auditLogs,
       offlineRecords,
       activeRoleView,
-      setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Staff" | "Pet Owner") => {
+      setActiveRoleView: (role: "Administrator" | "Veterinarian" | "Pet Owner") => {
         setActiveRoleView(role);
         try {
           localStorage.setItem(STORAGE_KEYS.ROLE_VIEW, role);
