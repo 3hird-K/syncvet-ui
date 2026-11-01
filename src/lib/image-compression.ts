@@ -277,13 +277,26 @@ export async function deleteChatImage(imageUrlOrPath: string): Promise<boolean> 
     let filePath = imageUrlOrPath;
 
     if (imageUrlOrPath.startsWith("http")) {
-      const match = imageUrlOrPath.match(/\/chat-attachments\/(.+)$/);
-      if (match && match[1]) {
-        filePath = decodeURIComponent(match[1].split("?")[0]);
-      } else {
-        return false;
+      try {
+        const urlObj = new URL(imageUrlOrPath);
+        const pathname = urlObj.pathname;
+        const bucketMarker = "/chat-attachments/";
+        const idx = pathname.indexOf(bucketMarker);
+        if (idx !== -1) {
+          filePath = decodeURIComponent(pathname.substring(idx + bucketMarker.length));
+        } else {
+          filePath = decodeURIComponent(pathname.split("/").pop() || "");
+        }
+      } catch {
+        const match = imageUrlOrPath.match(/\/chat-attachments\/(.+)$/);
+        if (match && match[1]) {
+          filePath = decodeURIComponent(match[1].split("?")[0]);
+        }
       }
     }
+
+    // Clean any leading slash
+    filePath = filePath.replace(/^\/+/, "");
 
     const supabase = getPublicSupabaseClient();
     const { data, error } = await supabase.storage
@@ -291,14 +304,14 @@ export async function deleteChatImage(imageUrlOrPath: string): Promise<boolean> 
       .remove([filePath]);
 
     if (error) {
-      console.warn("Chat storage deletion error (non-fatal):", error);
+      console.error("Chat storage deletion error:", error, "for path:", filePath);
       return false;
     }
 
     console.log("Successfully deleted chat image from storage:", filePath, data);
     return true;
   } catch (err) {
-    console.warn("Failed to delete chat storage file:", err);
+    console.error("Failed to delete chat storage file:", err);
     return false;
   }
 }

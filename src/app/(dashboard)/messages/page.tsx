@@ -532,7 +532,8 @@ function MessagesContent() {
     setReplyingTo({
       id: msg.id,
       senderName: name,
-      text: msg.text,
+      text: msg.text || (msg.imageUrl ? "Photo" : ""),
+      imageUrl: msg.imageUrl,
     });
     inputRef.current?.focus();
   };
@@ -2536,15 +2537,24 @@ function MessagesContent() {
                             type="button"
                             onClick={() => scrollToMessage(msg.replyTo?.id)}
                             className={cn(
-                              "text-left text-xs px-3 py-1.5 rounded-xl border transition-all cursor-pointer select-none max-w-full min-w-0",
+                              "text-left text-xs px-3 py-1.5 rounded-xl border transition-all cursor-pointer select-none max-w-full min-w-0 flex items-center gap-2",
                               isOutgoing ? "self-end" : "self-start",
                               "bg-muted/70 hover:bg-muted text-muted-foreground border-border/60 hover:border-primary/40",
                               "hover:shadow-2xs active:scale-[0.99]"
                             )}
                             title="Click to view replied message"
                           >
+                            {msg.replyTo.imageUrl && (
+                              <img
+                                src={msg.replyTo.imageUrl}
+                                alt="Replied photo"
+                                className="size-5 rounded object-cover shrink-0"
+                              />
+                            )}
                             <span className="line-clamp-2 italic break-words [overflow-wrap:anywhere] [word-break:break-word]">
-                              {msg.replyTo.text === "__UNSENT__" ? "Unsent message" : msg.replyTo.text}
+                              {msg.replyTo.text === "__UNSENT__"
+                                ? "Unsent message"
+                                : msg.replyTo.text || (msg.replyTo.imageUrl ? "Photo" : "Message")}
                             </span>
                           </button>
                         </div>
@@ -2931,15 +2941,23 @@ function MessagesContent() {
           {replyingTo && !editingMessageId && (
             <div className="px-4 py-2 bg-muted/70 dark:bg-muted/50 border-t border-border/60 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom-2 duration-150">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                  <Reply className="size-3.5" />
-                </div>
+                {replyingTo.imageUrl ? (
+                  <img
+                    src={replyingTo.imageUrl}
+                    alt="Replied photo"
+                    className="size-7 rounded object-cover shrink-0 border border-border"
+                  />
+                ) : (
+                  <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <Reply className="size-3.5" />
+                  </div>
+                )}
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold text-foreground">
                     Replying to <span className="text-primary font-bold">{getShortFirstName(replyingTo.senderName)}</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground truncate max-w-sm sm:max-w-md">
-                    {replyingTo.text}
+                    {replyingTo.text || (replyingTo.imageUrl ? "Photo" : "Message")}
                   </p>
                 </div>
               </div>

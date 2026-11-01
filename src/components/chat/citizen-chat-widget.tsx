@@ -1498,7 +1498,8 @@ function FacebookMessengerWindow({
     setReplyingTo({
       id: msg.id,
       senderName: name,
-      text: msg.text,
+      text: msg.text || (msg.imageUrl ? "Photo" : ""),
+      imageUrl: msg.imageUrl,
     });
     setTimeout(() => {
       textareaRef.current?.focus();
@@ -1558,14 +1559,31 @@ function FacebookMessengerWindow({
   };
 
   const handleDeleteMessage = async (msgId: string) => {
-    const target = messages.find((m) => m.id === msgId);
-    if (target?.imageUrl) {
-      deleteChatImage(target.imageUrl).catch(() => {});
+    let imageToPurge: string | undefined = messages.find((m) => m.id === msgId)?.imageUrl;
+
+    try {
+      const { data: dbMsg } = await supabase
+        .from("chat_messages")
+        .select("attachment_url")
+        .eq("id", msgId)
+        .maybeSingle();
+
+      if (dbMsg?.attachment_url) {
+        const meta = parseAttachmentMeta(dbMsg.attachment_url);
+        if (meta.imageUrl) {
+          imageToPurge = meta.imageUrl;
+        }
+      }
+    } catch {}
+
+    if (imageToPurge) {
+      await deleteChatImage(imageToPurge);
     }
 
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
     markMessageLocallyRemoved(msgId, user?.id);
 
+    const target = messages.find((m) => m.id === msgId);
     if (target?.isUnsent) {
       try {
         await removeMessageForMe(msgId);
@@ -1580,9 +1598,25 @@ function FacebookMessengerWindow({
   };
 
   const handleUnsendMessage = async (msgId: string) => {
-    const target = messages.find((m) => m.id === msgId);
-    if (target?.imageUrl) {
-      deleteChatImage(target.imageUrl).catch(() => {});
+    let imageToPurge: string | undefined = messages.find((m) => m.id === msgId)?.imageUrl;
+
+    try {
+      const { data: dbMsg } = await supabase
+        .from("chat_messages")
+        .select("attachment_url")
+        .eq("id", msgId)
+        .maybeSingle();
+
+      if (dbMsg?.attachment_url) {
+        const meta = parseAttachmentMeta(dbMsg.attachment_url);
+        if (meta.imageUrl) {
+          imageToPurge = meta.imageUrl;
+        }
+      }
+    } catch {}
+
+    if (imageToPurge) {
+      await deleteChatImage(imageToPurge);
     }
 
     setMessages((prev) =>
@@ -1782,6 +1816,7 @@ function FacebookMessengerWindow({
                       isUnsent,
                       reaction: isUnsent ? undefined : meta.reaction,
                       replyTo: isUnsent ? undefined : meta.replyTo,
+                      imageUrl: isUnsent ? undefined : (meta.imageUrl !== undefined ? meta.imageUrl : m.imageUrl),
                     }
                   : m
               )
@@ -2542,14 +2577,23 @@ function FacebookMessengerWindow({
                           type="button"
                           onClick={() => scrollToMessage(msg.replyTo?.id)}
                           className={cn(
-                            "text-left text-[10.5px] px-2.5 py-1 rounded-xl border transition-all cursor-pointer select-none max-w-full min-w-0",
+                            "text-left text-[10.5px] px-2.5 py-1 rounded-xl border transition-all cursor-pointer select-none max-w-full min-w-0 flex items-center gap-1.5",
                             isOutgoing ? "self-end" : "self-start",
                             "bg-muted/70 hover:bg-muted text-muted-foreground border-border/60 hover:border-primary/40",
                             "hover:shadow-2xs active:scale-[0.99]"
                           )}
                           title="Click to view replied message"
                         >
-                          <span className="line-clamp-2 italic break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.replyTo.text}</span>
+                          {msg.replyTo.imageUrl && (
+                            <img
+                              src={msg.replyTo.imageUrl}
+                              alt="Replied photo"
+                              className="size-4.5 rounded object-cover shrink-0"
+                            />
+                          )}
+                          <span className="line-clamp-2 italic break-words [overflow-wrap:anywhere] [word-break:break-word]">
+                            {msg.replyTo.text || (msg.replyTo.imageUrl ? "Photo" : "Message")}
+                          </span>
                         </button>
                       </div>
                     )}
@@ -2901,15 +2945,23 @@ function FacebookMessengerWindow({
       {replyingTo && !editingMessageId && (
         <div className="px-3 py-1.5 bg-muted/70 dark:bg-muted/50 border-t border-border/60 flex items-center justify-between gap-2 text-[10.5px] animate-in slide-in-from-bottom-2 duration-150">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="size-5 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <Reply className="size-3" />
-            </div>
+            {replyingTo.imageUrl ? (
+              <img
+                src={replyingTo.imageUrl}
+                alt="Replied photo"
+                className="size-6 rounded object-cover shrink-0 border border-border"
+              />
+            ) : (
+              <div className="size-5 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <Reply className="size-3" />
+              </div>
+            )}
             <div className="min-w-0">
               <p className="font-semibold text-foreground text-[10px] leading-tight">
                 Replying to <span className="text-primary font-bold">{getShortFirstName(replyingTo.senderName)}</span>
               </p>
               <p className="text-[10px] text-muted-foreground truncate max-w-[200px] leading-tight">
-                {replyingTo.text}
+                {replyingTo.text || (replyingTo.imageUrl ? "Photo" : "Message")}
               </p>
             </div>
           </div>

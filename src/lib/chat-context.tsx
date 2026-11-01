@@ -36,6 +36,7 @@ export interface ChatReplyInfo {
   id: string;
   senderName: string;
   text: string;
+  imageUrl?: string;
 }
 
 export function isValidUuid(id?: string | null): boolean {
@@ -992,6 +993,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                       isRead: row.is_read !== undefined ? row.is_read : m.isRead,
                       reaction: meta.reaction,
                       replyTo: meta.replyTo || m.replyTo,
+                      imageUrl: meta.isUnsent ? undefined : (meta.imageUrl !== undefined ? meta.imageUrl : m.imageUrl),
                     }
                   : m
               )
@@ -1579,12 +1581,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         return removeMessageForMe(messageId);
       }
 
-      if (target?.imageUrl) {
-        deleteChatImage(target.imageUrl).catch(() => {});
-      }
-
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
-      markMessageLocallyRemoved(messageId, user?.id);
+      let imageToPurge: string | undefined = target?.imageUrl;
 
       try {
         const { data: dbMsg } = await supabase
@@ -1596,10 +1593,19 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         if (dbMsg?.attachment_url) {
           const meta = parseAttachmentMeta(dbMsg.attachment_url);
           if (meta.imageUrl) {
-            deleteChatImage(meta.imageUrl).catch(() => {});
+            imageToPurge = meta.imageUrl;
           }
         }
+      } catch {}
 
+      if (imageToPurge) {
+        await deleteChatImage(imageToPurge);
+      }
+
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      markMessageLocallyRemoved(messageId, user?.id);
+
+      try {
         await supabase.from("chat_messages").delete().eq("id", messageId);
       } catch {
         // ignore
@@ -1611,9 +1617,25 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const unsendMessage = useCallback(
     async (messageId: string) => {
-      const target = messages.find((m) => m.id === messageId);
-      if (target?.imageUrl) {
-        deleteChatImage(target.imageUrl).catch(() => {});
+      let imageToPurge: string | undefined = messages.find((m) => m.id === messageId)?.imageUrl;
+
+      try {
+        const { data: dbMsg } = await supabase
+          .from("chat_messages")
+          .select("attachment_url")
+          .eq("id", messageId)
+          .maybeSingle();
+
+        if (dbMsg?.attachment_url) {
+          const meta = parseAttachmentMeta(dbMsg.attachment_url);
+          if (meta.imageUrl) {
+            imageToPurge = meta.imageUrl;
+          }
+        }
+      } catch {}
+
+      if (imageToPurge) {
+        await deleteChatImage(imageToPurge);
       }
 
       setReactions((prev) => {
@@ -1646,19 +1668,6 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
       } catch {}
 
       try {
-        const { data: dbMsg } = await supabase
-          .from("chat_messages")
-          .select("attachment_url")
-          .eq("id", messageId)
-          .maybeSingle();
-
-        if (dbMsg?.attachment_url) {
-          const meta = parseAttachmentMeta(dbMsg.attachment_url);
-          if (meta.imageUrl) {
-            deleteChatImage(meta.imageUrl).catch(() => {});
-          }
-        }
-
         await supabase
           .from("chat_messages")
           .update({
@@ -1718,16 +1727,27 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         });
       } catch {}
 
-      // Persist to Supabase DB preserving replyTo
+      // Persist to Supabase DB preserving existing meta, replyTo, AND imageUrl!
       if (isValidUuid(messageId)) {
         try {
+          const { data: dbMsg } = await supabase
+            .from("chat_messages")
+            .select("attachment_url")
+            .eq("id", messageId)
+            .maybeSingle();
+
+          const existingMeta = parseAttachmentMeta(dbMsg?.attachment_url);
           const currentMsg = messages.find((m) => m.id === messageId);
+          const preservedImageUrl = currentMsg?.imageUrl || existingMeta.imageUrl;
+
           await supabase
             .from("chat_messages")
             .update({
               attachment_url: serializeAttachmentMeta({
+                ...existingMeta,
                 reaction: nextReaction,
-                replyTo: currentMsg?.replyTo,
+                replyTo: currentMsg?.replyTo || existingMeta.replyTo,
+                imageUrl: preservedImageUrl,
               }),
             })
             .eq("id", messageId);
