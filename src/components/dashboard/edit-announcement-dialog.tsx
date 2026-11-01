@@ -26,10 +26,19 @@ import {
   Lock,
   Save,
   X,
+  ImageIcon,
+  Sparkles,
+  UploadCloud,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import {
+  compressImage,
+  uploadAnnouncementImage,
+  formatFileSize,
+} from "@/lib/image-compression";
 import type { CVOAnnouncement, AnnouncementCategory, AnnouncementPriority } from "@/types/announcement";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -76,6 +85,19 @@ export function EditAnnouncementDialog({
   const [customDate, setCustomDate] = useState<Date | undefined>(undefined);
   const [isPinned, setIsPinned] = useState(false);
 
+  // Image editing & WebP compression state
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const [compressionStats, setCompressionStats] = useState<{
+    originalSize: number;
+    compressedSize: number;
+    savingsPercent: number;
+  } | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
     if (announcement) {
       setTitle(announcement.title || "");
@@ -86,10 +108,25 @@ export function EditAnnouncementDialog({
         if (!foundExpiry) foundExpiry = match[1].trim();
         cleanContent = cleanContent.replace(/\[EXPIRES:[^\]]+\]/gi, "").trim();
       }
+
+      // Extract existing image
+      const imgMatch = cleanContent.match(/\[IMG:(https?:\/\/[^\]]+)\]/i);
+      const imgUrl = announcement.image_url || imgMatch?.[1] || null;
+      if (imgMatch) {
+        cleanContent = cleanContent.replace(/\[IMG:[^\]]+\]/gi, "").trim();
+      }
+
       setContent(cleanContent);
       setCategory(announcement.category || "Vaccination Drive");
       setPriority(announcement.priority || "normal");
       setIsPinned(!!announcement.is_pinned);
+
+      setExistingImageUrl(imgUrl);
+      setSelectedFile(null);
+      setPreviewDataUrl(imgUrl);
+      setRemoveImage(false);
+      setCompressionStats(null);
+
       if (foundExpiry) {
         setExpiryMode("custom");
         setExpiresAt(foundExpiry);
@@ -106,6 +143,45 @@ export function EditAnnouncementDialog({
     }
   }, [announcement, open]);
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (JPEG, PNG, WebP).");
+      return;
+    }
+
+    try {
+      setIsCompressing(true);
+      const result = await compressImage(file);
+      setSelectedFile(file);
+      setPreviewDataUrl(result.dataUrl);
+      setRemoveImage(false);
+      setCompressionStats({
+        originalSize: result.originalSize,
+        compressedSize: result.compressedSize,
+        savingsPercent: result.savingsPercent,
+      });
+      toast.success(
+        `Optimized to WebP: ${formatFileSize(result.originalSize)} → ${formatFileSize(result.compressedSize)} (${result.savingsPercent}% saved!)`
+      );
+    } catch (err: any) {
+      console.error("Compression error:", err);
+      toast.error("Failed to process image. Please try another image.");
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedFile(null);
+    setPreviewDataUrl(null);
+    setExistingImageUrl(null);
+    setRemoveImage(true);
+    setCompressionStats(null);
+  };
+
   const hasOtherPinned = Boolean(
     pinnedAnnouncement && announcement && pinnedAnnouncement.id !== announcement.id
   );
@@ -118,6 +194,7 @@ export function EditAnnouncementDialog({
       priority: AnnouncementPriority;
       target_barangay?: string | null;
       is_pinned: boolean;
+      image_url: string | null;
     }) => {
       if (!announcement) throw new Error("No announcement selected");
       const supabase = getPublicSupabaseClient();
@@ -130,22 +207,39 @@ export function EditAnnouncementDialog({
           .eq("is_pinned", true);
       }
 
-      const dbUpdates = {
+      const dbUpdates: any = {
         title: updates.title,
         content: updates.content,
         category: updates.category,
         priority: updates.priority,
         target_barangay: updates.target_barangay || "All Cagayan de Oro",
         is_pinned: updates.is_pinned,
+        image_url: updates.image_url,
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("announcements")
         .update(dbUpdates)
         .eq("id", announcement.id)
         .select()
         .single();
+
+      // Graceful fallback if image_url column doesn't exist yet in Supabase table schema
+      if (error && error.code === "42703") {
+        delete dbUpdates.image_url;
+        if (updates.image_url) {
+          dbUpdates.content = `${dbUpdates.content}\n\n[IMG:${updates.image_url}]`;
+        }
+        const retry = await supabase
+          .from("announcements")
+          .update(dbUpdates)
+          .eq("id", announcement.id)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         console.error("Supabase announcement update error:", error);
@@ -198,7 +292,7 @@ export function EditAnnouncementDialog({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!announcement) return;
 
@@ -207,9 +301,29 @@ export function EditAnnouncementDialog({
       return;
     }
 
-    let finalContent = content.replace(/\[EXPIRES:[^\]]+\]/gi, "").trim();
+    let finalContent = content.replace(/\[EXPIRES:[^\]]+\]/gi, "").replace(/\[IMG:[^\]]+\]/gi, "").trim();
     if (expiryMode !== "never" && expiresAt) {
       finalContent = `${finalContent}\n\n[EXPIRES:${expiresAt}]`;
+    }
+
+    let finalImageUrl: string | null = existingImageUrl;
+
+    if (removeImage) {
+      finalImageUrl = null;
+    }
+
+    // Upload newly selected image if user picked a new file
+    if (selectedFile) {
+      setIsUploading(true);
+      try {
+        const uploadRes = await uploadAnnouncementImage(selectedFile);
+        finalImageUrl = uploadRes.url;
+      } catch (uploadErr: any) {
+        console.error("Storage upload failed:", uploadErr);
+        toast.error("Could not upload new image to storage.");
+      } finally {
+        setIsUploading(false);
+      }
     }
 
     editMutation.mutate({
@@ -219,6 +333,7 @@ export function EditAnnouncementDialog({
       priority,
       target_barangay: "All Cagayan de Oro",
       is_pinned: isPinned,
+      image_url: finalImageUrl,
     });
   };
 
@@ -233,12 +348,12 @@ export function EditAnnouncementDialog({
           <button
             type="submit"
             form="edit-announcement-form"
-            disabled={editMutation.isPending}
+            disabled={editMutation.isPending || isCompressing || isUploading}
             className="flex size-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500 dark:hover:text-white shadow-2xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
             title="Save Changes"
             aria-label="Save Changes"
           >
-            {editMutation.isPending ? (
+            {editMutation.isPending || isUploading ? (
               <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" />
             ) : (
               <Save className="size-4" />
@@ -417,6 +532,95 @@ export function EditAnnouncementDialog({
               onChange={(e) => setContent(e.target.value)}
               className="text-xs rounded-xl resize-none leading-relaxed placeholder:text-[11px] placeholder:leading-relaxed"
               required
+            />
+          </div>
+
+          {/* Announcement Poster Image (View, Change, or Upload New) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <ImageIcon className="size-3.5 text-primary" />
+                <span>Notice Poster / Photo</span>
+                <span className="text-[10px] font-normal text-muted-foreground">(Optional)</span>
+              </Label>
+              {compressionStats && (
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <Sparkles className="size-3 text-emerald-500" />
+                  {formatFileSize(compressionStats.originalSize)} → {formatFileSize(compressionStats.compressedSize)} ({compressionStats.savingsPercent}% saved)
+                </span>
+              )}
+            </div>
+
+            {previewDataUrl ? (
+              <div className="relative rounded-xl border border-border/80 bg-muted/30 p-2.5 overflow-hidden flex items-center gap-3">
+                <div className="size-16 rounded-lg overflow-hidden border border-border shrink-0 bg-background">
+                  <img
+                    src={previewDataUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-xs font-bold text-foreground truncate">
+                    {selectedFile?.name || "Current Notice Poster"}
+                  </p>
+                  <p className="text-[10.5px] text-muted-foreground">
+                    {selectedFile ? "Optimized WebP • Ready to save" : "Attached to this announcement"}
+                  </p>
+                  <div className="pt-0.5">
+                    <label
+                      htmlFor="edit-announcement-image-input"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                    >
+                      <UploadCloud className="size-3" />
+                      <span>Change image</span>
+                    </label>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleRemoveImage}
+                  className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 cursor-pointer"
+                  title="Remove image"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ) : (
+              <label
+                htmlFor="edit-announcement-image-input"
+                className={cn(
+                  "flex flex-col items-center justify-center p-3.5 rounded-xl border border-dashed border-border/80 hover:border-primary/50 bg-muted/20 hover:bg-primary/5 transition-all cursor-pointer text-center space-y-1.5",
+                  isCompressing && "opacity-50 pointer-events-none"
+                )}
+              >
+                <div className="size-8 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                  {isCompressing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <UploadCloud className="size-4" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    {isCompressing ? "Optimizing image..." : "Click to attach or change photo"}
+                  </p>
+                  <p className="text-[10.5px] text-muted-foreground">
+                    Automatically compressed to fast WebP format
+                  </p>
+                </div>
+              </label>
+            )}
+
+            <input
+              id="edit-announcement-image-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              className="hidden"
+              onChange={handleFileSelect}
+              disabled={isCompressing || editMutation.isPending || isUploading}
             />
           </div>
 

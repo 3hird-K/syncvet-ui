@@ -172,7 +172,7 @@ export function CVOSocialFeed({
     return (dbFieldOps as CVOFieldOperation[]) || [];
   }, [cvo?.fieldOperations, dbFieldOps]);
 
-  // Fetch announcements from Supabase (both active and archived)
+  // Fetch announcements from Supabase (active announcements only, excluding internal system configurations)
   const { data: dbAnnouncements } = useQuery<CVOAnnouncement[]>({
     queryKey: ["cvo-announcements"],
     queryFn: async () => {
@@ -180,6 +180,8 @@ export function CVOSocialFeed({
         const { data, error } = await supabase
           .from("announcements")
           .select("*")
+          .eq("is_active", true)
+          .neq("title", "[CVO_PROCEDURE_QUOTA_CONFIG]")
           .order("is_pinned", { ascending: false })
           .order("created_at", { ascending: false });
 
@@ -271,9 +273,18 @@ function stripAnnouncementTags(text?: string): string {
     .trim();
 }
 
+  const isSystemAnnouncement = (a: CVOAnnouncement) => {
+    return (
+      a.title === "[CVO_PROCEDURE_QUOTA_CONFIG]" ||
+      a.title?.startsWith("[CVO_") ||
+      a.content?.includes("defaultVaccinationSlots") ||
+      a.is_active === false
+    );
+  };
+
   const announcements: CVOAnnouncement[] = useMemo(() => {
     if (dbAnnouncements && dbAnnouncements.length > 0) {
-      return dbAnnouncements;
+      return dbAnnouncements.filter((a) => !isSystemAnnouncement(a));
     }
     return DEFAULT_ANNOUNCEMENTS;
   }, [dbAnnouncements]);
@@ -285,8 +296,8 @@ function stripAnnouncementTags(text?: string): string {
   const filteredAnnouncements = useMemo(() => {
     let list = announcements;
 
-    // Filter out expired announcements so they are not shown to users
-    list = list.filter((a) => !isAnnouncementExpired(a.content, a.expires_at));
+    // Filter out expired or system announcements so they are not shown to users
+    list = list.filter((a) => !isSystemAnnouncement(a) && !isAnnouncementExpired(a.content, a.expires_at));
 
     if (selectedCategory !== "All") {
       list = list.filter((a) => a.category === selectedCategory);
@@ -550,16 +561,6 @@ function stripAnnouncementTags(text?: string): string {
                           >
                             <Clock className="size-3 text-blue-600 dark:text-blue-400" />
                             <span>In Progress</span>
-                          </Badge>
-                        )}
-                        {isCompleted && (
-                          <Badge
-                            variant="outline"
-                            className="text-[9.5px] px-2.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50 gap-1.5 font-bold rounded-full shadow-2xs transition-colors cursor-default"
-                            title="Field outreach mission concluded"
-                          >
-                            <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
-                            <span>Completed</span>
                           </Badge>
                         )}
                         {isScheduled && (

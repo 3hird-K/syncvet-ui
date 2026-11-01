@@ -224,60 +224,53 @@ export function SlotCapacityManagerDialog({
         </DialogTrigger>
       ) : null}
 
-      <DialogContent className="sm:max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-6 bg-background rounded-3xl border border-border/80 shadow-2xl space-y-4">
-        {/* Header with aesthetic icon & badge */}
-        <DialogHeader className="space-y-1 pb-3 border-b border-border/60">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-primary/15 to-indigo-500/20 text-primary flex items-center justify-center shrink-0 border border-primary/25 shadow-xs">
-              <Settings2 className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <DialogTitle className="text-base sm:text-lg font-extrabold text-foreground tracking-tight">
-                Veterinary Procedure Quota Configuration
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                {canEdit
-                  ? "Configure daily citizen appointment slots for pet owners (Monday – Friday)"
-                  : "Daily municipal procedure quotas established by the City Veterinary Office"}
-              </DialogDescription>
-            </div>
-          </div>
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-2xl w-[95vw] max-h-[88vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] p-5 sm:p-6 bg-background rounded-3xl border border-border/80 shadow-2xl space-y-4"
+      >
+        {/* Top-Right Header Actions: Save Icon beside X Close Icon */}
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-1.5">
+          {canEdit && (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              disabled={isSaving}
+              onClick={handleSave}
+              title="Save Quotas"
+              className="size-8 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300 shadow-2xs transition-all cursor-pointer"
+            >
+              {isSaving ? (
+                <Loader2 className="size-4 animate-spin text-emerald-600" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              <span className="sr-only">Save Quotas</span>
+            </Button>
+          )}
+          <DialogClose className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer">
+            <X className="size-4" />
+            <span className="sr-only">Close</span>
+          </DialogClose>
+        </div>
+
+        {/* Minimalist Header */}
+        <DialogHeader className="space-y-1 pr-20 text-left pb-1 border-b border-border/50">
+          <DialogTitle className="text-base sm:text-lg font-bold text-foreground tracking-tight">
+            Veterinary Procedure Quota Configuration
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {canEdit
+              ? "Configure daily citizen appointment slots for pet owners (Monday – Friday)"
+              : "Daily municipal procedure quotas established by the City Veterinary Office"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* Role Status Banner */}
-          {canEdit ? (
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/25 text-xs text-emerald-900 dark:text-emerald-200">
-              <div className="flex items-center gap-2.5">
-                <div className="size-7 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
-                  <ShieldCheck className="size-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground">Authorized as {resolvedRole}</span>
-                  <p className="text-[10.5px] text-muted-foreground">Live real-time sync with citizen booking portal</p>
-                </div>
-              </div>
-              <Badge variant="outline" className="text-[10px] font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full shrink-0">
-                Editing Enabled
-              </Badge>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-900 dark:text-amber-200">
-              <Lock className="size-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <span className="font-bold block">View-Only Quotas</span>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Daily appointment limits are regulated by the City Veterinary Office. Only administrators and veterinarians can modify procedure quotas.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Standard Daily Limits */}
+          {/* Standard Daily Quotas (Icon removed per user request) */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Sparkles className="size-3 text-primary" />
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Standard Daily Quotas (Monday – Friday)
               </h4>
               <span className="text-[10px] text-muted-foreground font-mono">Live Default</span>
@@ -285,22 +278,22 @@ export function SlotCapacityManagerDialog({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Vaccination Quota */}
-              <div className="p-3.5 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card space-y-2.5 shadow-2xs">
+              <div className="p-3.5 rounded-2xl border border-border/80 bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="size-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25">
+                    <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
                       <Syringe className="size-3.5" />
                     </div>
                     <span className="font-bold text-xs sm:text-sm text-foreground truncate">Vaccination</span>
                   </div>
-                  <Badge variant="outline" className="text-[9.5px] font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 shrink-0">
+                  <Badge variant="outline" className="text-[9.5px] font-semibold border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 shrink-0">
                     Daily
                   </Badge>
                 </div>
 
                 {canEdit ? (
-                  <div className="flex items-center justify-between gap-2 bg-background/80 p-1.5 px-2 rounded-xl border border-border/80">
-                    <span className="text-xs font-semibold text-muted-foreground pl-1">Slots:</span>
+                  <div className="flex items-center justify-between gap-2 bg-muted/40 p-1.5 px-2.5 rounded-xl border border-border/70">
+                    <span className="text-xs font-medium text-muted-foreground">Slots:</span>
                     <div className="flex items-center gap-1.5">
                       <Button
                         type="button"
@@ -318,7 +311,7 @@ export function SlotCapacityManagerDialog({
                         max={100}
                         value={vaccinationSlots}
                         onChange={(e) => setVaccinationSlots(Math.max(1, Number(e.target.value)))}
-                        className="h-7 text-center font-black text-sm w-14 p-0 border-0 shadow-none bg-transparent focus-visible:ring-0"
+                        className="h-7 text-center font-black text-sm w-12 p-0 border-0 shadow-none bg-transparent focus-visible:ring-0"
                       />
                       <Button
                         type="button"
@@ -344,22 +337,22 @@ export function SlotCapacityManagerDialog({
               </div>
 
               {/* Spay & Neuter Quota */}
-              <div className="p-3.5 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/[0.06] via-card to-card space-y-2.5 shadow-2xs">
+              <div className="p-3.5 rounded-2xl border border-border/80 bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="size-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/25">
+                    <div className="size-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
                       <Scissors className="size-3.5" />
                     </div>
                     <span className="font-bold text-xs sm:text-sm text-foreground truncate">Spay & Neuter</span>
                   </div>
-                  <Badge variant="outline" className="text-[9.5px] font-bold border-indigo-500/40 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-2 py-0.5 shrink-0">
+                  <Badge variant="outline" className="text-[9.5px] font-semibold border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-2 py-0.5 shrink-0">
                     Surgical
                   </Badge>
                 </div>
 
                 {canEdit ? (
-                  <div className="flex items-center justify-between gap-2 bg-background/80 p-1.5 px-2 rounded-xl border border-border/80">
-                    <span className="text-xs font-semibold text-muted-foreground pl-1">Slots:</span>
+                  <div className="flex items-center justify-between gap-2 bg-muted/40 p-1.5 px-2.5 rounded-xl border border-border/70">
+                    <span className="text-xs font-medium text-muted-foreground">Slots:</span>
                     <div className="flex items-center gap-1.5">
                       <Button
                         type="button"
@@ -377,7 +370,7 @@ export function SlotCapacityManagerDialog({
                         max={50}
                         value={spayNeuterSlots}
                         onChange={(e) => setSpayNeuterSlots(Math.max(1, Number(e.target.value)))}
-                        className="h-7 text-center font-black text-sm w-14 p-0 border-0 shadow-none bg-transparent focus-visible:ring-0"
+                        className="h-7 text-center font-black text-sm w-12 p-0 border-0 shadow-none bg-transparent focus-visible:ring-0"
                       />
                       <Button
                         type="button"
@@ -405,25 +398,25 @@ export function SlotCapacityManagerDialog({
           </div>
 
           {/* Date-specific Overrides with Shadcn Calendar */}
-          <div className="space-y-3 pt-2 border-t border-border/60">
+          <div className="space-y-3 pt-3 border-t border-border/60">
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Date-Specific Quota Overrides
                 </h4>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[10.5px] text-muted-foreground">
                   For special vaccine drives, outreach days, or modified clinic hours
                 </p>
               </div>
-              <Badge variant="outline" className="text-[10px] font-mono font-semibold">
+              <Badge variant="outline" className="text-[10px] font-mono font-medium">
                 {dateOverrides.length} Override{dateOverrides.length === 1 ? "" : "s"}
               </Badge>
             </div>
 
             {/* Form to add override using shadcn DatePicker (Staff Only) */}
             {canEdit && (
-              <div className="p-3.5 rounded-2xl border border-border/70 bg-muted/20 space-y-3">
-                <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+              <div className="p-3 sm:p-3.5 rounded-2xl border border-border/70 bg-muted/20 space-y-2.5">
+                <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
                   <CalendarIcon className="size-3.5 text-primary" />
                   Add Custom Date Capacity:
                 </span>
@@ -435,13 +428,13 @@ export function SlotCapacityManagerDialog({
                       date={overrideDate}
                       setDate={setOverrideDate}
                       placeholder="Pick override date..."
-                      className="h-8.5 text-xs rounded-xl bg-background border-input/80"
+                      className="h-8.5 text-xs rounded-xl bg-background border-input/80 w-full"
                       fromDate={startOfDay(new Date())}
                     />
                   </div>
 
                   {/* Vac slots */}
-                  <div className="sm:col-span-3 flex items-center gap-1 bg-background px-2 h-8.5 rounded-xl border border-input/80">
+                  <div className="sm:col-span-3 flex items-center gap-1.5 bg-background px-2.5 h-8.5 rounded-xl border border-input/80">
                     <Syringe className="size-3 text-emerald-600 shrink-0" />
                     <Input
                       type="number"
@@ -453,11 +446,11 @@ export function SlotCapacityManagerDialog({
                       className="h-7 text-xs font-bold border-0 shadow-none bg-transparent p-0 w-full focus-visible:ring-0"
                       title="Vaccination slots"
                     />
-                    <span className="text-[10px] text-muted-foreground shrink-0">vax</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0 font-medium">vax</span>
                   </div>
 
                   {/* S&N slots */}
-                  <div className="sm:col-span-3 flex items-center gap-1 bg-background px-2 h-8.5 rounded-xl border border-input/80">
+                  <div className="sm:col-span-3 flex items-center gap-1.5 bg-background px-2.5 h-8.5 rounded-xl border border-input/80">
                     <Scissors className="size-3 text-indigo-600 shrink-0" />
                     <Input
                       type="number"
@@ -469,7 +462,7 @@ export function SlotCapacityManagerDialog({
                       className="h-7 text-xs font-bold border-0 shadow-none bg-transparent p-0 w-full focus-visible:ring-0"
                       title="Spay & Neuter slots"
                     />
-                    <span className="text-[10px] text-muted-foreground shrink-0">kapon</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0 font-medium">kapon</span>
                   </div>
 
                   {/* Add Button */}
@@ -478,7 +471,7 @@ export function SlotCapacityManagerDialog({
                       type="button"
                       size="sm"
                       onClick={handleAddOverride}
-                      className="h-8.5 w-full sm:w-auto px-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer flex items-center justify-center"
+                      className="h-8.5 w-full px-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer flex items-center justify-center"
                       title="Add Date Override"
                     >
                       <Plus className="size-4" />
@@ -490,7 +483,7 @@ export function SlotCapacityManagerDialog({
 
             {/* List of active overrides */}
             {dateOverrides.length > 0 ? (
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-44 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pr-0.5">
                 {dateOverrides.map((ovr) => {
                   let formattedDate = ovr.date;
                   try {
@@ -515,10 +508,10 @@ export function SlotCapacityManagerDialog({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge variant="outline" className="text-[9.5px] border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-bold px-1.5 py-0">
+                        <Badge variant="outline" className="text-[9.5px] border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-medium px-1.5 py-0">
                           Vac: {ovr.vaccination}
                         </Badge>
-                        <Badge variant="outline" className="text-[9.5px] border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 font-bold px-1.5 py-0">
+                        <Badge variant="outline" className="text-[9.5px] border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 font-medium px-1.5 py-0">
                           S&N: {ovr.spayNeuter}
                         </Badge>
                         {canEdit && (
@@ -539,56 +532,9 @@ export function SlotCapacityManagerDialog({
                 })}
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground italic p-2 bg-muted/20 rounded-xl border border-border/50 text-center">
+              <p className="text-[11px] text-muted-foreground italic p-2.5 bg-muted/20 rounded-xl border border-border/50 text-center">
                 Standard Monday–Friday quotas apply to all clinic dates. No custom drive overrides currently active.
               </p>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/60">
-            {canEdit ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={isSaving}
-                  onClick={() => setOpen(false)}
-                  className="text-xs font-semibold rounded-xl h-9 px-4 cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={isSaving}
-                  onClick={handleSave}
-                  className="text-xs font-bold rounded-xl h-9 px-4 gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs cursor-pointer transition-all"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      <span>Saving Quotas...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="size-3.5" />
-                      <span>Save Quotas</span>
-                    </>
-                  )}
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setOpen(false)}
-                className="text-xs font-semibold rounded-xl h-9 px-4 cursor-pointer"
-              >
-                Close
-              </Button>
             )}
           </div>
         </div>

@@ -209,14 +209,13 @@ export function ProcedureAppointmentSlipDialog({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={handlePrint}
-            className="size-8 sm:h-8 sm:w-auto p-0 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/70 bg-muted/80 sm:bg-background/95 hover:bg-muted text-foreground shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            className="size-8 rounded-full border border-border/70 bg-muted/80 hover:bg-muted text-foreground shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
             title="Print Appointment Pass"
             aria-label="Print Appointment Pass"
           >
             <Printer className="size-4 text-primary shrink-0" />
-            <span className="hidden sm:inline">Print</span>
           </Button>
         </div>
 

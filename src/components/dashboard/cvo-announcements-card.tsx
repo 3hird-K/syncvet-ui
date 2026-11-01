@@ -100,6 +100,7 @@ export function CVOAnnouncementsCard({
           .from("announcements")
           .select("*")
           .eq("is_active", true)
+          .neq("title", "[CVO_PROCEDURE_QUOTA_CONFIG]")
           .order("is_pinned", { ascending: false })
           .order("created_at", { ascending: false });
 
@@ -107,7 +108,12 @@ export function CVOAnnouncementsCard({
           // If table doesn't exist yet, return empty array so fallback is used gracefully
           return [];
         }
-        return (data as CVOAnnouncement[]) || [];
+        return ((data as CVOAnnouncement[]) || []).filter(
+          (a) =>
+            a.title !== "[CVO_PROCEDURE_QUOTA_CONFIG]" &&
+            !a.title?.startsWith("[CVO_") &&
+            !a.content?.includes("defaultVaccinationSlots")
+        );
       } catch {
         return [];
       }
