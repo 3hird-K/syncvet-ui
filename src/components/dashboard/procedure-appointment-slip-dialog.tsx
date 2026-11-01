@@ -199,19 +199,19 @@ export function ProcedureAppointmentSlipDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl md:max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto p-5 sm:p-7 bg-white dark:bg-card rounded-2xl shadow-2xl border-border">
+      <DialogContent className="w-[95vw] sm:max-w-2xl md:max-w-3xl max-h-[92dvh] overflow-y-auto p-3.5 sm:p-6 bg-white dark:bg-card rounded-2xl sm:rounded-3xl shadow-2xl border-border">
         <DialogHeader className="sr-only">
           <DialogTitle>Official Procedure Appointment Slip</DialogTitle>
         </DialogHeader>
 
         {/* Top Print Action (placed right before the dialog Close 'X' icon) */}
-        <div className="absolute top-3.5 right-13 sm:top-4 sm:right-14 z-50 flex items-center gap-1.5 print:hidden">
+        <div className="absolute top-3 right-11 sm:top-4 sm:right-13 z-50 flex items-center gap-1.5 print:hidden">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={handlePrint}
-            className="h-8 px-2.5 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/80 bg-background/90 hover:bg-muted text-foreground shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            className="h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/80 bg-background/95 hover:bg-muted text-foreground shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
             title="Print Appointment Pass"
           >
             <Printer className="size-3.5 text-primary" />
@@ -220,11 +220,11 @@ export function ProcedureAppointmentSlipDialog({
         </div>
 
         {/* Printable Pass Container */}
-        <div id="cvo-appointment-slip" className="space-y-5 text-foreground print:p-0">
+        <div id="cvo-appointment-slip" className="space-y-4 sm:space-y-5 text-foreground print:p-0">
           {/* Header Banner */}
-          <div className="flex items-start justify-between border-b border-border/80 pb-4 pr-32 sm:pr-36">
-            <div className="flex items-center gap-3">
-              <div className="size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+          <div className="border-b border-border/80 pb-3.5 sm:pb-4 pr-16 sm:pr-24">
+            <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
+              <div className="size-11 sm:size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden mt-0.5 sm:mt-0">
                 <Image
                   src={Logo}
                   alt="City Veterinary Office Seal"
@@ -234,37 +234,38 @@ export function ProcedureAppointmentSlipDialog({
                   priority
                 />
               </div>
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-primary print:text-black">
-                  Republic of the Philippines • City of Cagayan de Oro
-                </p>
-                <h3 className="text-base font-bold tracking-tight text-foreground print:text-black">
-                  City Veterinary Office Appointment Pass
+              <div className="space-y-1 min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-primary print:text-black">
+                    Cagayan de Oro City Veterinary Office
+                  </p>
+                  <Badge
+                    variant="outline"
+                    className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 print:border-black print:text-black px-1.5 py-0"
+                  >
+                    {appointment.status}
+                  </Badge>
+                </div>
+                <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-foreground print:text-black leading-tight">
+                  Appointment Reference Pass
                 </h3>
-                <p className="text-[11px] text-muted-foreground print:text-neutral-700">
-                  Official intake voucher for scheduled clinical municipal procedures
+                <p className="text-[10px] sm:text-[11px] text-muted-foreground print:text-neutral-700 leading-tight">
+                  Official intake voucher for scheduled clinical procedures
                 </p>
               </div>
             </div>
-
-            <Badge
-              variant="outline"
-              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 print:border-black print:text-black"
-            >
-              {appointment.status}
-            </Badge>
           </div>
 
           {/* Quick Intake QR & Booking Code Box */}
-          <div className="p-4 rounded-2xl bg-muted/20 border border-border/70 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="space-y-1 text-center sm:text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-muted/20 border border-border/70 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-center sm:text-left">
+            <div className="space-y-1 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
                 Appointment Reference Voucher
               </span>
-              <p className="font-mono font-bold text-base text-foreground tracking-wider">
+              <p className="font-mono font-extrabold text-base sm:text-lg text-foreground tracking-wider break-all">
                 #{appointment.id.slice(0, 13).toUpperCase()}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] sm:text-xs text-muted-foreground leading-normal">
                 Show this barcode / pass upon arrival at the CVO Carmen clinic triage desk.
               </p>
             </div>
@@ -274,15 +275,15 @@ export function ProcedureAppointmentSlipDialog({
                 <img
                   src={qrCodeDataUrl}
                   alt="Appointment QR"
-                  className="size-24 object-contain"
+                  className="size-24 sm:size-28 object-contain"
                 />
               </div>
             )}
           </div>
 
           {/* Service & Schedule Breakdown */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
+            <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 {serviceType === "vaccination" ? (
                   <Syringe className="size-3.5 text-emerald-600" />
@@ -291,15 +292,15 @@ export function ProcedureAppointmentSlipDialog({
                 )}
                 Scheduled Procedure
               </span>
-              <p className="font-bold text-sm text-foreground">{serviceConfig.title}</p>
+              <p className="font-bold text-xs sm:text-sm text-foreground">{serviceConfig.title}</p>
               <p className="text-[11px] text-muted-foreground">{serviceConfig.category}</p>
             </div>
 
-            <div className="p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
+            <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Calendar className="size-3.5 text-primary" /> Scheduled Date
               </span>
-              <p className="font-bold text-sm text-foreground">
+              <p className="font-bold text-xs sm:text-sm text-foreground">
                 {format(new Date(appointment.date), "EEEE, MMMM d, yyyy")}
               </p>
               <p className="text-[11px] text-muted-foreground font-medium">
@@ -309,18 +310,18 @@ export function ProcedureAppointmentSlipDialog({
           </div>
 
           {/* Pet & Owner Details */}
-          <div className="p-4 rounded-xl border border-border/70 space-y-2.5 text-xs bg-card">
-            <div className="flex items-center justify-between border-b border-border/40 pb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 space-y-2.5 text-xs bg-card">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-border/40 pb-2">
+              <span className="text-[10.5px] sm:text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Patient & Guardian Record
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                Venue: <strong>{appointment.location || "CVO Central Clinic, Carmen, CDO"}</strong>
+              <span className="text-[10.5px] sm:text-[11px] text-muted-foreground">
+                Venue: <strong className="text-foreground">{appointment.location || "CVO Central Clinic, Carmen, CDO"}</strong>
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="flex items-center gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-2.5 bg-muted/20 sm:bg-transparent p-2 sm:p-0 rounded-lg">
                 <PetAvatar
                   photoUrl={petDetails?.photo_url || (appointment as any)?.pets?.photo_url}
                   species={petDetails?.species || (appointment as any)?.pets?.species}
@@ -339,9 +340,9 @@ export function ProcedureAppointmentSlipDialog({
                 </div>
               </div>
 
-              <div>
+              <div className="bg-muted/20 sm:bg-transparent p-2 sm:p-0 rounded-lg">
                 <span className="text-[10px] text-muted-foreground block">Pet Owner</span>
-                <span className="font-bold text-foreground text-xs">
+                <span className="font-bold text-foreground text-xs block truncate">
                   {ownerDetails?.name || "Registered Citizen"}
                 </span>
                 {ownerDetails?.contact && (
@@ -351,9 +352,9 @@ export function ProcedureAppointmentSlipDialog({
                 )}
               </div>
 
-              <div>
+              <div className="bg-muted/20 sm:bg-transparent p-2 sm:p-0 rounded-lg">
                 <span className="text-[10px] text-muted-foreground block">Barangay LGU</span>
-                <span className="font-bold text-foreground text-xs">
+                <span className="font-bold text-foreground text-xs block truncate">
                   {ownerDetails?.barangay || "Cagayan de Oro"}
                 </span>
                 <span className="block text-[10px] text-emerald-600 font-semibold">
@@ -364,11 +365,11 @@ export function ProcedureAppointmentSlipDialog({
           </div>
 
           {/* Guidelines Reminder */}
-          <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 space-y-1.5 text-xs">
-            <span className="font-bold text-foreground flex items-center gap-1.5">
+          <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-muted/20 space-y-1.5 text-xs">
+            <span className="font-bold text-foreground flex items-center gap-1.5 text-xs">
               <ShieldCheck className="size-3.5 text-primary" /> Key Preparation Reminders
             </span>
-            <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
+            <ul className="text-[10.5px] sm:text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
               {serviceConfig.prepGuidelines.slice(0, 3).map((item, i) => (
                 <li key={i}>{item}</li>
               ))}

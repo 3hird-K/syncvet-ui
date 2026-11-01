@@ -236,6 +236,32 @@ export function CitizenChatWidget() {
     markAllAsRead,
   } = useCitizenChat();
 
+  // Detect if any modal dialog (QR scanner, appointment slip, consultation, etc.) is open
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const checkOpenDialogs = () => {
+      const dialogs = document.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [data-radix-dialog-content], [data-radix-alert-dialog-content]'
+      );
+      setIsModalOpen(dialogs.length > 0);
+    };
+
+    checkOpenDialogs();
+
+    const observer = new MutationObserver(checkOpenDialogs);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-state", "open", "role"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   // Dynamically fetch users to always resolve up-to-date profile pictures (avatar_url)
   const { data: dbUsers = [] } = useQuery({
     queryKey: ["syncvet-widget-users"],
@@ -940,12 +966,12 @@ export function CitizenChatWidget() {
     router.push(`/messages?${params.toString()}`);
   };
 
-  if (pathname?.startsWith("/messages")) {
+  if (pathname?.startsWith("/messages") || isModalOpen) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-[999] flex items-end gap-2.5 sm:gap-3 pointer-events-none">
+    <div className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-[999] flex items-end gap-2.5 sm:gap-3 pointer-events-none syncvet-floating-chat-bubble">
       {/* ── 1. Open Floating Facebook-style Windows (Docked horizontally side-by-side) ── */}
       <div className="flex items-end gap-3 pointer-events-auto relative z-[1000]">
         {openChatIds.map((chatId) => {

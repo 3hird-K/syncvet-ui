@@ -331,4 +331,16 @@
 .animate-typing-dot {
   animation: typing-dot-bounce 1.3s infinite ease-in-out;
 }
+
+/* ── Automatically hide floating chat bubbles when any modal or transaction dialog is open ── */
+body:has([role="dialog"]),
+body:has([role="alertdialog"]),
+body:has([data-radix-dialog-content]),
+body:has([data-radix-alert-dialog-content]) {
+  .syncvet-floating-chat-bubble {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
 
