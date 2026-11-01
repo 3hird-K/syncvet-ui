@@ -37,6 +37,7 @@ import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import {
   compressImage,
   uploadAnnouncementImage,
+  deleteAnnouncementImage,
   formatFileSize,
 } from "@/lib/image-compression";
 import type { CVOAnnouncement, AnnouncementCategory, AnnouncementPriority } from "@/types/announcement";
@@ -245,6 +246,17 @@ export function EditAnnouncementDialog({
         console.error("Supabase announcement update error:", error);
         throw error;
       }
+
+      // If the announcement had a previous image and it was changed or removed, clean up old storage file
+      const originalImageUrl =
+        announcement.image_url ||
+        announcement.content?.match(/\[IMG:(https?:\/\/[^\]]+)\]/i)?.[1];
+      if (originalImageUrl && updates.image_url !== originalImageUrl) {
+        deleteAnnouncementImage(originalImageUrl).catch((err) =>
+          console.warn("Could not delete old announcement image from storage:", err)
+        );
+      }
+
       return data as CVOAnnouncement;
     },
     onSuccess: (data) => {
