@@ -28,6 +28,9 @@ import {
   Scissors,
   ClipboardCheck,
   Clock,
+  Phone,
+  Info,
+  ChevronRight,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { Badge } from "@/components/ui/badge";
@@ -86,6 +89,102 @@ export interface PetProfileRecord {
   createdAt?: string;
 }
 
+function formatAptDate(dateStr?: string) {
+  if (!dateStr) return "Scheduled Date";
+  try {
+    const clean = dateStr.split("T")[0];
+    const parts = clean.split("-").map(Number);
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (!isNaN(dt.getTime())) {
+        return dt.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+    }
+  } catch {}
+  return dateStr;
+}
+
+function formatTimeSlot(slot?: string) {
+  if (!slot) return "Clinic Session: 08:00 AM – 05:00 PM";
+  const s = slot.toLowerCase();
+  if (s.includes("morn")) return "Morning Session (08:00 AM – 12:00 PM)";
+  if (s.includes("after") || s.includes("noon")) return "Afternoon Session (01:00 PM – 05:00 PM)";
+  return slot;
+}
+
+function extractPhone(notes?: string) {
+  if (!notes) return null;
+  const match = notes.match(/(\b09\d{9}\b|\+?63\d{10}\b)/);
+  return match ? match[1] : null;
+}
+
+function getActivityMeta(item: any) {
+  if (!item) {
+    return {
+      title: "Activity Details",
+      subtitle: "Official CVO Veterinary Record",
+      checklist: "Please arrive 15 minutes before your schedule at the City Veterinary Office.",
+      isVax: false,
+      isSurgery: false,
+      isConsult: false,
+      isFollowUp: false,
+    };
+  }
+  const rawService = (item.title || "").toLowerCase();
+  const isVax =
+    rawService.includes("vax") ||
+    rawService.includes("vaccin") ||
+    rawService.includes("rabies") ||
+    item.type === "vaccination-due" ||
+    item.type === "vaccination";
+  const isSurgery =
+    rawService.includes("spay") ||
+    rawService.includes("neuter") ||
+    rawService.includes("kapon");
+  const isConsult =
+    item.type === "encounter" ||
+    item.type === "consultation" ||
+    rawService.includes("consult");
+  const isFollowUp = item.type === "follow-up";
+
+  const title = isVax
+    ? "Anti-Rabies Prophylaxis & Core Vaccination"
+    : isSurgery
+    ? "Spay & Neuter (Kapon) Surgical Procedure"
+    : isConsult
+    ? "Clinical Veterinary Consultation & Exam"
+    : isFollowUp
+    ? "Post-Operative Suture Removal & Recovery Check"
+    : item.title?.charAt(0).toUpperCase() + item.title?.slice(1);
+
+  const subtitle = isVax
+    ? "Official CVO Rabies Elimination & Public Health Drive (RA 9482)"
+    : isSurgery
+    ? "CVO Surgical Sterilization & Companion Animal Population Control"
+    : isConsult
+    ? "Outpatient Medical Triage & Clinical Health Assessment"
+    : isFollowUp
+    ? "Surgical Incision Assessment & Suture Extraction Follow-Up"
+    : "City Veterinary Healthcare Service";
+
+  const checklist = isVax
+    ? "Present this digital passport or physical booklet upon arrival. Pet must be healthy and active with no fever or signs of illness."
+    : isSurgery
+    ? "Strict 8-hour fasting before morning surgery (no food). Bring a clean towel, recovery collar (E-collar), and pet crate / leash."
+    : isConsult
+    ? "Proceed to the CVO intake counter for vital signs & temperature checkup upon arrival."
+    : isFollowUp
+    ? "Inspect incision site for complete wound closure. Attending vet will remove sutures and check recovery."
+    : "Please arrive 15 minutes before your scheduled window at the City Veterinary Office.";
+
+  return { title, subtitle, checklist, isVax, isSurgery, isConsult, isFollowUp };
+}
+
 export interface PetProfileDialogProps {
   pet: PetProfileRecord | null;
   open: boolean;
@@ -128,6 +227,7 @@ export function PetProfileDialog({
   // Side panels matching images 2 & 3
   const [showEditPetPanel, setShowEditPetPanel] = useState(false);
   const [showAvatarPickerPanel, setShowAvatarPickerPanel] = useState(false);
+  const [selectedActivityDetail, setSelectedActivityDetail] = useState<any | null>(null);
 
   // Editable pet state
   const [currentPet, setCurrentPet] = useState<PetProfileRecord | null>(pet);
@@ -512,6 +612,147 @@ export function PetProfileDialog({
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [currentPet, petConsultations, petDbVaccinations, petDbAppointments]);
 
+  // Compute Next Scheduled / Upcoming and Past History items
+  const { upcomingSchedule, pastHistory } = useMemo(() => {
+    const upcoming: Array<{
+      id: string;
+      type: "appointment" | "encounter" | "follow-up" | "vaccination-due";
+      title: string;
+      date: string;
+      time?: string;
+      status: string;
+      notes?: string;
+      vetName?: string;
+      chiefComplaint?: string;
+      raw?: any;
+    }> = [];
+
+    const history: Array<{
+      id: string;
+      type: "procedure" | "consultation" | "vaccination";
+      title: string;
+      date: string;
+      time?: string;
+      status: string;
+      notes?: string;
+      vetName?: string;
+      diagnosis?: string;
+      treatment?: string;
+      chiefComplaint?: string;
+      encounterNo?: string;
+      raw?: any;
+    }> = [];
+
+    // 1. Process Database Appointments
+    petDbAppointments.forEach((apt: any) => {
+      const isCompleted = apt.status?.toLowerCase() === "completed";
+      const dateStr = (apt.date || "").split("T")[0];
+
+      if (isCompleted) {
+        history.push({
+          id: apt.id,
+          type: "procedure",
+          title: apt.service_id || "Veterinary Procedure",
+          date: dateStr,
+          time: apt.time_slot,
+          status: "completed",
+          notes: apt.notes,
+          raw: apt,
+        });
+
+        // Detect follow-up (e.g. Suture removal) from surgical notes
+        if (apt.notes) {
+          const sutureMatch = apt.notes.match(/Suture removal:\s*([^.\n]+)/i);
+          if (sutureMatch && sutureMatch[1]) {
+            upcoming.push({
+              id: `followup-suture-${apt.id}`,
+              type: "follow-up",
+              title: "Suture Removal Follow-Up",
+              date: sutureMatch[1].trim(),
+              status: "upcoming",
+              notes: "Post-operative suture removal & surgical incision inspection.",
+              vetName: "CVO Surgical Team",
+            });
+          }
+        }
+      } else {
+        upcoming.push({
+          id: apt.id,
+          type: "appointment",
+          title: apt.service_id || "Veterinary Procedure",
+          date: dateStr,
+          time: apt.time_slot,
+          status: apt.status || "scheduled",
+          notes: apt.notes,
+          raw: apt,
+        });
+      }
+    });
+
+    // 2. Process Consultations
+    petConsultations.forEach((c) => {
+      const isCompleted = c.status?.toLowerCase() === "completed";
+      if (!isCompleted && c.status) {
+        upcoming.push({
+          id: c.encounterNo || c.id,
+          type: "encounter",
+          title: c.serviceType || "Field Treatment/Consultation",
+          date: c.date,
+          time: c.time,
+          status: c.status || "waiting",
+          chiefComplaint: c.chiefComplaint,
+          vetName: c.vetName,
+          raw: c,
+        });
+      } else {
+        history.push({
+          id: c.encounterNo || c.id,
+          type: "consultation",
+          title: c.serviceType || "Field Treatment/Consultation",
+          date: c.date,
+          time: c.time,
+          status: c.status || "completed",
+          chiefComplaint: c.chiefComplaint,
+          diagnosis: c.diagnosis,
+          treatment: c.treatment,
+          vetName: c.vetName,
+          encounterNo: c.encounterNo,
+          raw: c,
+        });
+      }
+    });
+
+    // 3. Process Vaccinations
+    petDbVaccinations.forEach((v: any) => {
+      history.push({
+        id: v.id || `vax-${v.batch_number}`,
+        type: "vaccination",
+        title: `${v.vaccine_type || "Anti-Rabies Prophylaxis"} (Lot #${v.batch_number || "RB-2026"})`,
+        date: v.date_administered || v.created_at?.split("T")[0] || "2026-10-28",
+        status: "administered",
+        treatment: "1.0 mL Subcutaneous (SC) Injection",
+        vetName: v.administering_vet || "Dr. Helen Ann P. Tacandong, DVM",
+        notes: `Batch #${v.batch_number || "RB-2026"}`,
+        raw: v,
+      });
+    });
+
+    // 4. Next Core Rabies Vaccination Due (if recorded)
+    if (currentPet?.nextVaccinationDate) {
+      upcoming.push({
+        id: `vax-next-due-${currentPet.id}`,
+        type: "vaccination-due",
+        title: "Anti-Rabies Core Annual Booster",
+        date: currentPet.nextVaccinationDate,
+        status: vaxStatus.isVaccinated ? "scheduled" : "due",
+        notes: "Municipal rabies immunization booster (RA 9482 compliance). Free at CVO City Clinic.",
+        vetName: "CVO Vaccination Team",
+      });
+    }
+
+    return { upcomingSchedule: upcoming, pastHistory: history };
+  }, [petDbAppointments, petConsultations, petDbVaccinations, currentPet, vaxStatus]);
+
   if (!currentPet) return null;
 
   return (
@@ -521,7 +762,7 @@ export function PetProfileDialog({
           showCloseButton={false}
           className={cn(
             "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[88vh] max-h-[88vh] flex flex-col",
-            showAvatarPickerPanel || showEditPetPanel
+            showAvatarPickerPanel || showEditPetPanel || !!selectedActivityDetail
               ? "max-w-5xl sm:max-w-5xl"
               : activeProfileTab !== "overview"
               ? "max-w-4xl sm:max-w-4xl"
@@ -559,6 +800,7 @@ export function PetProfileDialog({
                       setActiveProfileTab((prev) => (prev === "passport" ? "overview" : "passport"));
                       setShowEditPetPanel(false);
                       setShowAvatarPickerPanel(false);
+                      setSelectedActivityDetail(null);
                     }}
                     className={cn(
                       "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
@@ -579,6 +821,7 @@ export function PetProfileDialog({
                       setActiveProfileTab((prev) => (prev === "consultation" ? "overview" : "consultation"));
                       setShowEditPetPanel(false);
                       setShowAvatarPickerPanel(false);
+                      setSelectedActivityDetail(null);
                     }}
                     className={cn(
                       "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
@@ -586,7 +829,7 @@ export function PetProfileDialog({
                         ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                         : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                     )}
-                    title={activeProfileTab === "consultation" ? "Close Clinical Care View" : "Clinical Care Consultations"}
+                    title={activeProfileTab === "consultation" ? "Close Clinical Care View" : "Clinical Care & Medical History"}
                   >
                     <Stethoscope className="size-4 text-white" />
                     <span className="sr-only">Clinical Care</span>
@@ -599,6 +842,7 @@ export function PetProfileDialog({
                       setActiveProfileTab((prev) => (prev === "procedure" ? "overview" : "procedure"));
                       setShowEditPetPanel(false);
                       setShowAvatarPickerPanel(false);
+                      setSelectedActivityDetail(null);
                     }}
                     className={cn(
                       "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
@@ -606,7 +850,7 @@ export function PetProfileDialog({
                         ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                         : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                     )}
-                    title={activeProfileTab === "procedure" ? "Close Procedure Booking View" : "Procedures & Appointments"}
+                    title={activeProfileTab === "procedure" ? "Close Procedure Booking View" : "Scheduled Activities & History"}
                   >
                     <Calendar className="size-4 text-white" />
                     <span className="sr-only">Appointments & Procedures</span>
@@ -653,6 +897,7 @@ export function PetProfileDialog({
                         setActiveProfileTab("overview");
                         setShowEditPetPanel(false);
                         setShowAvatarPickerPanel(false);
+                        setSelectedActivityDetail(null);
                       }}
                       className="size-8 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 hover:border-white/40 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ml-2.5 sm:ml-3"
                       title="Close"
@@ -693,6 +938,7 @@ export function PetProfileDialog({
                               return nextState;
                             });
                             setShowAvatarPickerPanel(false);
+                            setSelectedActivityDetail(null);
                           }}
                           className={cn(
                             "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
@@ -712,6 +958,7 @@ export function PetProfileDialog({
                           onClick={() => {
                             setShowAvatarPickerPanel((prev) => !prev);
                             setShowEditPetPanel(false);
+                            setSelectedActivityDetail(null);
                           }}
                           className={cn(
                             "size-7 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
@@ -1248,20 +1495,21 @@ export function PetProfileDialog({
                   </div>
                 )}
 
-                {/* ── CLINICAL CONSULTATIONS TAB ── */}
-                {activeProfileTab === "consultation" && (
-                  <div className="space-y-3 animate-in fade-in-0 duration-200">
-                    <div className="flex items-center justify-between pb-2 border-b border-border/70">
+                {/* ── CARE SCHEDULE & CLINICAL HISTORY TAB ── */}
+                {(activeProfileTab === "consultation" || activeProfileTab === "procedure") && (
+                  <div className="space-y-4 animate-in fade-in-0 duration-200">
+                    {/* Header */}
+                    <div className="flex items-center justify-between pb-2 border-b border-border/70 flex-wrap gap-2">
                       <div className="flex items-center gap-2">
                         <div className="size-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                          <Stethoscope className="size-4" />
+                          <CalendarClock className="size-4" />
                         </div>
                         <div>
                           <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                            Clinical Encounters for {currentPet.name}
+                            Care Schedule & Clinical History for {currentPet.name}
                           </h4>
                           <p className="text-[11px] text-muted-foreground">
-                            Veterinary diagnoses, consultations & health checkups
+                            Official appointments, scheduled follow-ups & medical encounter history
                           </p>
                         </div>
                       </div>
@@ -1277,177 +1525,285 @@ export function PetProfileDialog({
                       </Button>
                     </div>
 
-                    {petConsultations.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-muted-foreground">
-                        No clinical consultations logged for {currentPet.name} yet.
+                    {/* SECTION 1: NEXT SCHEDULED & UPCOMING ACTIVITIES */}
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between pt-0.5">
+                        <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Clock className="size-3.5 text-primary" />
+                          <span>Next Scheduled & Upcoming Activities</span>
+                        </h5>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] font-semibold border-primary/30",
+                            upcomingSchedule.length > 0
+                              ? "bg-primary/10 text-primary border-primary/40 font-bold"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {upcomingSchedule.length > 0 ? `${upcomingSchedule.length} Scheduled` : "None"}
+                        </Badge>
                       </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {petConsultations.map((c) => {
-                          const isCompleted = c.status === "completed";
-                          return (
-                            <div
-                              key={c.id}
-                              className={cn(
-                                "p-3.5 rounded-xl border space-y-2.5 transition-all",
-                                isCompleted
-                                  ? "bg-emerald-500/5 border-emerald-500/20"
-                                  : "bg-card/60 border-border/80"
-                              )}
-                            >
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono text-xs font-bold text-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/70">
-                                    #{c.encounterNo || c.id}
-                                  </span>
-                                  {c.status && (
-                                    <Badge
-                                      variant="outline"
-                                      className={cn(
-                                        "text-[9px] font-bold uppercase tracking-wider gap-1",
-                                        isCompleted
-                                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                          : "bg-muted text-muted-foreground border-border/60"
-                                      )}
-                                    >
-                                      {isCompleted ? (
-                                        <>
-                                          <CheckCircle2 className="size-2.5 text-emerald-600" />
-                                          Completed
-                                        </>
-                                      ) : (
-                                        c.status.toUpperCase()
-                                      )}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
-                                  <Calendar className="size-3.5" />
-                                  {c.date} • {c.time || "Intake"}
-                                </span>
-                              </div>
 
-                              <div className="space-y-1 text-xs">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="font-bold text-foreground text-sm">
-                                    {c.serviceType || "Field Treatment/Consultation"}
-                                  </p>
-                                  {c.vetName && (
-                                    <span className="text-[10px] text-muted-foreground italic font-serif">
-                                      Attending Vet: {c.vetName}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <p className="text-[11px] text-muted-foreground leading-snug">
-                                  <strong className="text-foreground">Reason:</strong> {c.chiefComplaint || "General checkup"}
-                                </p>
-
-                                {c.diagnosis && c.diagnosis !== "Pending Clinical Examination" && (
-                                  <div className="text-[11px] text-foreground bg-background/80 p-2 rounded-lg border border-border/60 space-y-0.5 mt-1">
-                                    <p className="font-semibold text-emerald-700 dark:text-emerald-400">
-                                      Official Diagnosis: {c.diagnosis}
-                                    </p>
-                                    {c.treatment && (
-                                      <p className="text-muted-foreground text-[10.5px]">
-                                        Treatment: {c.treatment}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex items-center justify-end pt-1 border-t border-border/40">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedConsultationForSheet(c);
-                                    setConsultationSheetOpen(true);
-                                  }}
-                                  className="h-7 px-2.5 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-background hover:bg-muted"
-                                >
-                                  <FileText className="size-3 text-primary" />
-                                  <span>Official CVO Paper</span>
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── PROCEDURES & APPOINTMENTS TAB ── */}
-                {activeProfileTab === "procedure" && (
-                  <div className="space-y-3 animate-in fade-in-0 duration-200">
-                    <div className="flex items-center justify-between pb-2 border-b border-border/70">
-                      <div className="flex items-center gap-2">
-                        <div className="size-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                          <Calendar className="size-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                            Scheduled Procedures for {currentPet.name}
-                          </h4>
-                          <p className="text-[11px] text-muted-foreground">
-                            Vaccination appointments and Kapon surgical reservations
+                      {upcomingSchedule.length === 0 ? (
+                        <div className="p-4 rounded-xl border border-dashed border-border/80 bg-muted/20 text-center space-y-1">
+                          <CalendarClock className="size-5 text-muted-foreground/60 mx-auto" />
+                          <p className="text-xs font-semibold text-foreground">
+                            No Upcoming Activities Scheduled
+                          </p>
+                          <p className="text-[10.5px] text-muted-foreground">
+                            There are no active or pending appointments for {currentPet.name}.
                           </p>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {upcomingSchedule.map((item) => {
+                            const meta = getActivityMeta(item);
+                            const formattedDate = formatAptDate(item.date);
+                            const formattedSession = formatTimeSlot(item.time);
+                            const refId = `#APT-${item.id.slice(0, 8).toUpperCase()}`;
+                            const isSelected = selectedActivityDetail?.id === item.id;
 
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setActiveProfileTab("overview")}
-                        className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                      >
-                        Back to Overview
-                      </Button>
-                    </div>
-
-                    {petDbAppointments.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-muted-foreground">
-                        No procedure appointments currently recorded for {currentPet.name}.
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {petDbAppointments.map((apt: any) => (
-                          <div
-                            key={apt.id}
-                            className="p-3.5 rounded-xl border border-border/80 bg-card/60 space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-xs text-foreground">
-                                {apt.service_id || "Veterinary Procedure"}
-                              </span>
-                              <Badge
-                                variant="outline"
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => {
+                                  setSelectedActivityDetail((prev: any) =>
+                                    prev?.id === item.id ? null : item
+                                  );
+                                  setShowEditPetPanel(false);
+                                  setShowAvatarPickerPanel(false);
+                                }}
                                 className={cn(
-                                  "text-[10px] font-semibold",
-                                  apt.status?.toLowerCase() === "completed"
-                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                    : "text-primary border-primary/30"
+                                  "p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer select-none",
+                                  isSelected
+                                    ? "bg-primary/10 border-primary ring-1 ring-primary/40 shadow-xs"
+                                    : "bg-card/70 hover:bg-card/95 border-border/70 hover:border-primary/40"
                                 )}
                               >
-                                {apt.status || "Scheduled"}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
-                              <Calendar className="size-3.5" />
-                              {(apt.date || "").split("T")[0]} {apt.time_slot ? `• ${apt.time_slot}` : ""}
-                            </p>
-                            {apt.notes && (
-                              <p className="text-[11px] text-muted-foreground">
-                                Notes: {apt.notes}
-                              </p>
-                            )}
-                          </div>
-                        ))}
+                                {/* Left icon + service details */}
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <div
+                                    className={cn(
+                                      "size-8 rounded-lg flex items-center justify-center shrink-0 border shadow-2xs",
+                                      meta.isVax
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                        : meta.isSurgery
+                                        ? "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30"
+                                        : meta.isConsult
+                                        ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                                        : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+                                    )}
+                                  >
+                                    {meta.isVax ? (
+                                      <Syringe className="size-4" />
+                                    ) : meta.isSurgery ? (
+                                      <Scissors className="size-4" />
+                                    ) : meta.isConsult ? (
+                                      <Stethoscope className="size-4" />
+                                    ) : (
+                                      <CalendarClock className="size-4" />
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <h4 className="font-bold text-xs sm:text-sm text-foreground tracking-tight truncate max-w-[260px] sm:max-w-xs">
+                                        {meta.title}
+                                      </h4>
+                                      <span className="text-[10px] font-mono text-muted-foreground/80 hidden sm:inline">
+                                        {refId}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground font-medium pt-0.5">
+                                      <span className="flex items-center gap-1 text-foreground/80">
+                                        <Calendar className="size-3 text-primary shrink-0" />
+                                        {formattedDate}
+                                      </span>
+                                      <span>•</span>
+                                      <span className="truncate">{formattedSession}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right: status badge & Details button */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-[9.5px] font-bold uppercase tracking-wider py-0.5 px-2 rounded-full shrink-0 shadow-2xs hidden sm:inline-flex",
+                                      item.status === "confirmed"
+                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                                        : item.status === "waiting"
+                                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                                        : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40"
+                                    )}
+                                  >
+                                    <span className="size-1.5 rounded-full bg-current mr-1 animate-pulse inline-block" />
+                                    {item.status === "confirmed" ? "CONFIRMED" : item.status.toUpperCase()}
+                                  </Badge>
+
+                                  <Button
+                                    size="sm"
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedActivityDetail((prev: any) =>
+                                        prev?.id === item.id ? null : item
+                                      );
+                                      setShowEditPetPanel(false);
+                                      setShowAvatarPickerPanel(false);
+                                    }}
+                                    className={cn(
+                                      "h-7 px-2.5 text-[11px] font-semibold gap-1 rounded-lg shrink-0 cursor-pointer shadow-2xs",
+                                      isSelected
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                        : "bg-background hover:bg-muted text-foreground border-border/80"
+                                    )}
+                                  >
+                                    <span>Details</span>
+                                    <ChevronRight className={cn("size-3 transition-transform", isSelected && "rotate-90 sm:rotate-0")} />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SECTION 2: PAST ENCOUNTERS & MEDICAL HISTORY */}
+                    <div className="space-y-2.5 pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between pt-0.5">
+                        <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <CheckCircle2 className="size-3.5 text-emerald-600" />
+                          <span>Past Encounters & Medical History</span>
+                        </h5>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-semibold text-muted-foreground border-border/80"
+                        >
+                          {pastHistory.length} {pastHistory.length === 1 ? "Record" : "Records"}
+                        </Badge>
                       </div>
-                    )}
+
+                      {pastHistory.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-muted-foreground">
+                          No medical history or completed procedures recorded yet for {currentPet.name}.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {pastHistory.map((item) => {
+                            const isProc = item.type === "procedure";
+                            const isConsult = item.type === "consultation";
+                            const isVax = item.type === "vaccination";
+                            const isSelected = selectedActivityDetail?.id === item.id;
+                            const formattedDate = formatAptDate(item.date);
+
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => {
+                                  setSelectedActivityDetail((prev: any) =>
+                                    prev?.id === item.id ? null : item
+                                  );
+                                  setShowEditPetPanel(false);
+                                  setShowAvatarPickerPanel(false);
+                                }}
+                                className={cn(
+                                  "p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer select-none",
+                                  isSelected
+                                    ? "bg-primary/10 border-primary ring-1 ring-primary/40 shadow-xs"
+                                    : "bg-card/70 hover:bg-card/95 border-border/70 hover:border-primary/40"
+                                )}
+                              >
+                                {/* Left icon + summary */}
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <div
+                                    className={cn(
+                                      "size-8 rounded-lg flex items-center justify-center shrink-0 border shadow-2xs",
+                                      isProc
+                                        ? "bg-purple-500/15 text-purple-600 border-purple-500/30"
+                                        : isConsult
+                                        ? "bg-blue-500/15 text-blue-600 border-blue-500/30"
+                                        : "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
+                                    )}
+                                  >
+                                    {isProc ? (
+                                      <Scissors className="size-4" />
+                                    ) : isConsult ? (
+                                      <Stethoscope className="size-4" />
+                                    ) : (
+                                      <Syringe className="size-4" />
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {item.encounterNo && (
+                                        <span className="font-mono text-[10px] font-bold text-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/70">
+                                          #{item.encounterNo}
+                                        </span>
+                                      )}
+                                      <h4 className="font-bold text-xs sm:text-sm text-foreground truncate max-w-[240px] sm:max-w-xs">
+                                        {item.title}
+                                      </h4>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground font-medium pt-0.5">
+                                      <span className="flex items-center gap-1 text-foreground/80">
+                                        <Calendar className="size-3 text-primary shrink-0" />
+                                        {formattedDate}
+                                      </span>
+                                      {item.diagnosis && item.diagnosis !== "Pending Clinical Examination" && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="truncate text-emerald-700 dark:text-emerald-400 font-medium">
+                                            {item.diagnosis}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right: status & Details button */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9.5px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 py-0.5 px-2 hidden sm:inline-flex"
+                                  >
+                                    <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                    {item.status.toUpperCase()}
+                                  </Badge>
+
+                                  <Button
+                                    size="sm"
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedActivityDetail((prev: any) =>
+                                        prev?.id === item.id ? null : item
+                                      );
+                                      setShowEditPetPanel(false);
+                                      setShowAvatarPickerPanel(false);
+                                    }}
+                                    className={cn(
+                                      "h-7 px-2.5 text-[11px] font-semibold gap-1 rounded-lg shrink-0 cursor-pointer shadow-2xs",
+                                      isSelected
+                                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                        : "bg-background hover:bg-muted text-foreground border-border/80"
+                                    )}
+                                  >
+                                    <span>Details</span>
+                                    <ChevronRight className={cn("size-3 transition-transform", isSelected && "rotate-90 sm:rotate-0")} />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -1744,6 +2100,273 @@ export function PetProfileDialog({
                 </div>
               </div>
             )}
+
+            {/* ── Right Side: Activity & Encounter Details Panel (Matching Image 2 drawer) ── */}
+            {selectedActivityDetail && (() => {
+              const meta = getActivityMeta(selectedActivityDetail);
+              const formattedDetailDate = formatAptDate(selectedActivityDetail.date);
+              const formattedDetailSession = formatTimeSlot(selectedActivityDetail.time);
+              const detailLocation =
+                selectedActivityDetail.raw?.location ||
+                "City Veterinary Office - Carmen Central Clinic";
+              const detailPhone = extractPhone(selectedActivityDetail.notes);
+              const detailCleanNotes = selectedActivityDetail.notes
+                ? selectedActivityDetail.notes.replace(/Contact:\s*(\+?63\d{10}|\b09\d{9}\b)/i, "").trim()
+                : "";
+              const detailRefId = selectedActivityDetail.encounterNo
+                ? `#ENC-${selectedActivityDetail.encounterNo}`
+                : selectedActivityDetail.id.startsWith("vax-") || selectedActivityDetail.type === "vaccination"
+                ? `#VAX-${selectedActivityDetail.id.slice(0, 8).toUpperCase()}`
+                : `#APT-${selectedActivityDetail.id.slice(0, 8).toUpperCase()}`;
+
+              return (
+                <div className="w-[320px] sm:w-[360px] md:w-[390px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                  {/* Panel Header */}
+                  <div className="p-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={cn(
+                            "size-6 rounded-md flex items-center justify-center shrink-0",
+                            meta.isVax
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : meta.isSurgery
+                              ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                              : meta.isConsult
+                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                              : "bg-primary/15 text-primary"
+                          )}
+                        >
+                          {meta.isVax ? (
+                            <Syringe className="size-3.5" />
+                          ) : meta.isSurgery ? (
+                            <Scissors className="size-3.5" />
+                          ) : meta.isConsult ? (
+                            <Stethoscope className="size-3.5" />
+                          ) : (
+                            <CalendarClock className="size-3.5" />
+                          )}
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground truncate">
+                          Activity Details
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate font-mono">
+                        {detailRefId} • {currentPet.name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedActivityDetail(null)}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Close activity details"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {/* Details Scroll Area */}
+                  <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-3.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden text-xs">
+                    {/* Hero Card */}
+                    <div className="p-3 rounded-2xl bg-muted/40 border border-border/70 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {meta.isVax
+                            ? "Vaccination & Immunization"
+                            : meta.isSurgery
+                            ? "Surgical Procedure"
+                            : meta.isConsult
+                            ? "Clinical Encounter"
+                            : "Veterinary Appointment"}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[9.5px] font-bold uppercase tracking-wider py-0.5 px-2 rounded-full shrink-0 shadow-2xs",
+                            selectedActivityDetail.status === "confirmed" ||
+                              selectedActivityDetail.status === "completed" ||
+                              selectedActivityDetail.status === "administered"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                              : selectedActivityDetail.status === "waiting"
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                              : "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40"
+                          )}
+                        >
+                          <span className="size-1.5 rounded-full bg-current mr-1 animate-pulse inline-block" />
+                          {selectedActivityDetail.status === "confirmed"
+                            ? "CONFIRMED APPOINTMENT"
+                            : selectedActivityDetail.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-foreground leading-tight">
+                          {meta.title}
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground pt-1 leading-snug">
+                          {meta.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Schedule Date & Location Details */}
+                    <div className="space-y-2">
+                      <div className="p-2.5 rounded-xl bg-card border border-border/70 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10.5px] font-semibold">
+                          <Calendar className="size-3 text-primary" />
+                          <span>Date & Schedule Window</span>
+                        </div>
+                        <p className="font-bold text-foreground text-xs leading-tight">
+                          {formattedDetailDate}
+                        </p>
+                        <p className="text-[10.5px] text-muted-foreground font-mono">
+                          {formattedDetailSession}
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-card border border-border/70 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10.5px] font-semibold">
+                          <MapPin className="size-3 text-primary" />
+                          <span>Clinic Venue / Facility</span>
+                        </div>
+                        <p className="font-bold text-foreground text-xs leading-tight">
+                          {detailLocation}
+                        </p>
+                        <p className="text-[10.5px] text-muted-foreground">
+                          Zone 10, Carmen, Cagayan de Oro City
+                        </p>
+                      </div>
+
+                      {detailPhone && (
+                        <div className="p-2.5 rounded-xl bg-card border border-border/70 space-y-1">
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-[10.5px] font-semibold">
+                            <Phone className="size-3 text-primary" />
+                            <span>Registered Contact</span>
+                          </div>
+                          <p className="font-mono font-bold text-foreground text-xs">
+                            {detailPhone}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            SMS notifications & queue alerts
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="p-2.5 rounded-xl bg-card border border-border/70 space-y-1">
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-[10.5px] font-semibold">
+                          <ShieldCheck className="size-3 text-primary" />
+                          <span>Record Reference</span>
+                        </div>
+                        <p className="font-mono font-bold text-primary text-xs">
+                          {detailRefId}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Official CVO Registry Reference
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Clinical Details if Encounter */}
+                    {selectedActivityDetail.chiefComplaint && (
+                      <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 space-y-0.5">
+                        <span className="font-bold text-[10.5px] text-foreground block">
+                          Reason / Chief Complaint:
+                        </span>
+                        <p className="text-[11px] text-muted-foreground leading-snug">
+                          {selectedActivityDetail.chiefComplaint}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedActivityDetail.diagnosis && selectedActivityDetail.diagnosis !== "Pending Clinical Examination" && (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 space-y-1">
+                        <span className="font-bold text-[10.5px] text-emerald-800 dark:text-emerald-300 block">
+                          Official Diagnosis:
+                        </span>
+                        <p className="text-[11px] font-semibold text-emerald-900 dark:text-emerald-200 leading-snug">
+                          {selectedActivityDetail.diagnosis}
+                        </p>
+                        {selectedActivityDetail.treatment && (
+                          <p className="text-[10.5px] text-muted-foreground pt-0.5">
+                            Treatment: {selectedActivityDetail.treatment}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedActivityDetail.treatment && !selectedActivityDetail.diagnosis && (
+                      <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 space-y-0.5">
+                        <span className="font-bold text-[10.5px] text-foreground block">
+                          Treatment Administered:
+                        </span>
+                        <p className="text-[11px] text-muted-foreground leading-snug">
+                          {selectedActivityDetail.treatment}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedActivityDetail.vetName && (
+                      <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 space-y-0.5">
+                        <span className="font-bold text-[10.5px] text-muted-foreground block">
+                          Attending Veterinarian:
+                        </span>
+                        <p className="text-xs font-serif italic text-foreground">
+                          {selectedActivityDetail.vetName}
+                        </p>
+                      </div>
+                    )}
+
+                    {detailCleanNotes && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-0.5">
+                        <span className="font-bold text-[10.5px] text-amber-700 dark:text-amber-300 block">
+                          Owner Instructions / Client Notes:
+                        </span>
+                        <p className="text-[11px] text-muted-foreground leading-snug whitespace-pre-wrap">
+                          {detailCleanNotes}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Pre-Visit Checklist */}
+                    <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/15 text-[11px] text-muted-foreground flex items-start gap-2">
+                      <Info className="size-3.5 text-primary shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-foreground text-[10.5px] block">
+                          Pre-Visit Checklist for {currentPet.name}:
+                        </span>
+                        <p className="leading-snug">
+                          {meta.checklist}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Panel Footer Actions */}
+                  <div className="p-4 border-t border-border/70 bg-muted/30 flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedActivityDetail(null)}
+                      className="flex-1 text-xs cursor-pointer"
+                    >
+                      Close Details
+                    </Button>
+                    {(selectedActivityDetail.type === "encounter" || selectedActivityDetail.type === "consultation") && selectedActivityDetail.raw && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedConsultationForSheet(selectedActivityDetail.raw);
+                          setConsultationSheetOpen(true);
+                        }}
+                        className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      >
+                        <FileText className="size-3.5" />
+                        <span>Official CVO Paper</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>
