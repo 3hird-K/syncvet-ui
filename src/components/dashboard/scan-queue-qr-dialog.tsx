@@ -197,10 +197,10 @@ export function ScanQueueQrDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ? (
-          trigger
-        ) : (
+      {trigger ? (
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+      ) : trigger === null || isControlled ? null : (
+        <DialogTrigger asChild>
           <Button
             size="sm"
             className="h-9 px-3.5 text-xs font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs transition-all"
@@ -208,8 +208,8 @@ export function ScanQueueQrDialog({
             <Camera className="size-4" />
             <span>Scan Clinic Arrival QR</span>
           </Button>
-        )}
-      </DialogTrigger>
+        </DialogTrigger>
+      )}
 
       <DialogContent className="max-w-sm sm:max-w-md p-0 overflow-hidden rounded-3xl border border-emerald-500/30 bg-card shadow-2xl">
         <DialogHeader className="p-4 sm:p-5 pb-3 bg-gradient-to-r from-emerald-600/15 via-teal-600/10 to-transparent border-b border-border/70 pr-12">

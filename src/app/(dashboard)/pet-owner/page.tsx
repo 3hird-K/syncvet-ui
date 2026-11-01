@@ -178,6 +178,25 @@ export default function PetOwnerPortalPage() {
     return () => window.removeEventListener("syncvet-tab-change", handleTabChange);
   }, []);
 
+  // Always scroll to top of content container when activeTab changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const resetScroll = () => {
+        window.scrollTo({ top: 0, behavior: "instant" });
+        const mainEl = document.getElementById("app-main-scroll") || document.querySelector("main");
+        if (mainEl) {
+          mainEl.scrollTop = 0;
+        }
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      };
+
+      resetScroll();
+      requestAnimationFrame(resetScroll);
+      setTimeout(resetScroll, 30);
+    }
+  }, [activeTab]);
+
   const handleOpenBiteProtocol = () => {
     setActiveTab("protocols");
     if (typeof window !== "undefined") {

@@ -45,6 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Scrollable page content */}
         <main
+          id="app-main-scroll"
           className={cn(
             "min-h-0 flex-1 overflow-x-hidden",
             isMessagesPage ? "overflow-hidden flex flex-col" : "overflow-y-auto"

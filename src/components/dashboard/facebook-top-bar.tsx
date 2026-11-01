@@ -17,9 +17,7 @@ import {
   Home,
   Stethoscope,
   Calendar,
-  CalendarCheck,
   Syringe,
-  Newspaper,
   MapPin,
   ShieldAlert,
   LayoutGrid,
@@ -69,6 +67,7 @@ export function FacebookTopBar({
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [scanQrOpen, setScanQrOpen] = useState(false);
 
   const isMessagesPage = pathname.startsWith("/messages");
   const effectiveUnreadCount = isMessagesPage ? 0 : unreadCount;
@@ -150,14 +149,23 @@ export function FacebookTopBar({
       } else {
         router.push(`/pet-owner?tab=${tabKey}`);
       }
+
+      // Reset scroll position to top of main content container and window
+      const resetScroll = () => {
+        window.scrollTo({ top: 0, behavior: "instant" });
+        const mainEl = document.getElementById("app-main-scroll") || document.querySelector("main");
+        if (mainEl) {
+          mainEl.scrollTop = 0;
+        }
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      };
+
+      resetScroll();
+      requestAnimationFrame(resetScroll);
+      setTimeout(resetScroll, 50);
     }
   };
-
-  const navItems = [
-    { key: "feed", label: "CVO Public Bulletins & Announcements", shortLabel: "Bulletins", icon: Newspaper },
-    { key: "consultations", label: "Clinical Consultations", shortLabel: "Consultations", icon: Stethoscope },
-    { key: "procedures", label: "Procedure Appointments", shortLabel: "Appointments", icon: CalendarCheck },
-  ];
 
   return (
     <header className="sticky top-0 z-50 h-13 sm:h-14 w-full bg-card/95 backdrop-blur-md border-b border-border/80 shadow-xs select-none px-2 sm:px-4 md:px-6">
@@ -182,67 +190,19 @@ export function FacebookTopBar({
           </Link>
         </div>
 
-        {/* ── 2. Center Section: Integrated Themed Navigation Tabs ── */}
-        <nav className="flex items-center justify-center h-full gap-0.5 sm:gap-1.5 md:gap-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.key && pathname.startsWith("/pet-owner");
-
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => handleTabClick(item.key)}
-                className={cn(
-                  "relative flex items-center justify-center gap-1.5 h-full px-2 sm:px-3 md:px-4 text-xs font-semibold transition-all duration-200 cursor-pointer outline-none select-none group",
-                  isActive
-                    ? "text-primary font-bold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl font-medium"
-                )}
-                title={item.label}
-                aria-label={item.label}
-              >
-                <Icon
-                  className={cn(
-                    "size-4 sm:size-4.5 transition-transform group-hover:scale-105 shrink-0",
-                    isActive ? "text-primary stroke-[2.5]" : "text-muted-foreground stroke-[2]"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "tracking-tight text-[11px] sm:text-xs transition-colors",
-                    isActive
-                      ? "text-primary font-bold hidden min-[420px]:inline-block"
-                      : "text-muted-foreground group-hover:text-foreground font-medium hidden md:inline-block"
-                  )}
-                >
-                  {item.shortLabel}
-                </span>
-
-                {/* Theme bottom active indicator bar */}
-                {isActive && (
-                  <span className="absolute bottom-0 inset-x-1 sm:inset-x-2 md:inset-x-3 h-[3px] bg-primary rounded-t-full shadow-[0_-1px_6px_hsl(var(--primary)/0.6)]" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* ── 3. Right Section: Utility Icons (Menu, Chat, Profile) ── */}
+        {/* ── 2. Right Section: Utility Icons (Home/Bulletins, Clinic QR Scan, Services Menu, Chat, Profile) ── */}
         <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
-          {/* Clinic Arrival QR Scanner */}
-          <ScanQueueQrDialog
-            trigger={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8.5 sm:size-9.5 md:size-10 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 cursor-pointer transition-transform hover:scale-105"
-                title="Scan CVO Clinic Arrival QR to Join Queue"
-              >
-                <QrCode className="size-4 sm:size-4.5 md:size-5" />
-              </Button>
-            }
-          />
+          {/* Home / CVO Public Bulletins */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleTabClick("feed")}
+            className="size-8.5 sm:size-9.5 md:size-10 rounded-full bg-muted/60 hover:bg-muted text-foreground cursor-pointer transition-transform hover:scale-105"
+            title="Public Bulletins & Announcements"
+            aria-label="Public Bulletins & Announcements"
+          >
+            <Home className="size-4 sm:size-4.5 md:size-5" />
+          </Button>
 
           {/* CVO Services Quick Grid Menu */}
           <DropdownMenu>
@@ -261,6 +221,19 @@ export function FacebookTopBar({
               <p className="font-bold text-xs text-foreground">CVO Service Center</p>
               <p className="text-[10px] text-muted-foreground">Carmen Central Clinic & Public Desk</p>
             </div>
+
+            <DropdownMenuItem
+              onClick={() => setScanQrOpen(true)}
+              className="cursor-pointer gap-2.5 py-2 rounded-xl"
+            >
+              <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                <QrCode className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-xs text-foreground">Scan Clinic Arrival QR</p>
+                <p className="text-[10px] text-muted-foreground">Check-in at clinic entrance to join queue</p>
+              </div>
+            </DropdownMenuItem>
 
             <DropdownMenuItem
               onClick={() => handleTabClick("consultations")}
@@ -452,6 +425,9 @@ export function FacebookTopBar({
 
         {/* Custom Edit Profile Dialog */}
         <EditProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+
+        {/* Clinic Arrival QR Scanner Dialog */}
+        <ScanQueueQrDialog open={scanQrOpen} onOpenChange={setScanQrOpen} trigger={null} />
       </div>
       </div>
     </header>
