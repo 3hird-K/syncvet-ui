@@ -181,7 +181,7 @@ export function FieldOpAttendanceDialog({
               <div class="logo-title">City Veterinary Office • Cagayan de Oro</div>
               <div class="headline">Barangay ${operation.barangay} Outreach</div>
               <div class="meta">${operation.venue || "Barangay Covered Court"} • ${operation.date}</div>
-              <div class="meta">Attending Vet: ${operation.lead} (${operation.timeWindow || "08:00 AM - 12:00 PM"})</div>
+              <div class="meta">Attending Vet: ${operation.lead} (${operation.timeWindow || "08:00 AM - 05:00 PM"})</div>
               <div class="badge">Official Attendance & Check-In Station</div>
             </div>
 
@@ -323,7 +323,7 @@ export function FieldOpAttendanceDialog({
                 <div className="p-2.5 rounded-lg bg-muted/20 border border-border/60 space-y-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Venue & Station</span>
                   <p className="font-semibold text-foreground truncate">{operation.venue || "Barangay Covered Court"}</p>
-                  <p className="text-[10.5px] text-muted-foreground">{operation.timeWindow || "08:00 AM - 12:00 PM"} (Morning Shift)</p>
+                  <p className="text-[10.5px] text-muted-foreground">{operation.timeWindow || "08:00 AM - 05:00 PM"}</p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-muted/20 border border-border/60 space-y-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Lead Veterinarian</span>
@@ -537,7 +537,7 @@ export function FieldOpAttendanceDialog({
                   <span className="truncate max-w-[240px] font-medium">{operation.venue || "Barangay Covered Court"}</span>
                 </div>
                 <div className="text-[10.5px] text-muted-foreground">
-                  {operation.date} • {operation.timeWindow || "08:00 AM - 12:00 PM"}
+                  {operation.date} • {operation.timeWindow || "08:00 AM - 05:00 PM"}
                 </div>
               </div>
 

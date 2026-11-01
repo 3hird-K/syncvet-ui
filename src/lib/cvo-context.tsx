@@ -230,7 +230,7 @@ function mapDbFieldOperationToCVO(row: any): CVOFieldOperation {
     opId: row.op_id,
     barangay: row.barangay,
     venue: extraMeta.venue || "Barangay Covered Court / Hall",
-    timeWindow: extraMeta.timeWindow || "08:00 AM - 12:00 PM",
+    timeWindow: extraMeta.timeWindow || "08:00 AM - 05:00 PM",
     services: extraMeta.services || ["vaccination", "consultation"],
     type: row.operation_type,
     lead: row.lead,
@@ -939,7 +939,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     // Encode rich field meta inside notes column
     const fieldMeta = {
       venue: op.venue || "Barangay Covered Court / Hall",
-      timeWindow: op.timeWindow || "08:00 AM - 12:00 PM",
+      timeWindow: op.timeWindow || "08:00 AM - 05:00 PM",
       services: op.services || ["consultation", "vaccination"],
       vetProfile: op.vetProfile,
     };
@@ -991,7 +991,7 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
         const announcementContent = `The City Veterinary Office (CVO) mobile veterinary team will be deployed to Barangay ${op.barangay} for a community outreach visit.
 
 Date: ${formattedDate}
-Time: ${op.timeWindow || "08:00 AM - 12:00 PM"}
+Time: ${op.timeWindow || "08:00 AM - 05:00 PM"}
 Venue: ${op.venue || "Barangay Covered Court / Hall"}
 Attending Veterinarian: ${op.lead}${op.vetProfile?.role ? ` (${op.vetProfile.role})` : ""}
 

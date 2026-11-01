@@ -589,7 +589,7 @@ export default function FieldOperationsPage() {
                             </span>
                             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                               <Clock className="size-2.5" />
-                              <span>{op.timeWindow || "08:00 AM - 12:00 PM"}</span>
+                              <span>{op.timeWindow || "08:00 AM - 05:00 PM"}</span>
                             </div>
                           </div>
                         </TableCell>
@@ -900,7 +900,7 @@ export default function FieldOperationsPage() {
                     <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">
                       Operating Hours
                     </span>
-                    <p className="font-bold text-foreground mt-0.5">{announcementModalOp.timeWindow || "08:00 AM - 12:00 PM"}</p>
+                    <p className="font-bold text-foreground mt-0.5">{announcementModalOp.timeWindow || "08:00 AM - 05:00 PM"}</p>
                   </div>
                   <div className="col-span-2">
                     <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">

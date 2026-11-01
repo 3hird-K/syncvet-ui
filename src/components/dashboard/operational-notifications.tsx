@@ -392,7 +392,7 @@ export function OperationalNotifications({
         name: a.pet_name || "Pet",
         species: "Patient",
         owner: a.users?.full_name || "Citizen",
-        time: a.time || (a.time_slot === "afternoon" ? "01:30 PM" : "09:00 AM"),
+        time: a.time || (a.time_slot && !a.time_slot.includes("morn") && !a.time_slot.includes("after") ? a.time_slot : "08:00 AM - 05:00 PM"),
         service: a.service_id === "spay-neuter" ? "Spay & Neuter" : "Anti-Rabies Vaccination",
       })),
     ].slice(0, 4);

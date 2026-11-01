@@ -518,7 +518,7 @@ export default function PetOwnerPortalPage() {
               pet_name: appt.pet_name || "Pet",
               service_id: appt.service_id || "vaccination",
               date: appt.date || format(new Date(), "yyyy-MM-dd"),
-              time_slot: appt.time_slot || "morning",
+              time_slot: appt.time_slot || "08:00 AM - 05:00 PM",
               status: appt.status || "confirmed",
               location: appt.location || "City Veterinary Office - Carmen Central Clinic",
               notes: appt.notes || null,

@@ -575,10 +575,12 @@ export function AdministerVaccinationDialog({
                     RA 9482
                   </Badge>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
-                  <PetAvatar species={consultation?.species} name={consultation?.petName} size="xs" className="size-4 shrink-0" />
-                  <span className="font-semibold text-foreground">{consultation?.petName || "Pet"}</span>
-                  <span>({consultation?.species || "Dog"} • {consultation?.breed || "Aspin"}) • Owner: {consultation?.ownerName || "Pet Owner"}</span>
+                <DialogDescription asChild>
+                  <div className="text-xs text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+                    <PetAvatar species={consultation?.species} name={consultation?.petName} size="xs" className="size-4 shrink-0" />
+                    <span className="font-semibold text-foreground">{consultation?.petName || "Pet"}</span>
+                    <span>({consultation?.species || "Dog"} • {consultation?.breed || "Aspin"}) • Owner: {consultation?.ownerName || "Pet Owner"}</span>
+                  </div>
                 </DialogDescription>
               </div>
             </div>

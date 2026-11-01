@@ -774,7 +774,7 @@ export function ScheduleProcedureDialog({
           pet_name: currentPet.name,
           service_id: service,
           date: formattedDate,
-          time_slot: "morning",
+          time_slot: "08:00 AM - 05:00 PM",
           status: "confirmed",
           location: "City Veterinary Office - Carmen Central Clinic",
           notes: notes
@@ -822,7 +822,7 @@ export function ScheduleProcedureDialog({
           pet_name: currentPet.name,
           service_id: service,
           date: formattedDate,
-          time_slot: "morning",
+          time_slot: "08:00 AM - 05:00 PM",
           status: "confirmed",
           location: "City Veterinary Office - Carmen Central Clinic",
           notes: notes

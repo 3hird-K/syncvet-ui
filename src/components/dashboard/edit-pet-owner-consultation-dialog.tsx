@@ -139,9 +139,11 @@ export function EditPetOwnerConsultationDialog({
             </div>
           </div>
 
-          <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
-            <PetAvatar species={consultation.species} name={consultation.petName} size="xs" className="size-5 shrink-0" />
-            <span>Update reason for visit or requested services for <strong className="text-foreground">{consultation.petName}</strong> ({consultation.species})</span>
+          <DialogDescription asChild>
+            <div className="text-xs text-muted-foreground flex items-center gap-2 pt-1">
+              <PetAvatar species={consultation.species} name={consultation.petName} size="xs" className="size-5 shrink-0" />
+              <span>Update reason for visit or requested services for <strong className="text-foreground">{consultation.petName}</strong> ({consultation.species})</span>
+            </div>
           </DialogDescription>
         </DialogHeader>
 

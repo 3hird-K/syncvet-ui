@@ -59,9 +59,7 @@ import { buildRealStaffList, type CVOVetProfile } from "@/data/cvo-vets";
 import { cn } from "@/lib/utils";
 
 const TIME_WINDOWS = [
-  { value: "08:00 AM - 12:00 PM", label: "Morning Session (08:00 AM - 12:00 PM)" },
-  { value: "01:00 PM - 05:00 PM", label: "Afternoon Session (01:00 PM - 05:00 PM)" },
-  { value: "08:00 AM - 04:00 PM", label: "Full Day Deployment (08:00 AM - 04:00 PM)" },
+  { value: "08:00 AM - 05:00 PM", label: "Official Service Hours (08:00 AM - 05:00 PM)" },
 ];
 
 const COMMON_VENUES = [
@@ -137,7 +135,7 @@ export function ScheduleDriveDialog() {
 
   // Scheduling details
   const [date, setDate] = useState<Date | undefined>(new Date(Date.now() + 86400000)); // Tomorrow
-  const [timeWindow, setTimeWindow] = useState<string>("08:00 AM - 12:00 PM");
+  const [timeWindow, setTimeWindow] = useState<string>("08:00 AM - 05:00 PM");
   const [targetPets, setTargetPets] = useState<number>(100);
 
   // Assigned Veterinarian selection

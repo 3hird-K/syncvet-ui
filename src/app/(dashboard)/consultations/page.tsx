@@ -539,7 +539,7 @@ function ConsultationsContent() {
         const ownerContact = matchedUser?.phone_number || apt.owner_contact || "N/A";
         const ownerBarangay = matchedUser?.address || apt.owner_barangay || "Carmen";
 
-        const timeStr = apt.time_slot === "afternoon" ? "01:30 PM" : (apt.time || "09:00 AM");
+        const timeStr = apt.time || (apt.time_slot && !apt.time_slot.includes("morn") && !apt.time_slot.includes("after") ? apt.time_slot : "08:00 AM - 05:00 PM");
         const encounterNo = apt.appointment_no || `PROC-${String(apt.id).slice(-5).toUpperCase()}`;
 
         // Determine real attending/administering veterinarian
@@ -633,7 +633,7 @@ function ConsultationsContent() {
           status: statusMap,
           category,
           isOverdue: isItemOverdue(apt.date, apt.status),
-          serviceType: "Field Treatment/Consultation" as const,
+          serviceType: (category === "vaccination" ? "Anti-Rabies Prophylaxis & Vaccination" : "Spay & Neuter (Kapon)") as any,
           createdAt: apt.created_at || apt.createdAt,
           veterinarianNotes:
             apt.notes ||
