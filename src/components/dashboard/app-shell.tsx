@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,34 +17,10 @@ import {
 import { FacebookTopBar } from "@/components/dashboard/facebook-top-bar";
 import { cn } from "@/lib/utils";
 
-function isPetsView(path: string): boolean {
-  return (
-    path.startsWith("/pet-owner") ||
-    path.startsWith("/pet-registry") ||
-    path.startsWith("/pets")
-  );
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
-  const [collapsed, setCollapsed] = useState(() => isPetsView(pathname));
+  const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
-  const prevPathRef = useRef(pathname);
-
-  // Default sidebar to shrink on pets view, expand on non-pets view, while letting user toggle manually
-  useEffect(() => {
-    if (prevPathRef.current !== pathname) {
-      const wasPets = isPetsView(prevPathRef.current);
-      const isNowPets = isPetsView(pathname);
-
-      if (isNowPets && !wasPets) {
-        setCollapsed(true);
-      } else if (!isNowPets && wasPets) {
-        setCollapsed(false);
-      }
-      prevPathRef.current = pathname;
-    }
-  }, [pathname]);
   const { user } = useUser();
 
   const metadata = user?.unsafeMetadata as { roleTitle?: string; accountType?: string } | undefined;
