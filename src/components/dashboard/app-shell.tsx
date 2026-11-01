@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 
 import { FacebookTopBar } from "@/components/dashboard/facebook-top-bar";
+import { cn } from "@/lib/utils";
 
 function isPetsView(path: string): boolean {
   return (
@@ -57,16 +58,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isPetOwnerPage = pathname.startsWith("/pet-owner");
   const isPetOwnerView = isPetOwnerPage || isPetOwner;
+  const isMessagesPage = pathname.startsWith("/messages");
 
   // ── Pet Owners View: No sidebar, Facebook-style Top Bar ──
   if (isPetOwnerView) {
     return (
-      <div className="flex flex-col fixed inset-0 h-screen max-h-screen w-full overflow-hidden bg-background text-foreground">
+      <div className="flex flex-col fixed inset-0 h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-background text-foreground">
         {/* Facebook-style Top Bar */}
         <FacebookTopBar />
 
         {/* Scrollable page content */}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main
+          className={cn(
+            "min-h-0 flex-1 overflow-x-hidden",
+            isMessagesPage ? "overflow-hidden flex flex-col" : "overflow-y-auto"
+          )}
+        >
           {children}
         </main>
       </div>
@@ -74,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex fixed inset-0 h-screen max-h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="flex fixed inset-0 h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-background text-foreground">
       {/* Desktop Sidebar */}
       <DashboardSidebar
         collapsed={collapsed}
@@ -113,7 +120,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* ── Scrollable page content ── */}
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main
+          className={cn(
+            "min-h-0 flex-1 overflow-x-hidden",
+            isMessagesPage ? "overflow-hidden flex flex-col" : "overflow-y-auto"
+          )}
+        >
           {children}
         </main>
       </div>

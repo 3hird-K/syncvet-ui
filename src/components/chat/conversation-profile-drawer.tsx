@@ -791,7 +791,7 @@ export function ConversationProfileDrawer({
                             </Badge>
                           </div>
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                            <span>Date: {apt.date} • {apt.time_slot || "Morning"}</span>
+                            <span>Date: {(apt.date || "").split("T")[0]}</span>
                             <span>{apt.location ? apt.location.replace("City Veterinary Office - ", "CVO ") : "CVO Clinic"}</span>
                           </div>
                         </div>

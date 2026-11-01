@@ -1532,7 +1532,7 @@ export default function PetOwnerPortalPage() {
                     <p className="font-bold text-foreground truncate">
                       {nextApt.pets?.name || (pets.find((p) => p.id === nextApt.pet_id)?.name) || nextApt.pet_name || nextApt.petName} • {nextApt.service_type || nextApt.serviceType}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">{nextApt.appointment_date || nextApt.date} ({nextApt.appointment_time || "Morning"})</p>
+                    <p className="text-[11px] text-muted-foreground">{(nextApt.appointment_date || nextApt.date || "").split("T")[0]}</p>
                   </div>
                   <Button
                     size="sm"
@@ -2343,62 +2343,138 @@ export default function PetOwnerPortalPage() {
                   const nextAptPet = pets.find((p) => p.id === nextApt.pet_id || (p.name && nextApt.pet_name && p.name.toLowerCase() === nextApt.pet_name.toLowerCase())) || nextApt.pets;
                   const nextAptPetName = nextAptPet?.name || nextApt.pets?.name || nextApt.pet_name || nextApt.petName || "Pet";
                   const isNextSpayNeuter = nextApt.service_id === "spay-neuter" || nextApt.service_type === "spay-neuter" || nextApt.serviceType === "spay-neuter";
+                  const rawDate = nextApt.appointment_date || nextApt.date || "";
+                  const aptDateStr = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate;
+                  const todayStr = format(new Date(), "yyyy-MM-dd");
+                  const isAptToday = !!aptDateStr && aptDateStr === todayStr;
+
+                  let relativeLabel = "";
+                  let formattedDate = aptDateStr;
+                  if (aptDateStr) {
+                    try {
+                      const aptDateObj = parseISO(aptDateStr);
+                      if (isValid(aptDateObj)) {
+                        formattedDate = format(aptDateObj, "EEE, MMM d, yyyy");
+                        const today = startOfDay(new Date());
+                        const aptDay = startOfDay(aptDateObj);
+                        const diffDays = Math.round((aptDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        if (diffDays === 0) relativeLabel = "Today";
+                        else if (diffDays === 1) relativeLabel = "Tomorrow";
+                        else if (diffDays > 1) relativeLabel = `In ${diffDays} days`;
+                        else if (diffDays === -1) relativeLabel = "Yesterday";
+                        else if (diffDays < -1) relativeLabel = `${Math.abs(diffDays)}d ago`;
+                      }
+                    } catch {}
+                  }
 
                   return (
-                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-primary/8 via-primary/[0.03] to-transparent border border-primary/25 space-y-3 shadow-2xs">
+                      {/* Header row with live indicator and relative badge */}
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-                          Next Appointment
-                        </span>
-                        <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30">
-                          {nextApt.service_type || nextApt.serviceType}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <span className="relative flex size-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                            Next Appointment
+                          </span>
+                        </div>
+                        {relativeLabel && (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                              isAptToday
+                                ? "bg-emerald-600 text-white border-transparent shadow-2xs font-bold"
+                                : relativeLabel === "Tomorrow"
+                                ? "bg-primary/10 text-primary border-primary/30 font-bold"
+                                : "bg-muted/60 text-muted-foreground border-border/60"
+                            )}
+                          >
+                            {relativeLabel}
+                          </Badge>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2.5">
-                        <div className="shrink-0">
+
+                      {/* Pet profile and appointment date */}
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
                           <PetAvatar
                             photoUrl={nextAptPet?.photo_url}
                             species={nextAptPet?.species}
                             name={nextAptPetName}
                             size="sm"
-                            className="size-10 shadow-xs"
+                            className="size-11 shadow-xs ring-2 ring-primary/20 ring-offset-1 ring-offset-background"
                           />
                         </div>
-                        <div className="space-y-0.5 min-w-0 flex-1">
-                          <p className="font-bold text-xs text-foreground truncate">
-                            {nextAptPetName}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-mono">
-                            <Calendar className="size-3 shrink-0 text-primary" />
-                            <span className="truncate">{nextApt.appointment_date || nextApt.date} • {nextApt.appointment_time || nextApt.time || "Morning"}</span>
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="font-bold text-sm text-foreground truncate">
+                              {nextAptPetName}
+                            </h4>
+                            {(nextApt.service_type || nextApt.serviceType) && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 truncate">
+                                {nextApt.service_type || nextApt.serviceType}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                            <Calendar className="size-3.5 shrink-0 text-primary" />
+                            <span>{formattedDate}</span>
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 pt-0.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedAppointmentForSlip(nextApt);
-                            setAppointmentSlipOpen(true);
-                          }}
-                          className="flex-1 h-7 text-[11px] font-semibold gap-1 rounded-lg cursor-pointer bg-card hover:bg-muted"
-                        >
-                          <Printer className="size-3 text-primary" />
-                          <span>Slip</span>
-                        </Button>
 
-                        <ScanQueueQrDialog
-                          trigger={
+                      {/* Action buttons and friendly arrival status */}
+                      <div className="space-y-2 pt-0.5">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedAppointmentForSlip(nextApt);
+                              setAppointmentSlipOpen(true);
+                            }}
+                            className="flex-1 h-8 text-xs font-semibold gap-1.5 rounded-xl cursor-pointer bg-card hover:bg-muted border-border/80 hover:border-primary/40 shadow-2xs transition-all active:scale-[0.99]"
+                          >
+                            <Printer className="size-3.5 text-primary" />
+                            <span>Slip</span>
+                          </Button>
+
+                          {isAptToday ? (
+                            <ScanQueueQrDialog
+                              trigger={
+                                <Button
+                                  size="sm"
+                                  className="flex-1 h-8 text-xs font-bold gap-1.5 rounded-xl cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all active:scale-[0.99]"
+                                >
+                                  <QrCode className="size-3.5" />
+                                  <span>Scan Arrival QR</span>
+                                </Button>
+                              }
+                            />
+                          ) : (
                             <Button
                               size="sm"
-                              className="flex-1 h-7 text-[11px] font-bold gap-1 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                              disabled
+                              className="flex-1 h-8 text-xs font-semibold gap-1.5 rounded-xl bg-muted/60 text-muted-foreground/70 border border-border/60 opacity-60 cursor-not-allowed select-none shadow-none"
+                              title={`Scan Arrival QR activates on your appointment day (${formattedDate}).`}
                             >
-                              <QrCode className="size-3" />
+                              <Clock className="size-3.5 text-muted-foreground/60 shrink-0" />
                               <span>Scan Arrival QR</span>
                             </Button>
-                          }
-                        />
+                          )}
+                        </div>
+
+                        {!isAptToday && (
+                          <div className="flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground font-medium select-none">
+                            <Clock className="size-3 text-primary/70 shrink-0" />
+                            <span>
+                              Arrival check-in activates {relativeLabel ? relativeLabel.toLowerCase() : `on ${formattedDate}`}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -2894,7 +2970,7 @@ export default function PetOwnerPortalPage() {
                               <div className="space-y-0.5 text-xs">
                                 <span className="font-bold text-foreground block">{apt.service_type || apt.serviceType}</span>
                                 <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
-                                  <Calendar className="size-3" /> {apt.date || apt.appointment_date} • {apt.time || apt.appointment_time || "Morning"}
+                                  <Calendar className="size-3" /> {(apt.date || apt.appointment_date || "").split("T")[0]}
                                 </span>
                               </div>
                               <Button

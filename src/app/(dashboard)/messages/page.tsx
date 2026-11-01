@@ -1387,18 +1387,18 @@ function MessagesContent() {
   return (
     <div
       className={cn(
-        "flex flex-col bg-background text-foreground overflow-hidden",
+        "flex flex-col bg-background text-foreground overflow-hidden h-full w-full flex-1 min-h-0",
         !isVeterinarian
-          ? "h-[calc(100vh-56px)] max-w-[1140px] mx-auto w-full px-0 sm:px-4"
-          : "h-[calc(100vh-68px)]"
+          ? "max-w-[1140px] mx-auto px-0 sm:px-4"
+          : ""
       )}
     >
       {/* ── Main Messenger Container (Exact Messenger Split-View Layout) ── */}
       <div
         className={cn(
-          "flex-1 flex overflow-hidden",
+          "flex-1 min-h-0 flex overflow-hidden w-full",
           !isVeterinarian
-            ? "sm:border sm:border-border/60 sm:rounded-2xl sm:shadow-xs bg-card/40 sm:my-3 border-t border-border/50"
+            ? "sm:border sm:border-border/60 sm:rounded-2xl sm:shadow-xs bg-card/40 sm:my-3 border-t sm:border-t-0 border-border/50"
             : "border-t border-border/50"
         )}
       >
@@ -2070,7 +2070,7 @@ function MessagesContent() {
         {/* ── 2. Center/Right: Active Chat Window (Takes full 100% width on mobile) ── */}
         <main
           className={cn(
-            "flex-1 flex flex-col bg-background relative overflow-hidden",
+            "flex-1 min-h-0 flex flex-col bg-background relative overflow-hidden h-full",
             mobileView === "list" ? "hidden md:flex" : "flex w-full"
           )}
         >
@@ -2222,7 +2222,7 @@ function MessagesContent() {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3.5 sm:p-5"
           >
             {/* Top Skeleton: Loading older messages while backreading */}
             {isFetchingOlder && (
@@ -3019,19 +3019,19 @@ function MessagesContent() {
           />
 
           {/* ── Chat Bottom Input Bar (Clean with auto-expanding multiline word wrap) ── */}
-          <footer className="p-2.5 sm:p-3 border-t border-border/60 bg-card/80 backdrop-blur-xs flex items-end gap-1.5 sm:gap-2 shrink-0">
+          <footer className="p-2 sm:p-2.5 md:p-3 border-t border-border/60 bg-card/95 backdrop-blur-md flex items-end gap-1.5 sm:gap-2 shrink-0 z-20 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
             {/* Clinical Templates & FAQs */}
             <button
               type="button"
               onClick={() => setShowTemplates((prev) => !prev)}
               className={cn(
-                "size-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 mb-0.5",
+                "size-8.5 sm:size-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 mb-0.5",
                 showTemplates ? "bg-primary text-white" : "hover:bg-muted/70 text-primary"
               )}
               title="Clinical Templates & FAQs"
               aria-label="Clinical Templates & FAQs"
             >
-              <Stethoscope className="size-4.5" />
+              <Stethoscope className="size-4 sm:size-4.5" />
             </button>
 
             {/* Attach Image Button */}
@@ -3039,15 +3039,15 @@ function MessagesContent() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingImage}
-              className="size-9 rounded-full flex items-center justify-center hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 mb-0.5"
+              className="size-8.5 sm:size-9 rounded-full flex items-center justify-center hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 mb-0.5"
               title="Attach photo"
               aria-label="Attach photo"
             >
-              <ImageIcon className="size-4.5" />
+              <ImageIcon className="size-4 sm:size-4.5" />
             </button>
 
             {/* Rounded Pill / Expanding Capsule Input Bar */}
-            <div className="flex-1 flex items-end rounded-2xl bg-muted/60 dark:bg-muted/40 px-3.5 py-1.5 border border-border/40 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all min-h-[40px] max-h-36">
+            <div className="flex-1 min-w-0 flex items-end rounded-2xl bg-muted/60 dark:bg-muted/40 px-3 sm:px-3.5 py-1.5 border border-border/40 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all min-h-[38px] sm:min-h-[40px] max-h-36">
               <textarea
                 ref={inputRef}
                 rows={1}

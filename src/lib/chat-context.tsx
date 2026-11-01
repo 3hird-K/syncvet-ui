@@ -351,7 +351,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 // Helper to clean legacy messages, strip warning icons, and deduplicate consecutive identical items
 function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
   const result: ChatMessageItem[] = [];
+  const seenIds = new Set<string>();
+
   for (const item of list) {
+    if (item.id && seenIds.has(item.id)) {
+      continue;
+    }
+    if (item.id) {
+      seenIds.add(item.id);
+    }
+
     let text = (item.text || "").trim();
 
     // Clean legacy text if present (remove warning icons, replace long legacy message with brief one)
@@ -369,13 +378,38 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
     text = text.replace(/^[⚠️\s]+/, "").replace(/^IMMEDIATE PROTOCOL:?\s*/i, "").trim();
 
     const cleanedItem = { ...item, text };
-
-    // Prevent consecutive identical duplicate bubbles
     const last = result[result.length - 1];
+
+    // If either this message or the last message has an image, NEVER deduplicate them as duplicate text!
+    if (cleanedItem.imageUrl || last?.imageUrl) {
+      if (
+        last &&
+        last.imageUrl === cleanedItem.imageUrl &&
+        (last.id === cleanedItem.id || (last.id.startsWith("msg-") && !cleanedItem.id.startsWith("msg-")))
+      ) {
+        continue;
+      }
+      result.push(cleanedItem);
+      continue;
+    }
+
+    // If both are unsent messages, keep them separate if they have different IDs
+    if (cleanedItem.isUnsent || last?.isUnsent) {
+      if (last && last.id === cleanedItem.id) {
+        continue;
+      }
+      result.push(cleanedItem);
+      continue;
+    }
+
+    // Prevent consecutive identical duplicate bubbles only if text is non-empty
     if (
       last &&
+      last.text &&
+      cleanedItem.text &&
       last.text.trim().toLowerCase() === cleanedItem.text.trim().toLowerCase() &&
-      last.senderRole === cleanedItem.senderRole
+      last.senderRole === cleanedItem.senderRole &&
+      (last.id.startsWith("msg-") || last.id === cleanedItem.id)
     ) {
       continue;
     }
