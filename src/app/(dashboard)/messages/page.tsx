@@ -51,7 +51,9 @@ import {
   PanelLeft,
   Undo2,
   Info,
+  ImageIcon,
 } from "lucide-react";
+import { uploadChatImage, formatFileSize } from "@/lib/image-compression";
 import { Button } from "@/components/ui/button";
 import { ConversationProfileDrawer } from "@/components/chat/conversation-profile-drawer";
 import {
@@ -384,6 +386,36 @@ function MessagesContent() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "chat">("chat");
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image file is too large (max 10MB)");
+      return;
+    }
+    setSelectedImageFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setImagePreviewUrl(objectUrl);
+    e.target.value = "";
+  };
+
+  const handleClearImage = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setSelectedImageFile(null);
+    setImagePreviewUrl(null);
+  };
 
   // Auto-shrink Chats sidebar on smaller screen sizes (< 1024px)
   useEffect(() => {
@@ -1261,12 +1293,34 @@ function MessagesContent() {
 
   const handleSend = async (customText?: string) => {
     const textToSend = (customText !== undefined ? customText : inputText).trim();
-    if (isSendingRef.current || !textToSend) return;
+    if (isSendingRef.current || (!textToSend && !selectedImageFile)) return;
 
     isSendingRef.current = true;
     const currentReply = replyingTo;
+    const fileToUpload = selectedImageFile;
     setInputText("");
     setReplyingTo(null);
+
+    let uploadedImageUrl: string | null = null;
+    if (fileToUpload) {
+      setIsUploadingImage(true);
+      try {
+        const uploadRes = await uploadChatImage(
+          fileToUpload,
+          activeChatId && isValidUuid(activeChatId) ? activeChatId : undefined
+        );
+        uploadedImageUrl = uploadRes.url;
+      } catch (uploadErr: any) {
+        toast.error("Failed to upload image: " + (uploadErr?.message || "Storage error"));
+        setIsUploadingImage(false);
+        isSendingRef.current = false;
+        return;
+      } finally {
+        setIsUploadingImage(false);
+      }
+      handleClearImage();
+    }
+
     const recipientOwnerId =
       activeThread?.owner_id ||
       (activeChatId && !isValidUuid(activeChatId) ? activeChatId.replace(/^thread-/, "") : null);
@@ -1283,10 +1337,10 @@ function MessagesContent() {
     try {
       if (isVeterinarian) {
         const targetId = activeChatId || activeThread?.id || (activeThread?.owner_id ? `thread-${activeThread.owner_id}` : "");
-        await sendVetReply(targetId, textToSend, staffAuthorName, activeDesk, currentReply || undefined);
+        await sendVetReply(targetId, textToSend, staffAuthorName, activeDesk, currentReply || undefined, uploadedImageUrl);
         refetchThreads();
       } else {
-        await sendMessage(textToSend, activeDesk, currentReply || undefined);
+        await sendMessage(textToSend, activeDesk, currentReply || undefined, uploadedImageUrl);
         refetchCitizenChats();
         refetchThreads();
       }
@@ -2431,7 +2485,7 @@ function MessagesContent() {
                             </button>
 
                             {/* Edit Button */}
-                            {!isLikeOnly && (
+                            {!isLikeOnly && !msg.imageUrl && (
                               <button
                                 type="button"
                                 onClick={() => handleStartEdit(msg)}
@@ -2546,9 +2600,63 @@ function MessagesContent() {
                             </button>
                           )}
                         </div>
-                      ) : (
-                        /* Speech Bubble with dynamic Messenger radii */
+                      ) : msg.imageUrl && !msg.text ? (
+                        /* Standalone Image Message (Authentic Facebook Messenger - No Bubble Wrapper) */
                         <div className={cn("relative group/bubble inline-block max-w-full min-w-0", isOutgoing ? "self-end" : "self-start")}>
+                          <div
+                            className={cn(
+                              "overflow-hidden cursor-pointer rounded-2xl border border-black/10 dark:border-white/10 shadow-xs hover:opacity-95 active:scale-[0.99] transition-all max-w-[320px] sm:max-w-[460px]",
+                              isOutgoing ? "rounded-br-xs" : "rounded-bl-xs"
+                            )}
+                            onClick={() => setViewingImageUrl(msg.imageUrl || null)}
+                            title="Click to view full photo"
+                          >
+                            <img
+                              src={msg.imageUrl}
+                              alt="Chat attachment"
+                              className="w-full h-auto max-h-[380px] object-cover block"
+                              loading="lazy"
+                            />
+                          </div>
+
+                          {/* Attached Paw Badge on Image */}
+                          {hasPaw && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!isOutgoing) toggleReaction(msg.id);
+                              }}
+                              disabled={isOutgoing}
+                              className={cn(
+                                "absolute -bottom-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-card border border-border/80 shadow-xs transition-transform",
+                                isOutgoing ? "left-2 cursor-default select-none pointer-events-none" : "right-2 hover:scale-110 active:scale-95 cursor-pointer"
+                              )}
+                              title={isOutgoing ? "Paw reaction" : "Remove paw reaction"}
+                            >
+                              <PawPrint className="size-2.5 text-primary fill-primary" />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        /* Speech Bubble with dynamic Messenger radii (With optional photo on top) */
+                        <div className={cn("relative group/bubble inline-block max-w-full min-w-0", isOutgoing ? "self-end" : "self-start")}>
+                          {msg.imageUrl && (
+                            <div
+                              className={cn(
+                                "overflow-hidden cursor-pointer rounded-2xl border border-black/10 dark:border-white/10 shadow-xs hover:opacity-95 transition-all max-w-[320px] sm:max-w-[460px] mb-1.5",
+                                isOutgoing ? "rounded-br-xs" : "rounded-bl-xs"
+                              )}
+                              onClick={() => setViewingImageUrl(msg.imageUrl || null)}
+                              title="Click to view full photo"
+                            >
+                              <img
+                                src={msg.imageUrl}
+                                alt="Chat attachment"
+                                className="w-full h-auto max-h-[320px] object-cover block"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
                           <div
                             className={cn(
                               "px-3.5 py-2 text-[13px] leading-relaxed shadow-2xs whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] transition-all",
@@ -2846,6 +2954,52 @@ function MessagesContent() {
             </div>
           )}
 
+          {/* Image Attachment Preview Bar */}
+          {imagePreviewUrl && (
+            <div className="px-4 py-2 bg-muted/70 dark:bg-muted/50 border-t border-border/60 flex items-center justify-between gap-3 text-xs animate-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="relative size-12 rounded-lg overflow-hidden border border-border shrink-0 bg-background">
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Selected attachment preview"
+                    className="w-full h-full object-cover"
+                  />
+                  {isUploadingImage && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="size-4 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground truncate">
+                    {selectedImageFile?.name || "Photo attachment"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {selectedImageFile ? formatFileSize(selectedImageFile.size) : "Ready to send"} • Auto-compressed
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearImage}
+                disabled={isUploadingImage}
+                className="size-7 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+                title="Remove image"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleSelectImage}
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+          />
+
           {/* ── Chat Bottom Input Bar (Clean with auto-expanding multiline word wrap) ── */}
           <footer className="p-2.5 sm:p-3 border-t border-border/60 bg-card/80 backdrop-blur-xs flex items-end gap-1.5 sm:gap-2 shrink-0">
             {/* Clinical Templates & FAQs */}
@@ -2860,6 +3014,18 @@ function MessagesContent() {
               aria-label="Clinical Templates & FAQs"
             >
               <Stethoscope className="size-4.5" />
+            </button>
+
+            {/* Attach Image Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingImage}
+              className="size-9 rounded-full flex items-center justify-center hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 mb-0.5"
+              title="Attach photo"
+              aria-label="Attach photo"
+            >
+              <ImageIcon className="size-4.5" />
             </button>
 
             {/* Rounded Pill / Expanding Capsule Input Bar */}
@@ -2941,11 +3107,11 @@ function MessagesContent() {
               >
                 <Check className="size-4.5 stroke-[2.5]" />
               </button>
-            ) : inputText.trim() ? (
+            ) : (inputText.trim() || selectedImageFile) ? (
               <button
                 type="button"
                 onClick={() => handleSend()}
-                disabled={isLoading}
+                disabled={isLoading || isUploadingImage}
                 className="size-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center transition-all shadow-xs cursor-pointer shrink-0 mb-0.5"
                 title={
                   isVeterinarian
@@ -2956,7 +3122,11 @@ function MessagesContent() {
                 }
                 aria-label="Send Message"
               >
-                <Send className="size-4" />
+                {isUploadingImage ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Send className="size-4" />
+                )}
               </button>
             ) : (
               <button
@@ -3066,6 +3236,31 @@ function MessagesContent() {
           isCurrentActive={isCurrentActive}
         />
       </div>
+
+      {/* Lightbox / Modal for viewing photo attachment */}
+      {viewingImageUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in-50"
+          onClick={() => setViewingImageUrl(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh] flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setViewingImageUrl(null)}
+              className="absolute -top-10 right-0 size-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center cursor-pointer transition-colors"
+              title="Close image"
+            >
+              <X className="size-4" />
+            </button>
+            <img
+              src={viewingImageUrl}
+              alt="Full chat preview"
+              className="max-h-[84vh] max-w-full rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

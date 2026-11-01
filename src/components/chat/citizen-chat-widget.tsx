@@ -43,7 +43,10 @@ import {
   Building2,
   Stethoscope,
   Search,
+  ImageIcon,
 } from "lucide-react";
+import { uploadChatImage, deleteChatImage, formatFileSize } from "@/lib/image-compression";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -1333,6 +1336,36 @@ function FacebookMessengerWindow({
   const [editingText, setEditingText] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatReplyInfo | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSelectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image file is too large (max 10MB)");
+      return;
+    }
+    setSelectedImageFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setImagePreviewUrl(objectUrl);
+    e.target.value = "";
+  };
+
+  const handleClearImage = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setSelectedImageFile(null);
+    setImagePreviewUrl(null);
+  };
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -1397,6 +1430,7 @@ function FacebookMessengerWindow({
       createdAt: m.created_at,
       reaction: isUnsent ? undefined : meta.reaction,
       replyTo: isUnsent ? undefined : meta.replyTo,
+      imageUrl: isUnsent ? undefined : meta.imageUrl,
       isRead: isIncoming ? true : Boolean(m.is_read),
     };
   }, [effectiveDesk, isStaff]);
@@ -1524,9 +1558,14 @@ function FacebookMessengerWindow({
   };
 
   const handleDeleteMessage = async (msgId: string) => {
+    const target = messages.find((m) => m.id === msgId);
+    if (target?.imageUrl) {
+      deleteChatImage(target.imageUrl).catch(() => {});
+    }
+
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
     markMessageLocallyRemoved(msgId, user?.id);
-    const target = messages.find((m) => m.id === msgId);
+
     if (target?.isUnsent) {
       try {
         await removeMessageForMe(msgId);
@@ -1541,10 +1580,15 @@ function FacebookMessengerWindow({
   };
 
   const handleUnsendMessage = async (msgId: string) => {
+    const target = messages.find((m) => m.id === msgId);
+    if (target?.imageUrl) {
+      deleteChatImage(target.imageUrl).catch(() => {});
+    }
+
     setMessages((prev) =>
       prev.map((m) =>
         m.id === msgId
-          ? { ...m, isUnsent: true, text: "", replyTo: undefined, reaction: undefined }
+          ? { ...m, isUnsent: true, text: "", imageUrl: undefined, replyTo: undefined, reaction: undefined }
           : m
       )
     );
@@ -1843,13 +1887,35 @@ function FacebookMessengerWindow({
 
   const handleSend = async (forcedText?: string) => {
     const clean = (forcedText || inputText).trim();
-    if (isSendingRef.current || !clean) return;
+    if (isSendingRef.current || (!clean && !selectedImageFile)) return;
     isSendingRef.current = true;
 
     try {
       const currentReply = replyingTo;
+      const fileToUpload = selectedImageFile;
       if (!forcedText) setInputText("");
       setReplyingTo(null);
+
+      // Upload image if selected
+      let uploadedImageUrl: string | null = null;
+      if (fileToUpload) {
+        setIsUploadingImage(true);
+        try {
+          const uploadRes = await uploadChatImage(
+            fileToUpload,
+            activeChatDbIdRef.current || activeChatDbId || undefined
+          );
+          uploadedImageUrl = uploadRes.url;
+        } catch (uploadErr: any) {
+          toast.error("Failed to upload image: " + (uploadErr?.message || "Storage error"));
+          setIsUploadingImage(false);
+          isSendingRef.current = false;
+          return;
+        } finally {
+          setIsUploadingImage(false);
+        }
+        handleClearImage();
+      }
 
       const senderRole = isStaff
         ? effectiveDesk === "admin"
@@ -1876,6 +1942,7 @@ function FacebookMessengerWindow({
             : UNIFIED_VET_NAME
           : user?.fullName || "Pet Owner",
         text: clean,
+        imageUrl: uploadedImageUrl || undefined,
         replyTo: currentReply || undefined,
         timestamp: new Intl.DateTimeFormat("en-PH", {
           hour: "2-digit",
@@ -1915,7 +1982,7 @@ function FacebookMessengerWindow({
                   ? "CVO Public Admin Desk"
                   : "Veterinary Telemedicine Consultation",
               assigned_vet_name: targetVetName,
-              last_message: clean,
+              last_message: clean || "Sent a photo",
             })
             .select("id")
             .single();
@@ -1929,9 +1996,10 @@ function FacebookMessengerWindow({
       }
 
       if (chatId) {
-        const metaPayload = currentReply
-          ? serializeAttachmentMeta({ replyTo: currentReply })
-          : null;
+        const metaPayload = serializeAttachmentMeta({
+          replyTo: currentReply || undefined,
+          imageUrl: uploadedImageUrl || undefined,
+        });
 
         // In Supabase, chat_messages_sender_role_check strictly allows: 'Pet Owner', 'Veterinarian', 'Staff', 'System'
         const dbSenderRole = isStaff
@@ -1992,7 +2060,7 @@ function FacebookMessengerWindow({
 
         await supabase
           .from("chats")
-          .update({ last_message: clean, last_message_at: new Date().toISOString() })
+          .update({ last_message: clean || "Sent a photo", last_message_at: new Date().toISOString() })
           .eq("id", chatId);
       }
     } finally {
@@ -2528,8 +2596,63 @@ function FacebookMessengerWindow({
                             </button>
                           )}
                         </div>
-                      ) : (
+                      ) : msg.imageUrl && !msg.text ? (
+                        /* Standalone Image Message (Authentic Facebook Messenger - No Bubble Wrapper) */
                         <div className={cn("relative group/bubble inline-block max-w-full min-w-0", isOutgoing ? "self-end" : "self-start")}>
+                          <div
+                            className={cn(
+                              "overflow-hidden cursor-pointer rounded-2xl border border-black/10 dark:border-white/10 shadow-xs hover:opacity-95 active:scale-[0.99] transition-all max-w-[260px] sm:max-w-[320px]",
+                              isOutgoing ? "rounded-br-xs" : "rounded-bl-xs"
+                            )}
+                            onClick={() => setViewingImageUrl(msg.imageUrl || null)}
+                            title="Click to view full photo"
+                          >
+                            <img
+                              src={msg.imageUrl}
+                              alt="Chat attachment"
+                              className="w-full h-auto max-h-[320px] object-cover block"
+                              loading="lazy"
+                            />
+                          </div>
+
+                          {/* Attached Paw Badge on Image */}
+                          {hasPaw && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!isOutgoing) toggleReaction(msg.id);
+                              }}
+                              disabled={isOutgoing}
+                              className={cn(
+                                "absolute -bottom-2 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-card border border-border/80 shadow-xs transition-transform",
+                                isOutgoing ? "left-2 cursor-default select-none pointer-events-none" : "right-2 hover:scale-110 active:scale-95 cursor-pointer"
+                              )}
+                              title={isOutgoing ? "Paw reaction" : "Remove paw reaction"}
+                            >
+                              <PawPrint className="size-2.5 text-primary fill-primary" />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        /* Speech Bubble (With optional image on top if captioned) */
+                        <div className={cn("relative group/bubble inline-block max-w-full min-w-0", isOutgoing ? "self-end" : "self-start")}>
+                          {msg.imageUrl && (
+                            <div
+                              className={cn(
+                                "overflow-hidden cursor-pointer rounded-2xl border border-black/10 dark:border-white/10 shadow-xs hover:opacity-95 transition-all max-w-[260px] sm:max-w-[320px] mb-1.5",
+                                isOutgoing ? "rounded-br-xs" : "rounded-bl-xs"
+                              )}
+                              onClick={() => setViewingImageUrl(msg.imageUrl || null)}
+                              title="Click to view full photo"
+                            >
+                              <img
+                                src={msg.imageUrl}
+                                alt="Chat attachment"
+                                className="w-full h-auto max-h-[260px] object-cover block"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
                           <div
                             className={cn(
                               "p-2.5 px-3 text-xs leading-relaxed shadow-2xs whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] transition-all",
@@ -2801,8 +2924,64 @@ function FacebookMessengerWindow({
         </div>
       )}
 
+      {/* Image Attachment Preview Bar */}
+      {imagePreviewUrl && (
+        <div className="px-3 py-1.5 bg-muted/60 border-t border-border/70 flex items-center justify-between gap-2 shrink-0 animate-in fade-in-50 duration-150">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="relative size-10 rounded-lg overflow-hidden border border-border shrink-0 bg-background">
+              <img
+                src={imagePreviewUrl}
+                alt="Selected attachment preview"
+                className="w-full h-full object-cover"
+              />
+              {isUploadingImage && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <Loader2 className="size-4 text-white animate-spin" />
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground text-[11px] truncate leading-tight">
+                {selectedImageFile?.name || "Photo attachment"}
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                {selectedImageFile ? formatFileSize(selectedImageFile.size) : "Ready to send"} • Auto-compressed
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearImage}
+            disabled={isUploadingImage}
+            className="size-6 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+            title="Remove image"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleSelectImage}
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+      />
+
       {/* Input Box Form */}
       <div className="p-2 border-t border-border/70 flex items-end gap-1.5 bg-card shrink-0 relative z-20 pointer-events-auto">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploadingImage}
+          className="size-8 rounded-full hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0 relative z-20 pointer-events-auto mb-0.5"
+          title="Attach photo"
+        >
+          <ImageIcon className="size-4" />
+        </button>
+
         <textarea
           ref={textareaRef}
           rows={1}
@@ -2823,15 +3002,20 @@ function FacebookMessengerWindow({
           >
             <Check className="size-4 stroke-[2.5]" />
           </button>
-        ) : inputText.trim() ? (
+        ) : (inputText.trim() || selectedImageFile) ? (
           <button
             type="button"
             onClick={() => handleSend()}
+            disabled={isUploadingImage}
             className="size-8 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white flex items-center justify-center transition-all shadow-xs cursor-pointer shrink-0 relative z-30 pointer-events-auto"
             title="Send"
             aria-label="Send message"
           >
-            <Send className="size-3.5" />
+            {isUploadingImage ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Send className="size-3.5" />
+            )}
           </button>
         ) : (
           <button
@@ -2886,6 +3070,31 @@ function FacebookMessengerWindow({
           />
         );
       })()}
+
+      {/* Lightbox / Modal for viewing photo attachment */}
+      {viewingImageUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in-50"
+          onClick={() => setViewingImageUrl(null)}
+        >
+          <div className="relative max-w-2xl max-h-[90vh] flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setViewingImageUrl(null)}
+              className="absolute -top-10 right-0 size-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center cursor-pointer transition-colors"
+              title="Close image"
+            >
+              <X className="size-4" />
+            </button>
+            <img
+              src={viewingImageUrl}
+              alt="Full chat preview"
+              className="max-h-[82vh] max-w-full rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

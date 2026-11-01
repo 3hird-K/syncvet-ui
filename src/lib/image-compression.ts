@@ -215,3 +215,91 @@ export async function deleteAnnouncementImage(imageUrlOrPath: string): Promise<b
     return false;
   }
 }
+
+/**
+ * Upload an image attached to a chat message into the 'chat-attachments' bucket.
+ * Compresses raw camera photos down to ~50KB - 80KB WebP for fast mobile transfer
+ * and maximum Supabase free storage lifespan.
+ */
+export async function uploadChatImage(file: File, chatId?: string): Promise<{
+  url: string;
+  path: string;
+  originalSize: number;
+  compressedSize: number;
+  savingsPercent: number;
+}> {
+  const compressed = await compressImage(file, {
+    maxWidth: 1200,
+    maxHeight: 1200,
+    quality: 0.78,
+  });
+
+  const supabase = getPublicSupabaseClient();
+  const fileExt = "webp";
+  const safeChatPrefix = chatId ? chatId.replace(/[^a-zA-Z0-9-_]/g, "").slice(0, 12) : "direct";
+  const uniqueName = `chat_${safeChatPrefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+  const filePath = uniqueName;
+
+  const { error: uploadError } = await supabase.storage
+    .from("chat-attachments")
+    .upload(filePath, compressed.file, {
+      contentType: "image/webp",
+      cacheControl: "31536000",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    console.error("Chat image storage upload error:", uploadError);
+    throw uploadError;
+  }
+
+  const { data: publicData } = supabase.storage
+    .from("chat-attachments")
+    .getPublicUrl(filePath);
+
+  return {
+    url: publicData.publicUrl,
+    path: filePath,
+    originalSize: compressed.originalSize,
+    compressedSize: compressed.compressedSize,
+    savingsPercent: compressed.savingsPercent,
+  };
+}
+
+/**
+ * Delete a chat attachment image from the 'chat-attachments' bucket
+ * (e.g. when un-sending or deleting a chat message).
+ */
+export async function deleteChatImage(imageUrlOrPath: string): Promise<boolean> {
+  if (!imageUrlOrPath) return false;
+
+  try {
+    let filePath = imageUrlOrPath;
+
+    if (imageUrlOrPath.startsWith("http")) {
+      const match = imageUrlOrPath.match(/\/chat-attachments\/(.+)$/);
+      if (match && match[1]) {
+        filePath = decodeURIComponent(match[1].split("?")[0]);
+      } else {
+        return false;
+      }
+    }
+
+    const supabase = getPublicSupabaseClient();
+    const { data, error } = await supabase.storage
+      .from("chat-attachments")
+      .remove([filePath]);
+
+    if (error) {
+      console.warn("Chat storage deletion error (non-fatal):", error);
+      return false;
+    }
+
+    console.log("Successfully deleted chat image from storage:", filePath, data);
+    return true;
+  } catch (err) {
+    console.warn("Failed to delete chat storage file:", err);
+    return false;
+  }
+}
+

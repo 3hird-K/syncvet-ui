@@ -6,6 +6,7 @@ import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { useOptionalCVO } from "@/lib/cvo-context";
 import { toast } from "sonner";
 import { getTwoLetterInitials } from "@/lib/utils";
+import { deleteChatImage } from "@/lib/image-compression";
 
 export const UNIFIED_VET_NAME = "Dr. Helen Ann P. Tacandong, DVM";
 export const UNIFIED_VET_BADGE = "City Veterinarian • CVO";
@@ -19,6 +20,7 @@ export interface ChatMessageItem {
   actualSenderName?: string;
   actualSenderId?: string;
   text: string;
+  imageUrl?: string;
   timestamp: string;
   createdAt?: string;
   badge?: string;
@@ -46,6 +48,7 @@ export function parseAttachmentMeta(url?: string | null): {
   replyTo?: ChatReplyInfo;
   isUnsent?: boolean;
   removedFor?: string[];
+  imageUrl?: string;
 } {
   if (!url) return {};
   if (url === "unsent" || url.startsWith("unsent:")) {
@@ -62,10 +65,14 @@ export function parseAttachmentMeta(url?: string | null): {
         replyTo: parsed.replyTo || undefined,
         isUnsent: Boolean(parsed.isUnsent),
         removedFor: Array.isArray(parsed.removedFor) ? parsed.removedFor : [],
+        imageUrl: parsed.imageUrl || undefined,
       };
     } catch {
       return {};
     }
+  }
+  if (url.startsWith("http")) {
+    return { imageUrl: url, removedFor: [] };
   }
   return {};
 }
@@ -75,12 +82,14 @@ export function serializeAttachmentMeta(meta: {
   replyTo?: ChatReplyInfo | null;
   isUnsent?: boolean;
   removedFor?: string[];
+  imageUrl?: string | null;
 }): string | null {
   const obj: any = {};
   if (meta.reaction) obj.reaction = meta.reaction;
   if (meta.replyTo) obj.replyTo = meta.replyTo;
   if (meta.isUnsent) obj.isUnsent = true;
   if (meta.removedFor && meta.removedFor.length > 0) obj.removedFor = meta.removedFor;
+  if (meta.imageUrl) obj.imageUrl = meta.imageUrl;
   if (Object.keys(obj).length === 0) return null;
   return JSON.stringify(obj);
 }
@@ -222,14 +231,16 @@ export interface ChatContextType {
   sendMessage: (
     text: string,
     channelPersona?: "vet" | "admin",
-    replyTo?: ChatReplyInfo
+    replyTo?: ChatReplyInfo,
+    imageUrl?: string | null
   ) => Promise<void>;
   sendVetReply: (
     chatId: string,
     text: string,
     actualSenderName?: string,
     persona?: "vet" | "admin",
-    replyTo?: ChatReplyInfo
+    replyTo?: ChatReplyInfo,
+    imageUrl?: string | null
   ) => Promise<void>;
   editMessage: (messageId: string, newText: string) => Promise<boolean>;
   deleteMessage: (messageId: string) => Promise<boolean>;
@@ -505,6 +516,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                 isRead: m.is_read,
                 reaction: isUnsent ? undefined : meta.reaction,
                 replyTo: isUnsent ? undefined : meta.replyTo,
+                imageUrl: isUnsent ? undefined : meta.imageUrl,
               };
             });
 
@@ -641,6 +653,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                   isRead: m.is_read,
                   reaction: isUnsent ? undefined : meta.reaction,
                   replyTo: isUnsent ? undefined : meta.replyTo,
+                  imageUrl: isUnsent ? undefined : meta.imageUrl,
                 };
               });
 
@@ -817,7 +830,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                 .then(() => {});
             }
 
-            const { reaction: rowReaction, replyTo: rowReplyTo } = parseAttachmentMeta(row.attachment_url);
+            const { reaction: rowReaction, replyTo: rowReplyTo, imageUrl: rowImageUrl } = parseAttachmentMeta(row.attachment_url);
 
             if (rowReaction) {
               setReactions((prev) => ({ ...prev, [row.id]: rowReaction }));
@@ -845,7 +858,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                 const optIdx = prev.findIndex(
                   (m) =>
                     m.senderRole === "Pet Owner" &&
-                    m.text.trim().toLowerCase() === lowerRowText &&
+                    (m.text.trim().toLowerCase() === lowerRowText || (rowImageUrl && m.imageUrl === rowImageUrl)) &&
                     m.id.startsWith("msg-")
                 );
                 if (optIdx !== -1) {
@@ -857,6 +870,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                     createdAt: row.created_at,
                     reaction: rowReaction,
                     replyTo: rowReplyTo || updated[optIdx].replyTo,
+                    imageUrl: rowImageUrl || updated[optIdx].imageUrl,
                     isRead: Boolean(row.is_read),
                   };
                   return updated;
@@ -880,6 +894,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                     createdAt: row.created_at,
                     reaction: rowReaction,
                     replyTo: rowReplyTo || updated[optVetIdx].replyTo,
+                    imageUrl: rowImageUrl || updated[optVetIdx].imageUrl,
                     senderName: UNIFIED_VET_NAME,
                     actualSenderId: row.sender_id,
                     isRead: Boolean(row.is_read),
@@ -890,7 +905,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
               // Prevent duplicate if the last message in prev already has identical text
               const last = prev[prev.length - 1];
-              if (last && last.text.trim().toLowerCase() === lowerRowText) {
+              if (last && !rowImageUrl && last.text.trim().toLowerCase() === lowerRowText) {
                 return prev;
               }
 
@@ -913,6 +928,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                   actualSenderId: row.sender_id,
                   badge: isAdmin ? "City Veterinary Office Admin" : isStaff ? UNIFIED_VET_BADGE : undefined,
                   text: rowText,
+                  imageUrl: rowImageUrl,
                   timestamp: "Just now",
                   createdAt: row.created_at,
                   reaction: rowReaction,
@@ -1139,9 +1155,9 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
   }, [activeChatId, messages, user?.id, supabase]);
 
   const sendMessage = useCallback(
-    async (text: string, channelPersona?: "vet" | "admin", replyTo?: ChatReplyInfo) => {
+    async (text: string, channelPersona?: "vet" | "admin", replyTo?: ChatReplyInfo, imageUrl?: string | null) => {
       const cleanText = text.trim();
-      if (!cleanText) return;
+      if (!cleanText && !imageUrl) return;
 
       const userMsg: ChatMessageItem = {
         id: `msg-${Date.now()}`,
@@ -1150,6 +1166,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         senderRole: "Pet Owner",
         senderName: ownerName,
         text: cleanText,
+        imageUrl: imageUrl || undefined,
         timestamp: "Just now",
         isRead: true,
         replyTo,
@@ -1204,7 +1221,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                   pet_name: selectedPet?.name || null,
                   subject: defaultSubject,
                   assigned_vet_name: targetDeskVetName,
-                  last_message: cleanText,
+                  last_message: cleanText || "Sent a photo",
                 })
                 .select("id")
                 .single();
@@ -1223,7 +1240,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
               sender_role: "Pet Owner",
               sender_name: ownerName,
               message_text: cleanText,
-              attachment_url: serializeAttachmentMeta({ replyTo }),
+              attachment_url: serializeAttachmentMeta({ replyTo, imageUrl }),
             });
 
             if (!msgErr) {
@@ -1359,10 +1376,11 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
       text: string,
       actualSenderName?: string,
       persona: "vet" | "admin" = "vet",
-      replyTo?: ChatReplyInfo
+      replyTo?: ChatReplyInfo,
+      imageUrl?: string | null
     ) => {
       const cleanText = text.trim();
-      if (!cleanText) return;
+      if (!cleanText && !imageUrl) return;
 
       const auditAuthor =
         actualSenderName ||
@@ -1400,7 +1418,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
               owner_id: ownerId,
               subject: isAdmin ? "CVO Inquiry & Admin Desk" : "Veterinary Telemedicine Consultation",
               assigned_vet_name: senderDisplayName,
-              last_message: cleanText,
+              last_message: cleanText || "Sent a photo",
             })
             .select("id")
             .single();
@@ -1424,6 +1442,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         actualSenderId: user?.id,
         badge: badgeText,
         text: cleanText,
+        imageUrl: imageUrl || undefined,
         timestamp: "Just now",
         isRead: false,
         replyTo,
@@ -1451,7 +1470,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
               sender_role: dbSenderRole,
               sender_name: senderDisplayName,
               message_text: cleanText,
-              attachment_url: serializeAttachmentMeta({ replyTo }),
+              attachment_url: serializeAttachmentMeta({ replyTo, imageUrl }),
               is_read: false,
             })
             .select("id, created_at")
@@ -1475,7 +1494,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
           await supabase
             .from("chats")
             .update({
-              last_message: cleanText,
+              last_message: cleanText || "Sent a photo",
               last_message_at: new Date().toISOString(),
               status: "open",
             })
@@ -1560,10 +1579,27 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
         return removeMessageForMe(messageId);
       }
 
+      if (target?.imageUrl) {
+        deleteChatImage(target.imageUrl).catch(() => {});
+      }
+
       setMessages((prev) => prev.filter((m) => m.id !== messageId));
       markMessageLocallyRemoved(messageId, user?.id);
 
       try {
+        const { data: dbMsg } = await supabase
+          .from("chat_messages")
+          .select("attachment_url")
+          .eq("id", messageId)
+          .maybeSingle();
+
+        if (dbMsg?.attachment_url) {
+          const meta = parseAttachmentMeta(dbMsg.attachment_url);
+          if (meta.imageUrl) {
+            deleteChatImage(meta.imageUrl).catch(() => {});
+          }
+        }
+
         await supabase.from("chat_messages").delete().eq("id", messageId);
       } catch {
         // ignore
@@ -1575,6 +1611,11 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const unsendMessage = useCallback(
     async (messageId: string) => {
+      const target = messages.find((m) => m.id === messageId);
+      if (target?.imageUrl) {
+        deleteChatImage(target.imageUrl).catch(() => {});
+      }
+
       setReactions((prev) => {
         const next = { ...prev };
         delete next[messageId];
@@ -1584,7 +1625,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === messageId
-            ? { ...m, isUnsent: true, text: "", reaction: undefined, replyTo: undefined }
+            ? { ...m, isUnsent: true, text: "", imageUrl: undefined, reaction: undefined, replyTo: undefined }
             : m
         )
       );
@@ -1605,6 +1646,19 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
       } catch {}
 
       try {
+        const { data: dbMsg } = await supabase
+          .from("chat_messages")
+          .select("attachment_url")
+          .eq("id", messageId)
+          .maybeSingle();
+
+        if (dbMsg?.attachment_url) {
+          const meta = parseAttachmentMeta(dbMsg.attachment_url);
+          if (meta.imageUrl) {
+            deleteChatImage(meta.imageUrl).catch(() => {});
+          }
+        }
+
         await supabase
           .from("chat_messages")
           .update({
@@ -1617,7 +1671,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
       }
       return true;
     },
-    [supabase]
+    [messages, supabase]
   );
 
   const toggleReaction = useCallback(
