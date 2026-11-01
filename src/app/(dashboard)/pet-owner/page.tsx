@@ -2570,12 +2570,12 @@ export default function PetOwnerPortalPage() {
         <DialogContent
           showCloseButton={false}
           className={cn(
-            "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out",
+            "w-[calc(100vw-1.5rem)] sm:w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[92vh] max-h-[92vh] flex flex-col overflow-x-hidden",
             showAvatarPickerPanel || showEditPetPanel
-              ? "max-w-5xl sm:max-w-5xl h-[88vh] max-h-[88vh] flex flex-col"
+              ? "max-w-5xl sm:max-w-5xl"
               : activeProfileTab !== "overview"
-              ? "max-w-4xl sm:max-w-4xl h-[88vh] max-h-[88vh] flex flex-col"
-              : "max-w-3xl sm:max-w-3xl h-[88vh] max-h-[88vh] flex flex-col"
+              ? "max-w-4xl sm:max-w-4xl"
+              : "max-w-3xl sm:max-w-3xl"
           )}
         >
           <DialogHeader className="sr-only">
@@ -2633,7 +2633,7 @@ export default function PetOwnerPortalPage() {
                 {/* Header Card with Gradient & Crest (Persistent header for Overview, Passport, Consultation, Procedure) */}
                 <div
                   className={cn(
-                    "p-5 text-white relative overflow-hidden shrink-0",
+                    "p-3.5 sm:p-5 text-white relative overflow-hidden shrink-0",
                     isCat
                       ? "bg-gradient-to-br from-purple-800 via-indigo-950 to-slate-950"
                       : "bg-gradient-to-br from-emerald-800 via-teal-950 to-slate-950"
@@ -2643,7 +2643,7 @@ export default function PetOwnerPortalPage() {
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
 
                   {/* Top Action Icons: Digital Passport, Request Care, Book Slot, Save, Delete, Close */}
-                  <div className="flex items-center justify-end relative z-10 mb-3 gap-1.5">
+                  <div className="flex items-center justify-end relative z-10 mb-2.5 sm:mb-3 gap-1 sm:gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={async () => {
@@ -2892,7 +2892,7 @@ export default function PetOwnerPortalPage() {
 
                 {/* Content Area */}
                 <div className={cn(
-                  "flex-1 min-h-0 overflow-y-auto overscroll-contain",
+                  "flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain",
                   activeProfileTab !== "overview" ? "p-3 sm:p-3.5 space-y-2" : "p-3 sm:p-4 space-y-3"
                 )}>
                   {activeProfileTab === "overview" && (
@@ -3132,28 +3132,28 @@ export default function PetOwnerPortalPage() {
                   {/* Consultation Scheduling View */}
                   {activeProfileTab === "consultation" && (
                     <div className="space-y-3 animate-in fade-in-0 duration-200">
-                      <div className="flex items-center justify-between pb-2 border-b border-border/70">
-                        <div className="flex items-center gap-2">
-                          <div className="size-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-border/70 gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="size-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                             <Stethoscope className="size-4" />
                           </div>
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-bold text-foreground">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-foreground truncate">
                               Request Clinical Care for {pet.name}
                             </h4>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-[11px] text-muted-foreground truncate">
                               Free consultation, health check-up & symptom diagnosis
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0 justify-end w-full sm:w-auto">
                           <Button
                             type="submit"
                             form="pet-owner-consultation-form"
                             disabled={!isConsultationValid}
                             size="sm"
-                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none justify-center"
                           >
                             <ClipboardCheck className="size-3.5" />
                             <span>Submit Request</span>
@@ -3164,7 +3164,7 @@ export default function PetOwnerPortalPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setActiveProfileTab("overview")}
-                            className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                            className="h-8 text-xs text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                           >
                             Back to Overview
                           </Button>
@@ -3190,28 +3190,28 @@ export default function PetOwnerPortalPage() {
                   {/* Procedure Scheduling View */}
                   {activeProfileTab === "procedure" && (
                     <div className="space-y-3 animate-in fade-in-0 duration-200">
-                      <div className="flex items-center justify-between pb-2 border-b border-border/70">
-                        <div className="flex items-center gap-2">
-                          <div className="size-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-border/70 gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="size-8 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
                             <Calendar className="size-4" />
                           </div>
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-bold text-foreground">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-foreground truncate">
                               Book Procedure Slot for {pet.name}
                             </h4>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-[11px] text-muted-foreground truncate">
                               Live municipal capacity limits for Vaccination & Kapon (Monday – Friday)
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0 justify-end w-full sm:w-auto">
                           <Button
                             type="submit"
                             form="schedule-procedure-form"
                             disabled={!isProcedureValid}
                             size="sm"
-                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="h-8 text-xs font-bold rounded-lg px-3 gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none justify-center"
                           >
                             <Calendar className="size-3.5" />
                             <span>Book Procedure</span>
@@ -3222,7 +3222,7 @@ export default function PetOwnerPortalPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setActiveProfileTab("overview")}
-                            className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                            className="h-8 text-xs text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                           >
                             Back to Overview
                           </Button>
@@ -3249,27 +3249,27 @@ export default function PetOwnerPortalPage() {
                   {/* Digital Pet Passport QR View */}
                   {activeProfileTab === "passport" && (
                     <div className="space-y-3 animate-in fade-in-0 duration-200">
-                      <div className="flex items-center justify-between pb-2 border-b border-border/70">
-                        <div className="flex items-center gap-2">
-                          <div className="size-7 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2.5 border-b border-border/70 gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="size-8 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
                             <QrCode className="size-4" />
                           </div>
-                          <div>
-                            <h4 className="text-xs sm:text-sm font-bold text-foreground">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-foreground truncate">
                               Digital Pet Passport for {pet.name}
                             </h4>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-[10px] text-muted-foreground truncate">
                               Official Cagayan de Oro LGU Companion Animal Identification
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 justify-end w-full sm:w-auto">
                           {/* Download QR Only Icon Button */}
                           <button
                             type="button"
                             onClick={handleDownloadQrOnly}
-                            className="size-7 rounded-lg border border-border/70 bg-background hover:bg-muted text-foreground hover:text-primary transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
+                            className="size-8 rounded-lg border border-border/70 bg-background hover:bg-muted text-foreground hover:text-primary transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
                             title="Download QR Code (PNG)"
                           >
                             <Download className="size-3.5" />
@@ -3281,7 +3281,7 @@ export default function PetOwnerPortalPage() {
                             href={getPassportVerifyUrl(pet)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="size-7 rounded-lg border border-border/70 bg-background hover:bg-muted text-foreground hover:text-primary transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
+                            className="size-8 rounded-lg border border-border/70 bg-background hover:bg-muted text-foreground hover:text-primary transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
                             title="Verify Medical Record"
                           >
                             <ExternalLink className="size-3.5" />
@@ -3293,7 +3293,7 @@ export default function PetOwnerPortalPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setActiveProfileTab("overview")}
-                            className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                            className="h-8 text-xs text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                           >
                             Back to Overview
                           </Button>
