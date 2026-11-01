@@ -373,6 +373,7 @@ function MessagesContent() {
     isFetchingOlder,
     isLoadingMessages,
     fetchOlderMessages,
+    markAllAsRead,
   } = useCitizenChat();
 
   const [inputText, setInputText] = useState("");
@@ -941,6 +942,7 @@ function MessagesContent() {
 
   // Mark active chat incoming messages as read
   useEffect(() => {
+    markAllAsRead();
     if (!activeChatId || !isValidUuid(activeChatId)) return;
     supabase
       .from("chat_messages")
@@ -952,7 +954,7 @@ function MessagesContent() {
         broadcastMessageRead(activeChatId);
         refetchThreads();
       });
-  }, [activeChatId, user?.id, supabase, refetchThreads, messages.length, broadcastMessageRead]);
+  }, [activeChatId, user?.id, supabase, refetchThreads, messages.length, broadcastMessageRead, markAllAsRead]);
 
   // Query logged-in user's chats for citizen view
   const { data: myCitizenChats = [], refetch: refetchCitizenChats } = useQuery<any[]>({

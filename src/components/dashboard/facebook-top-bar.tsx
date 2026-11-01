@@ -65,10 +65,19 @@ export function FacebookTopBar({
   const { user, isLoaded } = useUser();
   const clerk = useClerk();
   const { theme, setTheme } = useTheme();
-  const { unreadCount } = useCitizenChat();
+  const { unreadCount, markAllAsRead } = useCitizenChat();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const isMessagesPage = pathname.startsWith("/messages");
+  const effectiveUnreadCount = isMessagesPage ? 0 : unreadCount;
+
+  useEffect(() => {
+    if (isMessagesPage) {
+      markAllAsRead();
+    }
+  }, [isMessagesPage, markAllAsRead]);
 
   useEffect(() => {
     setMounted(true);
@@ -328,9 +337,9 @@ export function FacebookTopBar({
           title="Ask a Veterinarian in Messages"
         >
           <MessengerIcon className="size-4 sm:size-4.5 md:size-5 text-foreground" />
-          {unreadCount > 0 && (
+          {effectiveUnreadCount > 0 && (
             <span className="absolute -top-1 -right-1 size-4.5 sm:size-5 rounded-full bg-rose-600 text-white text-[9px] sm:text-[10px] font-bold flex items-center justify-center ring-2 ring-card shadow-xs">
-              {unreadCount > 9 ? "9+" : unreadCount}
+              {effectiveUnreadCount > 9 ? "9+" : effectiveUnreadCount}
             </span>
           )}
         </Link>

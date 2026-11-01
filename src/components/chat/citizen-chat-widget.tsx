@@ -233,6 +233,7 @@ export function CitizenChatWidget() {
     setActiveChatId,
     isOpen,
     setIsOpen,
+    markAllAsRead,
   } = useCitizenChat();
 
   // Dynamically fetch users to always resolve up-to-date profile pictures (avatar_url)
@@ -599,6 +600,7 @@ export function CitizenChatWidget() {
 
   const markContactAsRead = useCallback(
     async (contactId: string, knownChatId?: string | null) => {
+      markAllAsRead();
       setUnreadCounts((prev) => {
         if (!prev[contactId]) return prev;
         const next = { ...prev };
@@ -852,6 +854,13 @@ export function CitizenChatWidget() {
       setIsOpen(false);
     }
   }, [isOpen, handleOpenContact, setIsOpen]);
+
+  // When any floating chat window is active on screen, clear unread counts
+  useEffect(() => {
+    if (openChatIds.length > 0) {
+      markAllAsRead();
+    }
+  }, [openChatIds, markAllAsRead]);
 
   const toggleMinimize = (contactId: string) => {
     setOpenChatIds((prev) => {

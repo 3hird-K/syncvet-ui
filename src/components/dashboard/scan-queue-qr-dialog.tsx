@@ -57,6 +57,7 @@ export function ScanQueueQrDialog({
   const [decodedResult, setDecodedResult] = useState<string | null>(null);
   const html5QrCodeRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraCaptureRef = useRef<HTMLInputElement>(null);
 
   const todayStr = useMemo(() => getTodayDateStr(), []);
 
@@ -260,20 +261,29 @@ export function ScanQueueQrDialog({
             )}
 
             {cameraError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-white p-4 text-center space-y-2.5">
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-white p-4 text-center space-y-2.5 animate-in fade-in-50">
                 <AlertCircle className="size-7 text-amber-400" />
-                <p className="text-xs font-semibold text-amber-200">Camera Access Notice</p>
-                <p className="text-[10.5px] text-slate-300 leading-relaxed px-2">
-                  {cameraError}
+                <p className="text-xs font-bold text-amber-200">Camera Permission Notice</p>
+                <p className="text-[10.5px] text-slate-300 leading-relaxed px-1">
+                  Your phone overlay blocked live video. You can snap a photo with your phone camera directly:
                 </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={startCamera}
-                  className="h-7 text-[11px] rounded-lg border-white/20 text-white bg-white/10 hover:bg-white/20 mt-1 cursor-pointer"
-                >
-                  <RefreshCw className="size-3 mr-1" /> Try Camera Again
-                </Button>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={() => cameraCaptureRef.current?.click()}
+                    className="h-7 text-[11px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                  >
+                    <Camera className="size-3 mr-1" /> Snap QR Photo
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={startCamera}
+                    className="h-7 text-[11px] rounded-lg border-white/20 text-white bg-white/10 hover:bg-white/20 cursor-pointer"
+                  >
+                    <RefreshCw className="size-3 mr-1" /> Retry
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -302,21 +312,56 @@ export function ScanQueueQrDialog({
           <div className="pt-2 border-t border-border/70 flex flex-col gap-2">
             <input
               type="file"
+              ref={cameraCaptureRef}
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <input
+              type="file"
               ref={fileInputRef}
               accept="image/*"
               onChange={handleFileUpload}
               className="hidden"
             />
 
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => cameraCaptureRef.current?.click()}
+                className="h-8.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Camera className="size-3.5" />
+                <span>Snap with Camera</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                className="h-8.5 rounded-xl border-border hover:border-emerald-500/50 text-xs font-semibold gap-1.5 cursor-pointer bg-card hover:bg-muted"
+              >
+                <Upload className="size-3.5 text-muted-foreground" />
+                <span>Upload QR Photo</span>
+              </Button>
+            </div>
+
+            {/* Direct Counter Check-In Option */}
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full h-8.5 rounded-xl border-dashed border-border hover:border-emerald-500/50 text-xs font-semibold gap-1.5 cursor-pointer"
+              onClick={() => {
+                setOpen(false);
+                router.push(`/queue-checkin?date=${todayStr}`);
+              }}
+              className="h-7 text-[11px] font-semibold text-muted-foreground hover:text-foreground gap-1.5 hover:bg-muted/50 cursor-pointer"
             >
-              <Upload className="size-3.5 text-muted-foreground" />
-              <span>Upload QR Screenshot / Photo</span>
+              <CheckCircle2 className="size-3 text-emerald-600" />
+              <span>Or tap here to Check In directly at Counter</span>
             </Button>
           </div>
         </div>

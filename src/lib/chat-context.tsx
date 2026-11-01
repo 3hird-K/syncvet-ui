@@ -1356,6 +1356,11 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
             badge = "Clinic Advisory";
           }
 
+          const isUserViewingChat =
+            isOpenRef.current ||
+            (typeof window !== "undefined" && window.location.pathname.startsWith("/messages")) ||
+            (typeof document !== "undefined" && !document.hidden);
+
           const vetMsg: ChatMessageItem = {
             id: `msg-reply-${Date.now()}`,
             chatId: currentChatId || undefined,
@@ -1364,7 +1369,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
             badge,
             text: reply,
             timestamp: "Just now",
-            isRead: isOpenRef.current ? true : false,
+            isRead: isUserViewingChat ? true : false,
           };
 
           setMessages((prev) => {
@@ -1391,7 +1396,7 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
                 sender_role: isAdminDesk ? "Staff" : "Veterinarian",
                 sender_name: vetName,
                 message_text: reply,
-                is_read: false,
+                is_read: isUserViewingChat ? true : false,
               });
             } catch {
               // ignore
@@ -1856,6 +1861,9 @@ function normalizeAndDeduplicate(list: ChatMessageItem[]): ChatMessageItem[] {
 
   const unreadCount = useMemo(() => {
     if (isOpen) return 0;
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/messages")) {
+      return 0;
+    }
     return messages.filter((m) => {
       const isIncoming = isStaffUser
         ? m.senderRole === "Pet Owner"
