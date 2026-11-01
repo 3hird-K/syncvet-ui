@@ -23,6 +23,7 @@ import {
   ChevronUp,
   MoreHorizontal,
   Archive,
+  QrCode,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
+import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
+import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
@@ -113,6 +116,8 @@ export function CVOSocialFeed({
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [announcementToEdit, setAnnouncementToEdit] = useState<CVOAnnouncement | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<CVOAnnouncement | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch real users from Supabase to match profile pictures
   const { data: staffProfiles } = useQuery({
@@ -229,6 +234,28 @@ export function CVOSocialFeed({
     return null;
   };
 
+// Helper to inspect expiry from content tag or field
+function getAnnouncementExpiry(content?: string, expiresAt?: string | null): string | null {
+  if (expiresAt) return expiresAt.slice(0, 10);
+  if (!content) return null;
+  const match = content.match(/\[EXPIRES:([^\]]+)\]/i);
+  return match ? match[1].trim() : null;
+}
+
+function isAnnouncementExpired(content?: string, expiresAt?: string | null): boolean {
+  const expiry = getAnnouncementExpiry(content, expiresAt);
+  if (!expiry) return false;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return expiry < todayStr;
+}
+
+function stripAnnouncementTags(text?: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\[(?:EVENT_DATE|OP_ID|EXPIRES|IMG):[^\]]+\]/gi, "")
+    .trim();
+}
+
   const announcements: CVOAnnouncement[] = useMemo(() => {
     if (dbAnnouncements && dbAnnouncements.length > 0) {
       return dbAnnouncements;
@@ -236,18 +263,18 @@ export function CVOSocialFeed({
     return DEFAULT_ANNOUNCEMENTS;
   }, [dbAnnouncements]);
 
-  const pinnedAnnouncement = useMemo(() => {
-    return announcements.find((a) => a.is_pinned);
-  }, [announcements]);
-
   const categories = useMemo(() => {
     return ["All", "Vaccination Drive", "Clinic Schedule", "Public Health", "Urgent Advisory"];
   }, []);
 
   const filteredAnnouncements = useMemo(() => {
     let list = announcements;
+
+    // Filter out expired announcements so they are not shown to users
+    list = list.filter((a) => !isAnnouncementExpired(a.content, a.expires_at));
+
     if (selectedCategory !== "All") {
-      list = announcements.filter((a) => a.category === selectedCategory);
+      list = list.filter((a) => a.category === selectedCategory);
     }
     // Float pinned post to the very top (Featured), followed by newest created_at
     return [...list].sort((a, b) => {
@@ -257,6 +284,10 @@ export function CVOSocialFeed({
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [announcements, selectedCategory]);
+
+  const pinnedAnnouncement = useMemo(() => {
+    return filteredAnnouncements.find((a) => a.is_pinned);
+  }, [filteredAnnouncements]);
 
   // Helper to resolve profile picture
   const getAuthorAvatar = (authorName: string, authorId?: string | null, matchedOp?: any) => {
@@ -325,21 +356,39 @@ export function CVOSocialFeed({
   const handleTogglePin = async (item: CVOAnnouncement, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isStaff) return;
+    const willPin = !item.is_pinned;
+
     try {
-      const willPin = !item.is_pinned;
-      if (willPin && pinnedAnnouncement && pinnedAnnouncement.id !== item.id) {
+      if (willPin) {
+        // Automatically unpin all other pinned announcements in Supabase
         await supabase
           .from("announcements")
           .update({ is_pinned: false })
-          .eq("id", pinnedAnnouncement.id);
-      }
-      const { error } = await supabase
-        .from("announcements")
-        .update({ is_pinned: willPin })
-        .eq("id", item.id);
+          .eq("is_pinned", true);
 
-      if (error) throw error;
-      toast.success(willPin ? "Pinned to top of feed" : "Post unpinned");
+        // Pin this item
+        const { error } = await supabase
+          .from("announcements")
+          .update({ is_pinned: true })
+          .eq("id", item.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("announcements")
+          .update({ is_pinned: false })
+          .eq("id", item.id);
+        if (error) throw error;
+      }
+
+      // Optimistically update query cache immediately so UI switches instantly
+      queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
+        old.map((a) => ({
+          ...a,
+          is_pinned: willPin ? a.id === item.id : (a.id === item.id ? false : a.is_pinned),
+        }))
+      );
+
+      toast.success(willPin ? `"${item.title}" is now pinned to the top!` : "Post unpinned");
       queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to update pin");
@@ -347,17 +396,11 @@ export function CVOSocialFeed({
   };
 
   // Staff Delete
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = (item: CVOAnnouncement, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isStaff) return;
-    try {
-      const { error } = await supabase.from("announcements").delete().eq("id", id);
-      if (error) throw error;
-      toast.success("Post removed from feed");
-      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to delete post");
-    }
+    setAnnouncementToDelete(item);
+    setDeleteDialogOpen(true);
   };
 
   return (
@@ -408,10 +451,18 @@ export function CVOSocialFeed({
             const isCompleted = opStatus === "completed" || isGraceCompleted;
             const isInProgress = (opStatus === "in-progress" || opStatus === "in progress") && !isGraceCompleted && !isCompleted;
             const isScheduled = opStatus === "scheduled" && !isGraceCompleted && !isCompleted;
+            const isFieldVisit = Boolean(
+              matchedOp ||
+              (item.content && item.content.includes("[OP_ID:")) ||
+              /outreach|caravan|field operation|field visit|mobile clinic/i.test(item.title)
+            );
 
-            // Format hashtags cleanly
+            // Format hashtags cleanly and strip any internal metadata tags
+            const imageUrl = item.image_url || item.content.match(/\[IMG:(https?:\/\/[^\]]+)\]/i)?.[1];
             const contentLines = item.content.split("\n");
-            const mainText = contentLines.filter((l) => !l.startsWith("#")).join("\n").replace(/\[(?:EVENT_DATE|OP_ID):[^\]]+\]/g, "").trim();
+            const mainText = stripAnnouncementTags(
+              contentLines.filter((l) => !l.startsWith("#")).join("\n")
+            );
             const hashtagLine = contentLines.find((l) => l.startsWith("#"));
 
             return (
@@ -557,7 +608,7 @@ export function CVOSocialFeed({
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={(e) => handleDelete(item.id, e)}
+                            onClick={(e) => handleDelete(item, e)}
                             className="cursor-pointer gap-2 py-2 text-destructive focus:text-destructive focus:bg-destructive/10"
                           >
                             <Trash2 className="size-4 text-destructive" />
@@ -586,13 +637,27 @@ export function CVOSocialFeed({
                   )}
                 </div>
 
-                {/* ── 4. Rich Event Box (if drive or outreach) ── */}
-                {item.target_barangay && (
+                {/* ── 3. Attached Poster Image ── */}
+                {imageUrl && (
+                  <div className="px-3.5 sm:px-4 pb-3.5">
+                    <div className="rounded-2xl overflow-hidden border border-border/70 bg-black/[0.03] dark:bg-black/30 shadow-2xs flex items-center justify-center">
+                      <img
+                        src={imageUrl}
+                        alt={item.title}
+                        className="w-full h-auto max-h-[540px] object-contain rounded-2xl mx-auto"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── 4. Rich Event Box (Only for Outreach & Field Visits) ── */}
+                {isFieldVisit && (
                   <div className="p-2.5 sm:p-3.5 mx-2.5 sm:mx-3.5 my-2 sm:my-2.5 mb-2.5 sm:mb-3.5 rounded-xl border border-border/80 bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                       <div className="size-10 sm:size-11 rounded-xl bg-card border border-border flex flex-col items-center justify-center font-bold text-center shrink-0 shadow-2xs">
                         <span className="text-[8px] sm:text-[9px] uppercase font-bold text-rose-600 leading-none">CVO</span>
-                        <span className="text-xs sm:text-sm font-extrabold text-foreground leading-tight mt-0.5">FREE</span>
+                        <span className="text-xs sm:text-sm font-extrabold text-foreground leading-tight mt-0.5">FIELD</span>
                       </div>
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -619,7 +684,7 @@ export function CVOSocialFeed({
                           )}
                         </div>
                         <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-                          {item.target_barangay} • 100% Free Municipal Service
+                          {item.target_barangay} • 100% Free Municipal Outreach
                           {matchedOp && (
                             <span className="ml-1 font-semibold text-foreground/80">
                               • Status: {isInProgress ? "In Progress" : isCompleted ? "Completed" : "Scheduled"}
@@ -629,26 +694,27 @@ export function CVOSocialFeed({
                       </div>
                     </div>
 
-                    {onSchedulePetClick && (
-                      isCompleted ? (
-                        <Button
-                          size="sm"
-                          disabled
-                          className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-muted text-muted-foreground border border-border/70 shadow-2xs shrink-0 w-full sm:w-auto cursor-default"
-                        >
-                          <CheckCircle2 className="size-3 sm:size-3.5 text-emerald-600 dark:text-emerald-400" />
-                          <span>Concluded</span>
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={onSchedulePetClick}
-                          className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs shrink-0 cursor-pointer w-full sm:w-auto"
-                        >
-                          <Calendar className="size-3 sm:size-3.5" />
-                          <span>Schedule</span>
-                        </Button>
-                      )
+                    {isCompleted ? (
+                      <Button
+                        size="sm"
+                        disabled
+                        className="h-7.5 sm:h-8 px-3 text-xs font-semibold gap-1.5 rounded-xl bg-muted text-muted-foreground border border-border/70 shadow-2xs shrink-0 w-full sm:w-auto cursor-default"
+                      >
+                        <CheckCircle2 className="size-3 sm:size-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Concluded</span>
+                      </Button>
+                    ) : (
+                      <ScanQueueQrDialog
+                        trigger={
+                          <Button
+                            size="sm"
+                            className="h-7.5 sm:h-8 px-3 text-xs font-bold gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs shrink-0 cursor-pointer w-full sm:w-auto"
+                          >
+                            <QrCode className="size-3 sm:size-3.5" />
+                            <span>Scan Attendance QR</span>
+                          </Button>
+                        }
+                      />
                     )}
                   </div>
                 )}
@@ -670,6 +736,16 @@ export function CVOSocialFeed({
           onAnnouncementUpdated={() => queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] })}
         />
       )}
+
+      {/* Staff Delete Dialog */}
+      <DeleteAnnouncementDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setAnnouncementToDelete(null);
+        }}
+        announcement={announcementToDelete}
+      />
     </div>
   );
 }

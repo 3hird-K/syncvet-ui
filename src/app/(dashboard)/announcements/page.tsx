@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
+import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
@@ -94,6 +95,8 @@ export default function AnnouncementsManagementPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [announcementToEdit, setAnnouncementToEdit] = useState<CVOAnnouncement | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<CVOAnnouncement | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch current user details
   const { data: dbUser } = useQuery({
@@ -317,16 +320,9 @@ export default function AnnouncementsManagementPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this announcement from citizen feeds?")) return;
-    try {
-      const { error } = await supabase.from("announcements").delete().eq("id", id);
-      if (error) throw error;
-      toast.success("Announcement deleted successfully");
-      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to delete post");
-    }
+  const handleDelete = (item: CVOAnnouncement) => {
+    setAnnouncementToDelete(item);
+    setDeleteDialogOpen(true);
   };
 
   const formatTime = (dateStr: string) => {
@@ -496,11 +492,12 @@ export default function AnnouncementsManagementPage() {
               const isCompleted = opStatus === "completed";
               const isScheduled = opStatus === "scheduled";
 
+              const imageUrl = item.image_url || item.content.match(/\[IMG:(https?:\/\/[^\]]+)\]/i)?.[1];
               const contentLines = item.content.split("\n");
               const mainText = contentLines
                 .filter((l) => !l.startsWith("#"))
                 .join("\n")
-                .replace(/\[(?:EVENT_DATE|OP_ID):[^\]]+\]/g, "")
+                .replace(/\[(?:EVENT_DATE|OP_ID|EXPIRES|IMG):[^\]]+\]/gi, "")
                 .trim();
               const hashtagLine = contentLines.find((l) => l.startsWith("#"));
 
@@ -622,7 +619,7 @@ export default function AnnouncementsManagementPage() {
                         <DropdownMenuSeparator className="my-1" />
 
                         <DropdownMenuItem
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => handleDelete(item)}
                           className="cursor-pointer gap-2 py-2 text-xs font-medium text-rose-600 focus:text-rose-600 focus:bg-rose-500/10"
                         >
                           <Trash2 className="size-3.5 text-rose-600" />
@@ -641,6 +638,17 @@ export default function AnnouncementsManagementPage() {
                     <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed whitespace-pre-line">
                       {mainText}
                     </p>
+
+                    {imageUrl && (
+                      <div className="rounded-2xl overflow-hidden border border-border/80 bg-black/[0.03] dark:bg-black/30 my-2.5 flex items-center justify-center">
+                        <img
+                          src={imageUrl}
+                          alt={item.title}
+                          className="w-full h-auto max-h-[500px] object-contain rounded-2xl"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
 
                     {hashtagLine && (
                       <p className="text-xs text-primary font-medium pt-1">
@@ -738,7 +746,7 @@ export default function AnnouncementsManagementPage() {
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="size-4 text-primary shrink-0 mt-0.5" />
                 <p>
-                  <strong>No Media Images:</strong> Bulletins focus strictly on clear, authoritative text directives to maintain fast mobile delivery.
+                  <strong>Optimized WebP Images:</strong> Notice photos and event posters are automatically compressed to WebP under 100KB for lightning fast mobile speed and free storage conservation.
                 </p>
               </div>
 
@@ -779,6 +787,16 @@ export default function AnnouncementsManagementPage() {
           onAnnouncementUpdated={() => queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] })}
         />
       )}
+
+      {/* Delete Announcement Confirmation Dialog */}
+      <DeleteAnnouncementDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setAnnouncementToDelete(null);
+        }}
+        announcement={announcementToDelete}
+      />
     </div>
   );
 }

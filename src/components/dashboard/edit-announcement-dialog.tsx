@@ -5,9 +5,9 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ import {
   Loader2,
   Clock,
   Lock,
+  Save,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -77,16 +79,22 @@ export function EditAnnouncementDialog({
   useEffect(() => {
     if (announcement) {
       setTitle(announcement.title || "");
-      setContent(announcement.content || "");
+      let cleanContent = announcement.content || "";
+      let foundExpiry = announcement.expires_at ? announcement.expires_at.slice(0, 10) : "";
+      const match = cleanContent.match(/\[EXPIRES:([^\]]+)\]/i);
+      if (match) {
+        if (!foundExpiry) foundExpiry = match[1].trim();
+        cleanContent = cleanContent.replace(/\[EXPIRES:[^\]]+\]/gi, "").trim();
+      }
+      setContent(cleanContent);
       setCategory(announcement.category || "Vaccination Drive");
       setPriority(announcement.priority || "normal");
       setIsPinned(!!announcement.is_pinned);
-      if (announcement.expires_at) {
+      if (foundExpiry) {
         setExpiryMode("custom");
-        const dateStr = announcement.expires_at.slice(0, 10);
-        setExpiresAt(dateStr);
+        setExpiresAt(foundExpiry);
         try {
-          setCustomDate(new Date(dateStr));
+          setCustomDate(new Date(foundExpiry));
         } catch {
           setCustomDate(undefined);
         }
@@ -146,6 +154,13 @@ export function EditAnnouncementDialog({
       return data as CVOAnnouncement;
     },
     onSuccess: (data) => {
+      queryClient.setQueryData<CVOAnnouncement[]>(["cvo-announcements"], (old = []) =>
+        old.map((a) => {
+          if (a.id === data.id) return data;
+          if (data.is_pinned) return { ...a, is_pinned: false };
+          return a;
+        })
+      );
       queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
       onAnnouncementUpdated?.(data);
       toast.success("Official CVO Announcement updated live.");
@@ -192,8 +207,8 @@ export function EditAnnouncementDialog({
       return;
     }
 
-    let finalContent = content.trim();
-    if (expiryMode !== "never" && expiresAt && !finalContent.includes("[EXPIRES:")) {
+    let finalContent = content.replace(/\[EXPIRES:[^\]]+\]/gi, "").trim();
+    if (expiryMode !== "never" && expiresAt) {
       finalContent = `${finalContent}\n\n[EXPIRES:${expiresAt}]`;
     }
 
@@ -209,8 +224,40 @@ export function EditAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-5 sm:p-6 rounded-2xl">
-        <DialogHeader className="space-y-1">
+      <DialogContent
+        showCloseButton={false}
+        className="w-[95vw] sm:max-w-2xl max-h-[92vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 rounded-2xl"
+      >
+        {/* Top-right Action Buttons: Save Icon beside Close X */}
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-1.5">
+          <button
+            type="submit"
+            form="edit-announcement-form"
+            disabled={editMutation.isPending}
+            className="flex size-8 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500 dark:hover:text-white shadow-2xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+            title="Save Changes"
+            aria-label="Save Changes"
+          >
+            {editMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <Save className="size-4" />
+            )}
+          </button>
+
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              title="Close dialog"
+              aria-label="Close dialog"
+            >
+              <X className="size-4" />
+            </button>
+          </DialogClose>
+        </div>
+
+        <DialogHeader className="space-y-1 pr-20">
           <div className="flex items-center gap-2">
             <div className="size-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
               <Pencil className="size-4" />
@@ -224,7 +271,7 @@ export function EditAnnouncementDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <form id="edit-announcement-form" onSubmit={handleSubmit} className="space-y-4 pt-2">
           {/* Title */}
           <div className="space-y-1.5">
             <Label htmlFor="edit-announcement-title" className="text-xs font-bold text-foreground">
@@ -399,25 +446,6 @@ export function EditAnnouncementDialog({
               </p>
             )}
           </div>
-
-          <DialogFooter className="pt-2 gap-2 sm:gap-2.5">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="text-xs rounded-xl cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={editMutation.isPending}
-              className="text-xs font-bold rounded-xl gap-2 bg-primary text-primary-foreground shadow-xs cursor-pointer hover:bg-primary/90"
-            >
-              {editMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-              <span>Save Changes</span>
-            </Button>
-          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

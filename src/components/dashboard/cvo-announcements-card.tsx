@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
+import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -87,6 +88,8 @@ export function CVOAnnouncementsCard({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [announcementToEdit, setAnnouncementToEdit] = useState<CVOAnnouncement | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<CVOAnnouncement | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Fetch announcements from Supabase
   const { data: dbAnnouncements, isLoading } = useQuery<CVOAnnouncement[]>({
@@ -182,7 +185,7 @@ export function CVOAnnouncementsCard({
         } catch {}
       }
       if (item.content) {
-        const match = item.content.match(/\[EVENT_DATE:(\d{4}-\d{2}-\d{2})\]/);
+        const match = item.content.match(/\[(?:EVENT_DATE|EXPIRES):(\d{4}-\d{2}-\d{2})\]/i);
         if (match) {
           try {
             const exp = new Date(match[1]);
@@ -237,17 +240,10 @@ export function CVOAnnouncementsCard({
     queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = (item: CVOAnnouncement, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await supabase.from("announcements").delete().eq("id", id);
-      setLocalList((prev) => prev.filter((a) => a.id !== id));
-      queryClient.invalidateQueries({ queryKey: ["cvo-announcements"] });
-      toast.success("Announcement removed.");
-    } catch {
-      setLocalList((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Announcement removed.");
-    }
+    setAnnouncementToDelete(item);
+    setDeleteDialogOpen(true);
   };
 
   const handleTogglePin = async (item: CVOAnnouncement, e?: React.MouseEvent) => {
@@ -462,7 +458,7 @@ export function CVOAnnouncementsCard({
                     isExpanded ? "whitespace-pre-line" : "line-clamp-2"
                   }`}
                 >
-                  {item.content.replace(/\[(?:EVENT_DATE|OP_ID):[^\]]+\]/g, "").trim()}
+                  {item.content.replace(/\[(?:EVENT_DATE|OP_ID|EXPIRES):[^\]]+\]/gi, "").trim()}
                 </p>
 
                 {/* Footer Strip: Target Area + Author Tag */}
@@ -522,7 +518,7 @@ export function CVOAnnouncementsCard({
                             <DropdownMenuSeparator className="my-1" />
 
                             <DropdownMenuItem
-                              onClick={(e) => handleDelete(item.id, e)}
+                              onClick={(e) => handleDelete(item, e)}
                               className="cursor-pointer gap-2 py-1.5 text-xs font-medium text-destructive focus:text-destructive focus:bg-destructive/10"
                             >
                               <Trash2 className="size-3.5" />
@@ -547,6 +543,21 @@ export function CVOAnnouncementsCard({
         onOpenChange={setEditDialogOpen}
         onAnnouncementUpdated={handleUpdated}
         pinnedAnnouncement={pinnedAnnouncement}
+      />
+
+      {/* Delete Announcement Modal */}
+      <DeleteAnnouncementDialog
+        announcement={announcementToDelete}
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setAnnouncementToDelete(null);
+        }}
+        onDeleted={() => {
+          if (announcementToDelete) {
+            setLocalList((prev) => prev.filter((a) => a.id !== announcementToDelete.id));
+          }
+        }}
       />
     </Card>
   );

@@ -17,6 +17,7 @@ export interface CVOAnnouncement {
   author_name: string;
   author_role: string;
   target_barangay?: string | null;
+  image_url?: string | null;
   is_pinned: boolean;
   is_active: boolean;
   expires_at?: string | null;

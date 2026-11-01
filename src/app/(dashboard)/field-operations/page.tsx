@@ -24,6 +24,7 @@ import {
   Sparkles,
   Lock,
   QrCode,
+  AlertTriangle,
 } from "lucide-react";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +56,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -98,10 +100,12 @@ export default function FieldOperationsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
-  // Profile and attendance modal state
+  // Profile, attendance, and deletion modal state
   const [profileModalVet, setProfileModalVet] = useState<CVOVetProfile | null>(null);
   const [announcementModalOp, setAnnouncementModalOp] = useState<CVOFieldOperation | null>(null);
   const [attendanceModalOp, setAttendanceModalOp] = useState<CVOFieldOperation | null>(null);
+  const [opToDelete, setOpToDelete] = useState<CVOFieldOperation | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const inProgressCount = fieldOperations.filter((o) => o.status === "in-progress").length;
   const scheduledCount = fieldOperations.filter((o) => o.status === "scheduled").length;
@@ -232,17 +236,23 @@ export default function FieldOperationsPage() {
     }
   };
 
-  const handleDelete = async (op: CVOFieldOperation) => {
-    if (!confirm(`Are you sure you want to cancel and delete outreach ${op.opId} for Brgy. ${op.barangay}?`)) {
-      return;
-    }
+  const handleDelete = (op: CVOFieldOperation) => {
+    setOpToDelete(op);
+  };
+
+  const confirmDeleteOperation = async () => {
+    if (!opToDelete) return;
+    setIsDeleting(true);
     try {
-      await deleteFieldOperation(op.id);
+      await deleteFieldOperation(opToDelete.id);
       toast.success("Outreach Visit Deleted", {
         description: "Operation cancelled and announcement removed.",
       });
+      setOpToDelete(null);
     } catch {
       toast.error("Failed to delete operation");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -896,6 +906,59 @@ export default function FieldOperationsPage() {
         onOpenChange={(open) => !open && setAttendanceModalOp(null)}
         operation={attendanceModalOp}
       />
+
+      {/* ── Modal 4: Delete Outreach Confirmation Dialog ── */}
+      <Dialog open={!!opToDelete} onOpenChange={(open) => !open && setOpToDelete(null)}>
+        <DialogContent className="sm:max-w-[440px] p-6 bg-background rounded-2xl shadow-2xl">
+          <DialogHeader className="space-y-2 pb-1">
+            <div className="size-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center border border-destructive/20 shrink-0">
+              <AlertTriangle className="size-5" />
+            </div>
+            <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+              Cancel & Delete Outreach
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+              Are you sure you want to cancel and delete this field operation? This will immediately remove the outreach record and retract its associated public announcement bulletin.
+            </DialogDescription>
+          </DialogHeader>
+
+          {opToDelete && (
+            <div className="p-3.5 bg-muted/30 rounded-xl border border-border/60 text-xs space-y-1.5 my-2">
+              <div className="flex items-center justify-between font-bold text-foreground">
+                <span>{opToDelete.opId}</span>
+                <Badge variant="outline" className="text-[10px] font-semibold">
+                  Brgy. {opToDelete.barangay}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Venue: {opToDelete.venue || "Barangay Covered Court"} • {opToDelete.date}
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="pt-2 gap-2 sm:gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpToDelete(null)}
+              disabled={isDeleting}
+              className="text-xs rounded-xl cursor-pointer"
+            >
+              Keep Outreach
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDeleteOperation}
+              disabled={isDeleting}
+              className="text-xs font-bold rounded-xl gap-2 cursor-pointer shadow-xs"
+            >
+              <Trash2 className="size-3.5" />
+              <span>{isDeleting ? "Deleting..." : "Delete Outreach"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
