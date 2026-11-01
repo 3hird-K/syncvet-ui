@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
+import { DeletePetDialog } from "@/components/dashboard/delete-pet-dialog";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
@@ -139,6 +140,7 @@ export function PetProfileDialog({
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
   const [consultationSheetOpen, setConsultationSheetOpen] = useState(false);
   const [selectedConsultationForSheet, setSelectedConsultationForSheet] = useState<CVOConsultation | null>(null);
+  const [deletePetDialogOpen, setDeletePetDialogOpen] = useState(false);
 
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
@@ -610,24 +612,15 @@ export function PetProfileDialog({
                     <span className="sr-only">Appointments & Procedures</span>
                   </button>
 
-                  {/* Full Electronic Medical Records (FileText) */}
+                  {/* Delete Pet Record Button (Trash2) */}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveProfileTab((prev) => (prev === "records" ? "overview" : "records"));
-                      setShowEditPetPanel(false);
-                      setShowAvatarPickerPanel(false);
-                    }}
-                    className={cn(
-                      "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                      activeProfileTab === "records"
-                        ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
-                        : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                    )}
-                    title={activeProfileTab === "records" ? "Close Medical Records View" : "Full Medical Records"}
+                    onClick={() => setDeletePetDialogOpen(true)}
+                    className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                    title="Permanently Delete Pet Record"
                   >
-                    <FileText className="size-4 text-white" />
-                    <span className="sr-only">Medical Records</span>
+                    <Trash2 className="size-4 text-white" />
+                    <span className="sr-only">Delete Pet Record</span>
                   </button>
 
                   {/* Save Profile Button (floppy disk icon requested) */}
@@ -650,19 +643,6 @@ export function PetProfileDialog({
                     )}
                     <span className="sr-only">Save Profile</span>
                   </button>
-
-                  {/* Delete Pet Button */}
-                  {onDeletePet && (
-                    <button
-                      type="button"
-                      onClick={() => onDeletePet(currentPet)}
-                      className="size-8 rounded-full bg-white/10 hover:bg-rose-600/80 text-white border border-white/20 hover:border-rose-400 backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-                      title="Delete Pet"
-                    >
-                      <Trash2 className="size-4 text-white" />
-                      <span className="sr-only">Delete Pet</span>
-                    </button>
-                  )}
 
                   {/* Close Modal Button */}
                   <DialogClose asChild>
@@ -1870,6 +1850,20 @@ export function PetProfileDialog({
         open={consultationSheetOpen}
         onOpenChange={setConsultationSheetOpen}
         consultation={selectedConsultationForSheet}
+      />
+
+      {/* ── Official Delete Pet Dialog ── */}
+      <DeletePetDialog
+        pet={currentPet}
+        open={deletePetDialogOpen}
+        onOpenChange={setDeletePetDialogOpen}
+        onDeleted={() => {
+          setDeletePetDialogOpen(false);
+          onOpenChange(false);
+          if (onDeletePet && currentPet) {
+            onDeletePet(currentPet);
+          }
+        }}
       />
     </>
   );

@@ -130,12 +130,16 @@ export function DeletePetDialog({
         queryClient.invalidateQueries({ queryKey: ["live_pets_count"] }),
         queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] }),
         queryClient.invalidateQueries({ queryKey: ["chat-user-pets"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-profile-pets"] }),
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["pets"] }),
         queryClient.invalidateQueries({ queryKey: ["user-appointments"] }),
         queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] }),
         queryClient.invalidateQueries({ queryKey: ["user-transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["consultations"] }),
         queryClient.refetchQueries({ queryKey: ["owner-pets"] }),
         queryClient.refetchQueries({ queryKey: ["pets_registry"] }),
+        queryClient.refetchQueries({ queryKey: ["user-profile-pets"] }),
         queryClient.refetchQueries({ queryKey: ["user-appointments"] }),
       ]);
 

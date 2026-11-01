@@ -96,6 +96,16 @@ export default function UsersPage() {
           }
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pets" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+          queryClient.invalidateQueries({ queryKey: ["user-profile-pets"] });
+          queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+          queryClient.invalidateQueries({ queryKey: ["live_pets_count"] });
+        }
+      )
       .subscribe();
 
     return () => {

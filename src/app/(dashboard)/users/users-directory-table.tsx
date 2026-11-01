@@ -386,50 +386,6 @@ export function UsersDirectoryTable({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Category Dropdown Filter */}
-            <Select
-              value={selectedRoleFilter}
-              onValueChange={(val) => {
-                setSelectedRoleFilter(val);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="h-8 w-44 text-xs bg-muted/20 rounded-lg">
-                <SelectValue placeholder="Category: All Users" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  <div className="flex items-center gap-2">
-                    <Crown className="size-3 text-muted-foreground" />
-                    <span>All Users ({users.length})</span>
-                  </div>
-                </SelectItem>
-                {SYNCVET_ROLES.map((role) => {
-                  const count = users.filter(
-                    (u) => normalizeSyncVetRole(u.role) === role
-                  ).length;
-                  return (
-                    <SelectItem key={role} value={role}>
-                      <div className="flex items-center gap-2">
-                        {role === "Administrator" && (
-                          <UserCog className="size-3 text-rose-500" />
-                        )}
-                        {role === "Veterinarian" && (
-                          <Stethoscope className="size-3 text-emerald-500" />
-                        )}
-                        {role === "Pet Owner" && (
-                          <PawPrint className="size-3 text-purple-400" />
-                        )}
-                        <span>
-                          {role} ({count})
-                        </span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-
             {/* Search Input */}
             <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -442,16 +398,42 @@ export function UsersDirectoryTable({
               />
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExportDialogOpen(true)}
-              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5 rounded-lg border-border/60 cursor-pointer"
-              title="Download filtered users to CSV"
+            {/* Category Dropdown Filter (Beside filter button, count removed) */}
+            <Select
+              value={selectedRoleFilter}
+              onValueChange={(val) => {
+                setSelectedRoleFilter(val);
+                setPage(1);
+              }}
             >
-              <Download className="size-3.5 text-primary" />
-              <span className="hidden sm:inline">CSV</span>
-            </Button>
+              <SelectTrigger className="h-8 w-36 text-xs bg-muted/20 rounded-lg">
+                <SelectValue placeholder="All Users" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <div className="flex items-center gap-2">
+                    <Crown className="size-3 text-muted-foreground" />
+                    <span>All Users</span>
+                  </div>
+                </SelectItem>
+                {SYNCVET_ROLES.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    <div className="flex items-center gap-2">
+                      {role === "Administrator" && (
+                        <UserCog className="size-3 text-rose-500" />
+                      )}
+                      {role === "Veterinarian" && (
+                        <Stethoscope className="size-3 text-emerald-500" />
+                      )}
+                      {role === "Pet Owner" && (
+                        <PawPrint className="size-3 text-purple-400" />
+                      )}
+                      <span>{role}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <TableColumnFilter
               columns={columns}

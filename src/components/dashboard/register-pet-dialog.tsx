@@ -114,9 +114,11 @@ const BIRTH_YEARS = Array.from({ length: 16 }, (_, i) => currentYear - i);
 export function RegisterPetDialog({
   trigger,
   defaultOwnerId,
+  onPetCreated,
 }: {
   trigger?: React.ReactNode;
   defaultOwnerId?: string;
+  onPetCreated?: (newPet: any) => void;
 } = {}) {
   const { user } = useUser();
   const [open, setOpen] = useState(false);
@@ -243,12 +245,34 @@ export function RegisterPetDialog({
         throw error;
       }
 
-      // Invalidate relevant queries so the pet portal & tables refresh live
+      // Optimistically insert into target owner's query cache for instantaneous (0ms) UI updates
+      if (insertedPet && targetOwnerId) {
+        queryClient.setQueryData<any[]>(["user-profile-pets", targetOwnerId], (old = []) => [
+          insertedPet,
+          ...old.filter((p) => p.id !== insertedPet.id),
+        ]);
+        queryClient.setQueryData<any[]>(["owner-pets", targetOwnerId], (old = []) => [
+          insertedPet,
+          ...old.filter((p) => p.id !== insertedPet.id),
+        ]);
+      }
+
+      // Invalidate relevant queries so all pet registries, tables & user dialogs refresh immediately
+      queryClient.invalidateQueries({ queryKey: ["user-profile-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profile-pets", targetOwnerId] });
       queryClient.invalidateQueries({ queryKey: ["owner-pets"] });
       queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
       queryClient.invalidateQueries({ queryKey: ["live_pets_count"] });
       queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] });
       queryClient.invalidateQueries({ queryKey: ["chat-user-pets"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["pets"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-owners"] });
+      queryClient.invalidateQueries({ queryKey: ["supabase-pet-owners-list"] });
+
+      if (onPetCreated && insertedPet) {
+        onPetCreated(insertedPet);
+      }
 
       // Add audit log
       addAuditLog({

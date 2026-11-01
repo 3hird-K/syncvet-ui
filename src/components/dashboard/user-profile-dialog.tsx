@@ -20,10 +20,11 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  Sparkles,
   ExternalLink,
   Tag,
   Stethoscope,
+  Syringe,
+  Scissors,
   UserCog,
   RefreshCw,
   Plus,
@@ -122,7 +123,7 @@ export function UserProfileDialog({
   onUserUpdated,
   onUserDeleted,
 }: UserProfileDialogProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "pets" | "appointments">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "appointments">("overview");
 
   // Side panels matching pet dialog pattern (Images 2 & 3)
   const [showEditUserPanel, setShowEditUserPanel] = useState(false);
@@ -189,7 +190,57 @@ export function UserProfileDialog({
       return data || [];
     },
     enabled: !!currentUser?.id && open,
+    refetchOnWindowFocus: true,
+    refetchInterval: open ? 5000 : false,
   });
+
+  // Supabase Realtime Postgres subscription syncing directly with TanStack Query cache
+  useEffect(() => {
+    if (!currentUser?.id || !open) return;
+
+    const channel = supabase
+      .channel(`realtime-user-profile-pets-${currentUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "pets",
+          filter: `owner_id=eq.${currentUser.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const newPet = payload.new as SupabasePet;
+            queryClient.setQueryData<SupabasePet[]>(
+              ["user-profile-pets", currentUser.id],
+              (old = []) => [newPet, ...old.filter((p) => p.id !== newPet.id)]
+            );
+          } else if (payload.eventType === "UPDATE") {
+            const updatedPet = payload.new as SupabasePet;
+            queryClient.setQueryData<SupabasePet[]>(
+              ["user-profile-pets", currentUser.id],
+              (old = []) => old.map((p) => (p.id === updatedPet.id ? updatedPet : p))
+            );
+          } else if (payload.eventType === "DELETE") {
+            const deletedPet = payload.old as { id: string };
+            queryClient.setQueryData<SupabasePet[]>(
+              ["user-profile-pets", currentUser.id],
+              (old = []) => old.filter((p) => p.id !== deletedPet.id)
+            );
+          }
+
+          queryClient.invalidateQueries({ queryKey: ["user-profile-pets", currentUser.id] });
+          queryClient.invalidateQueries({ queryKey: ["users"] });
+          queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+          queryClient.invalidateQueries({ queryKey: ["supabase-owners-pets"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id, open, supabase, queryClient]);
 
   // Fetch appointments for this user
   const { data: userAppointments = [] } = useQuery<SupabaseAppointment[]>({
@@ -532,28 +583,8 @@ export function UserProfileDialog({
                 <div className="absolute -bottom-10 -right-10 size-40 bg-white/[0.05] rounded-full blur-2xl pointer-events-none" />
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
 
-                {/* Top Action Icons: Pets View, Appointments, Save, Delete, Close */}
+                {/* Top Action Icons: Appointments, Save, Delete, Close */}
                 <div className="flex items-center justify-end relative z-10 mb-3 gap-1.5">
-                  {/* Pets View Toggle */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab((prev) => (prev === "pets" ? "overview" : "pets"));
-                      setShowEditUserPanel(false);
-                      setShowAvatarPickerPanel(false);
-                    }}
-                    className={cn(
-                      "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                      activeTab === "pets"
-                        ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
-                        : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                    )}
-                    title={activeTab === "pets" ? "Close Pets View" : `Registered Pets (${allPets.length})`}
-                  >
-                    <PawPrint className="size-4 text-white" />
-                    <span className="sr-only">Registered Pets</span>
-                  </button>
-
                   {/* Appointments View Toggle */}
                   <button
                     type="button"
@@ -725,12 +756,6 @@ export function UserProfileDialog({
                         <span>{normalizedRole}</span>
                       </span>
 
-                      {/* Verification Badge */}
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md border bg-white/15 text-white border-white/30 inline-flex items-center gap-1">
-                        <CheckCircle2 className="size-3 text-emerald-400" />
-                        <span>Verified Citizen</span>
-                      </span>
-
                       {/* Total Registered Pets Badge */}
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md border bg-white/10 text-white/90 border-white/20 inline-flex items-center gap-1">
                         <PawPrint className="size-3" />
@@ -792,6 +817,14 @@ export function UserProfileDialog({
                             {/* 1. Register Pet Card - Compact */}
                             <RegisterPetDialog
                               defaultOwnerId={currentUser.id}
+                              onPetCreated={(newPet) => {
+                                queryClient.setQueryData<SupabasePet[]>(
+                                  ["user-profile-pets", currentUser.id],
+                                  (old = []) => [newPet, ...old.filter((p) => p.id !== newPet.id)]
+                                );
+                                queryClient.invalidateQueries({ queryKey: ["user-profile-pets", currentUser.id] });
+                                queryClient.invalidateQueries({ queryKey: ["users"] });
+                              }}
                               trigger={
                                 <div
                                   className="w-[105px] sm:w-[118px] md:w-[128px] h-36 sm:h-40 md:h-42 rounded-xl sm:rounded-2xl bg-gradient-to-b from-card/90 via-card/60 to-emerald-500/[0.04] dark:from-card/60 dark:to-emerald-950/20 hover:from-emerald-500/[0.08] hover:via-emerald-500/[0.05] hover:to-emerald-500/[0.12] border-2 border-dashed border-emerald-500/35 hover:border-emerald-500 dark:border-emerald-500/25 dark:hover:border-emerald-400 overflow-hidden relative flex flex-col items-center justify-center p-2.5 text-center shrink-0 cursor-pointer shadow-2xs hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300 select-none group/story snap-start"
@@ -951,119 +984,13 @@ export function UserProfileDialog({
                   </>
                 )}
 
-                {/* ── PETS TAB ── */}
-                {activeTab === "pets" && (
-                  <div className="space-y-3 animate-in fade-in-0 duration-200">
-                    <div className="flex items-center justify-between pb-2 border-b border-border/70">
-                      <div>
-                        <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                          Registered Companion Animals ({allPets.length})
-                        </h4>
-                        <p className="text-[10px] text-muted-foreground">
-                          Full municipal animal records registered under {currentUser.full_name || currentUser.email}
-                        </p>
-                      </div>
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setActiveTab("overview")}
-                        className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                      >
-                        Back to Overview
-                      </Button>
-                    </div>
-
-                    {allPets.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-muted-foreground">
-                        No animals registered under this user account.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
-                        {/* 1. Register Pet Card - Compact */}
-                        <RegisterPetDialog
-                          defaultOwnerId={currentUser.id}
-                          trigger={
-                            <div
-                              className="h-36 sm:h-40 md:h-42 rounded-xl sm:rounded-2xl bg-gradient-to-b from-card/90 via-card/60 to-emerald-500/[0.04] dark:from-card/60 dark:to-emerald-950/20 hover:from-emerald-500/[0.08] hover:via-emerald-500/[0.05] hover:to-emerald-500/[0.12] border-2 border-dashed border-emerald-500/35 hover:border-emerald-500 dark:border-emerald-500/25 dark:hover:border-emerald-400 overflow-hidden relative flex flex-col items-center justify-center p-2.5 text-center shrink-0 cursor-pointer shadow-2xs hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300 select-none group/story"
-                              title="Register a new pet into CVO database"
-                            >
-                              <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs mb-2 group-hover/story:bg-emerald-600 group-hover/story:text-white group-hover/story:border-emerald-600 group-hover/story:scale-110 group-hover/story:rotate-90 group-hover/story:shadow-md group-hover/story:shadow-emerald-600/30 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] relative z-10">
-                                <Plus className="size-4 sm:size-5 stroke-[2.5]" />
-                              </div>
-
-                              <p className="text-[11px] sm:text-xs font-extrabold text-foreground group-hover/story:text-emerald-600 dark:group-hover/story:text-emerald-400 transition-colors duration-300 leading-tight relative z-10">
-                                Register Pet
-                              </p>
-                              <p className="text-[9px] text-muted-foreground group-hover/story:text-foreground/80 leading-tight mt-0.5 transition-colors duration-300 relative z-10">
-                                Add Companion
-                              </p>
-                            </div>
-                          }
-                        />
-
-                        {/* Each Pet's Digital Passport Card - Compact */}
-                        {allPets.map((pet, idx) => {
-                          const isCat =
-                            (pet.species || "").toLowerCase().includes("cat") ||
-                            (pet.species || "").toLowerCase().includes("feline");
-                          const resolvedPhotoUrl = getPetAvatarUrl(pet.photo_url, pet.species);
-
-                          const gradientBg = isCat
-                            ? "bg-gradient-to-b from-violet-600 via-indigo-950 to-slate-950"
-                            : idx % 2 === 0
-                            ? "bg-gradient-to-b from-teal-600 via-emerald-950 to-slate-950"
-                            : "bg-gradient-to-b from-cyan-700 via-slate-900 to-slate-950";
-
-                          return (
-                            <div
-                              key={pet.id}
-                              onClick={() => handleOpenPetProfile(pet)}
-                              className={cn(
-                                "h-36 sm:h-40 md:h-42 rounded-xl sm:rounded-2xl overflow-hidden relative shrink-0 cursor-pointer shadow-sm hover:shadow-lg hover:border-white/25 transition-all duration-300 border border-white/15 dark:border-white/10 select-none group/story flex flex-col justify-end p-2 sm:p-2.5",
-                                gradientBg
-                              )}
-                              title={`${pet.name} (${pet.species}) — Click to view Pet Details & Passport`}
-                            >
-                              <div className="absolute -top-10 left-1/2 -translate-x-1/2 size-28 rounded-full bg-white/20 blur-xl pointer-events-none" />
-                              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 size-20 rounded-full bg-radial from-white/15 via-transparent to-transparent pointer-events-none" />
-                              <div className="absolute -bottom-6 -right-6 size-20 bg-white/[0.04] rounded-full blur-lg pointer-events-none" />
-
-                              <div className="absolute inset-x-0 bottom-0 top-0 flex items-end justify-center pointer-events-none overflow-hidden z-10">
-                                <img
-                                  src={resolvedPhotoUrl}
-                                  alt={pet.name}
-                                  className="h-[88%] w-auto max-w-none object-contain object-bottom origin-bottom filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.65)] group-hover/story:scale-108 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
-                                  loading="lazy"
-                                />
-                              </div>
-
-                              <div className="absolute inset-x-0 bottom-0 h-16 sm:h-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent z-20 pointer-events-none" />
-
-                              <div className="relative z-30 space-y-0.5 w-full">
-                                <h3 className="text-xs sm:text-[13px] font-black text-white leading-tight truncate tracking-tight drop-shadow-md">
-                                  {pet.name}
-                                </h3>
-                                <p className="text-[9px] sm:text-[10px] text-white/80 font-medium truncate drop-shadow-xs">
-                                  {pet.breed || pet.species}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* ── APPOINTMENTS TAB ── */}
                 {activeTab === "appointments" && (
                   <div className="space-y-3 animate-in fade-in-0 duration-200">
                     <div className="flex items-center justify-between pb-2 border-b border-border/70">
                       <div>
                         <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                          Clinic Appointments & Encounters ({userAppointments.length})
+                          Clinic Appointments & Encounters
                         </h4>
                         <p className="text-[10px] text-muted-foreground">
                           Encounter lifecycle and history for {currentUser.full_name || currentUser.email}
@@ -1086,38 +1013,143 @@ export function UserProfileDialog({
                         No appointments found for this user account.
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {userAppointments.map((apt: any) => (
-                          <div
-                            key={apt.id}
-                            className="p-3.5 rounded-xl border border-border/80 bg-card space-y-1.5"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-bold text-xs text-foreground">
-                                {apt.service_id || "Veterinary Procedure"}
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px] font-semibold",
-                                  apt.status === "completed"
-                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                                    : "bg-muted text-muted-foreground"
-                                )}
-                              >
-                                {apt.status || "Scheduled"}
-                              </Badge>
+                      <div className="space-y-1.5">
+                        {userAppointments.map((apt: any) => {
+                          // Find pet matching this appointment or fallback to account pet
+                          const matchedPet = allPets.find(
+                            (p) =>
+                              (apt.pet_id && (p.id === apt.pet_id || String(p.id).toLowerCase() === String(apt.pet_id).toLowerCase())) ||
+                              (apt.pet_name && p.name.toLowerCase() === String(apt.pet_name).toLowerCase())
+                          ) || (allPets.length === 1 ? allPets[0] : null);
+
+                          const petName = matchedPet?.name || apt.pet_name || (allPets.length > 0 ? allPets[0]?.name : "Companion Animal");
+                          const petSpecies = matchedPet?.species || "Dog";
+                          const petBreed = matchedPet?.breed || (petSpecies.toLowerCase().includes("cat") ? "Domestic Short Hair" : "Aspin (Asong Pinoy)");
+                          const petPhoto = matchedPet ? getPetAvatarUrl(matchedPet.photo_url, matchedPet.species) : getPetAvatarUrl(null, petSpecies);
+
+                          const s = (apt.service_id || "").toLowerCase();
+                          const isVax = s.includes("vax") || s.includes("vaccin") || s.includes("rabies");
+                          const isSurgery = s.includes("spay") || s.includes("neuter") || s.includes("kapon") || s.includes("surger");
+                          const isConsult = s.includes("consult") || s.includes("exam") || s.includes("check");
+
+                          const procedureTitle = isVax
+                            ? "Anti-Rabies Vaccination"
+                            : isSurgery
+                            ? "Spay & Neuter (Kapon)"
+                            : isConsult
+                            ? "Clinical Consultation"
+                            : apt.service_id
+                            ? String(apt.service_id).charAt(0).toUpperCase() + String(apt.service_id).slice(1)
+                            : "Clinical Procedure";
+
+                          const handleCardClick = () => {
+                            if (matchedPet) {
+                              handleOpenPetProfile(matchedPet);
+                            } else {
+                              const dynamicPet: PetProfileRecord = {
+                                id: apt.pet_id || `apt-pet-${apt.id}`,
+                                name: petName,
+                                species: (petSpecies.charAt(0).toUpperCase() + petSpecies.slice(1).toLowerCase()) as "Dog" | "Cat",
+                                breed: petBreed,
+                                sex: "Male",
+                                age: "Adult",
+                                weightKg: 10,
+                                ownerId: currentUser.id,
+                                owner: currentUser.full_name || currentUser.email,
+                                ownerEmail: currentUser.email,
+                                ownerAvatarUrl: currentUser.avatar_url || undefined,
+                                barangay: currentUser.address || "Carmen",
+                                address: currentUser.address || "Carmen, CDO",
+                                vaccinated: isVax,
+                                sterilized: isSurgery,
+                                microchip: apt.pet_id ? apt.pet_id.slice(0, 8) : apt.id.slice(0, 8),
+                                classification: "Domestic",
+                                photo_url: null,
+                                lastVaccinationDate: apt.date ? String(apt.date).split("T")[0] : undefined,
+                                createdAt: apt.created_at || new Date().toISOString(),
+                              };
+                              setSelectedPetForProfile(dynamicPet);
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={apt.id}
+                              onClick={handleCardClick}
+                              className="p-2 sm:p-2.5 px-3 rounded-xl border border-border/70 bg-card/60 hover:bg-card hover:border-primary/50 transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs group/apt select-none flex items-center justify-between gap-3"
+                              title={`Click to view ${petName}'s digital passport & medical record`}
+                            >
+                              {/* Left: Pet Avatar Thumbnail + Procedure Info */}
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="size-8 sm:size-9 rounded-lg border border-border/80 overflow-hidden shrink-0 bg-muted/50 group-hover/apt:scale-105 transition-transform shadow-2xs">
+                                  <img
+                                    src={petPhoto}
+                                    alt={petName}
+                                    className="size-full object-cover"
+                                    loading="lazy"
+                                  />
+                                </div>
+
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  {/* Line 1: Pet Name + Breed + Procedure Badge */}
+                                  <div className="flex items-center gap-1.5 flex-wrap leading-tight">
+                                    <span className="font-extrabold text-xs text-foreground group-hover/apt:text-primary transition-colors truncate">
+                                      {petName}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground/75 truncate">
+                                      ({petSpecies} • {petBreed})
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground/40">•</span>
+                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-foreground/90 truncate">
+                                      {isVax && <Syringe className="size-2.5 text-emerald-500 shrink-0" />}
+                                      {isSurgery && <Scissors className="size-2.5 text-purple-500 shrink-0" />}
+                                      {isConsult && <Stethoscope className="size-2.5 text-blue-500 shrink-0" />}
+                                      {!isVax && !isSurgery && !isConsult && (
+                                        <Calendar className="size-2.5 text-primary shrink-0" />
+                                      )}
+                                      <span className="truncate">{procedureTitle}</span>
+                                    </span>
+                                  </div>
+
+                                  {/* Line 2: Date + Notes Snippet */}
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground truncate leading-tight">
+                                    <span className="inline-flex items-center gap-1 font-mono shrink-0">
+                                      <Calendar className="size-2.5 text-muted-foreground/70" />
+                                      <span>{(apt.date || "").split("T")[0]}</span>
+                                      {apt.time && <span>• {apt.time}</span>}
+                                    </span>
+                                    {apt.notes && (
+                                      <>
+                                        <span className="text-muted-foreground/40 shrink-0">•</span>
+                                        <span className="truncate max-w-[200px] sm:max-w-xs md:max-w-md text-muted-foreground/80">
+                                          {apt.notes}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Status Badge + Click Indicator */}
+                              <div className="shrink-0 flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[9px] font-bold px-1.5 py-0.5 uppercase tracking-wider rounded-md",
+                                    apt.status === "completed"
+                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                      : apt.status === "confirmed"
+                                      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                                      : "bg-muted text-muted-foreground border-border"
+                                  )}
+                                >
+                                  {apt.status || "Scheduled"}
+                                </Badge>
+                                <ChevronRight className="size-3.5 text-muted-foreground/40 group-hover/apt:text-primary group-hover/apt:translate-x-0.5 transition-all" />
+                              </div>
                             </div>
-                            <p className="text-[11px] text-muted-foreground font-mono">
-                              Date: {(apt.date || "").split("T")[0]} {apt.time ? `• Time: ${apt.time}` : ""}
-                            </p>
-                            {apt.notes && (
-                              <p className="text-[11px] text-muted-foreground">
-                                Notes: {apt.notes}
-                              </p>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1310,7 +1342,7 @@ export function UserProfileDialog({
                   {/* Citizen Verification Note */}
                   <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 space-y-1">
                     <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-muted-foreground">
-                      <Sparkles className="size-3 text-primary" />
+                      <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span>SyncVet Security & Clerk Sync</span>
                     </div>
                     <p className="text-[9.5px] text-muted-foreground leading-relaxed">
@@ -1366,6 +1398,11 @@ export function UserProfileDialog({
           if (!open) {
             setSelectedPetForProfile(null);
           }
+        }}
+        onDeletePet={() => {
+          setSelectedPetForProfile(null);
+          queryClient.invalidateQueries({ queryKey: ["user-profile-pets", currentUser?.id] });
+          queryClient.invalidateQueries({ queryKey: ["users"] });
         }}
         onPetUpdate={(updatedPet) => {
           setSelectedPetForProfile(updatedPet);
