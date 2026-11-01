@@ -1001,7 +1001,7 @@ export function PetProfileDialog({
         <DialogContent
           showCloseButton={false}
           className={cn(
-            "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[88vh] max-h-[88vh] flex flex-col",
+            "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[88vh] max-h-[88vh] flex flex-col overflow-x-hidden",
             showAvatarPickerPanel || showEditPetPanel || !!selectedActivityDetail
               ? "max-w-5xl sm:max-w-5xl"
               : activeProfileTab !== "overview"
@@ -1282,7 +1282,7 @@ export function PetProfileDialog({
               {/* Content Area */}
               <div
                 className={cn(
-                  "flex-1 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+                  "flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
                   activeProfileTab !== "overview" ? "p-3 sm:p-3.5 space-y-2" : "p-3 sm:p-4 space-y-3"
                 )}
               >

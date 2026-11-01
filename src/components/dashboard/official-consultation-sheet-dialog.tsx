@@ -192,7 +192,7 @@ export function OfficialConsultationSheetDialog({
         ref={scrollContainerRef}
         showCloseButton={false}
         overlayClassName="z-[90] bg-black/60 backdrop-blur-xs"
-        className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 bg-background pointer-events-auto rounded-2xl shadow-2xl z-[100]"
+        className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 bg-background pointer-events-auto rounded-2xl shadow-2xl z-[100]"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           if (scrollContainerRef.current) {

@@ -417,50 +417,55 @@ export function PetOwnerQueueTracker({
   // ═════════════════════════════════════════════════════════════════════
   if (!isCheckedIn && hasAppointmentToday) {
     const primaryApt = todayAppointments[0];
+    const petName = primaryApt.pet_name || primaryApt.petName || "Pet";
+    const serviceTitle =
+      primaryApt.service_title ||
+      primaryApt.service_type ||
+      primaryApt.serviceType ||
+      (primaryApt.service_id === "spay-neuter"
+        ? "Spay / Neuter Surgery"
+        : primaryApt.service_id === "vaccination"
+        ? "Anti-Rabies Vaccination"
+        : "Clinical Consultation");
+
     return (
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="size-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
-            <QrCode className="size-4" />
+      <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
+            <QrCode className="size-4.5 sm:size-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-foreground text-xs sm:text-sm">
-                Today&apos;s Clinic Visit: {primaryApt.pet_name}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-foreground text-xs sm:text-sm">
+                Today&apos;s Clinic Visit: {petName}
               </span>
-              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium px-1.5 py-0.5 rounded bg-emerald-500/15">
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25">
                 Ready for Check-In
               </span>
+              {serviceTitle && (
+                <span className="text-[10px] text-muted-foreground font-medium hidden md:inline-block">
+                  • {serviceTitle}
+                </span>
+              )}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
               Scan reception QR standee at Carmen Clinic to receive your live queue ticket.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
           <ScanQueueQrDialog
             trigger={
               <Button
                 size="sm"
-                className="h-7 px-2.5 text-xs font-semibold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
+                className="h-8.5 px-3.5 text-xs font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Camera className="size-3" />
+                <Camera className="size-3.5" />
                 <span>Scan QR</span>
               </Button>
             }
           />
-
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => handleQuickCheckin(primaryApt)}
-            className="h-7 px-2 text-xs font-medium gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
-            title="1-tap check-in if you are already at the counter"
-          >
-            <CheckCircle2 className="size-3 text-emerald-600" />
-            <span>Check In</span>
-          </Button>
         </div>
       </div>
     );

@@ -338,23 +338,22 @@ export function RegisterPetDialog({
       >
         <div className="flex items-stretch gap-2.5 sm:gap-3.5 w-full max-h-[90vh] flex-1 overflow-hidden">
           {/* Left Side: Register Pet Form Card */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl p-5 sm:p-6 relative">
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl p-4 sm:p-6 relative">
             <form id="register-pet-form" onSubmit={handleSubmit} className="space-y-4">
               {/* Top Action Buttons: Complete Registration & Close */}
-              <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
                 <button
                   type="submit"
                   disabled={loading || !petName.trim() || (!isPetOwner && !selectedOwner && !defaultOwnerId)}
-                  className="h-8 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer border border-emerald-600/30 flex items-center gap-1.5 text-xs font-semibold"
+                  className="flex size-8 items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer border border-emerald-600/30"
                   title="Complete Registration & Issue Passport"
                   aria-label="Register Pet"
                 >
                   {loading ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
-                    <ClipboardCheck className="size-3.5" />
+                    <Check className="size-4 stroke-[2.5]" />
                   )}
-                  <span>Register Pet</span>
                 </button>
 
                 <DialogClose asChild>
@@ -369,18 +368,18 @@ export function RegisterPetDialog({
                 </DialogClose>
               </div>
 
-              <DialogHeader className="pb-2.5 border-b border-border/60 pr-36 sm:pr-40">
-                <div className="flex items-center gap-2.5">
+              <DialogHeader className="pb-2.5 border-b border-border/60 pr-20 sm:pr-24">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div className="relative size-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/25 shrink-0 shadow-xs">
                     <PawPrint className="size-4.5" />
                     <span className="absolute -bottom-1 -right-1 size-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xs ring-2 ring-background">
                       <Plus className="size-2.5 stroke-[3]" />
                     </span>
                   </div>
-                  <div>
-                    <DialogTitle className="text-lg font-bold">Register Pet</DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground">
-                      Official registration for municipal digital passport and anti-rabies immunity records.
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="text-base sm:text-lg font-bold text-foreground truncate">Register Pet</DialogTitle>
+                    <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1 sm:line-clamp-2">
+                      Official registration for municipal digital passport and records.
                     </DialogDescription>
                   </div>
                 </div>
@@ -670,7 +669,7 @@ export function RegisterPetDialog({
 
           {/* Right Side: Expanded Pet Avatar Selector Panel (Strictly matching species, 4 Columns) */}
           {showAvatarPickerPanel && (
-            <div className="w-[330px] sm:w-[380px] md:w-[410px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+            <div className="w-full sm:w-[380px] md:w-[410px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-sm:absolute max-sm:inset-0 max-sm:z-50">
               {/* Panel Header */}
               <div className="p-3.5 px-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
                 <div className="space-y-0.5 min-w-0">

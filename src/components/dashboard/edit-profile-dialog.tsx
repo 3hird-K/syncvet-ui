@@ -378,7 +378,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       <DialogContent
         showCloseButton={false}
         overlayClassName="z-[90] bg-black/60 backdrop-blur-xs"
-        className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[95vw] sm:max-w-[580px] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-border/80 bg-card p-6 shadow-2xl z-[100]"
+        className="w-[95vw] sm:max-w-[580px] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-3xl border border-border/80 bg-card p-6 shadow-2xl z-[100]"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
         }}

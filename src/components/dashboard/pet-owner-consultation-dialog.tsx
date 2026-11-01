@@ -656,7 +656,7 @@ export function PetOwnerConsultationDialog({
               <FileCheck2 className="size-3 text-emerald-600" />
               Services Requested (Select All That Apply)
             </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 pt-0.5">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 pt-0.5">
               {[
                 { id: "healthy", label: "HEALTHY", desc: "Routine wellness check" },
                 { id: "vitamins", label: "VITAMINS", desc: "Supplements" },
@@ -772,6 +772,34 @@ export function PetOwnerConsultationDialog({
               </div>
             )}
           </div>
+
+          {/* ── Mobile & Desktop Primary Submit Button ── */}
+          {!embedded && (
+            <div className="pt-2 sticky bottom-0 bg-background/95 backdrop-blur-xs pb-1 sm:static sm:bg-transparent">
+              <Button
+                type="submit"
+                disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
+                className={cn(
+                  "w-full h-10 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2",
+                  loading || pets.length === 0 || isConsultationAlreadyScheduled
+                    ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                )}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>Submitting Request...</span>
+                  </>
+                ) : (
+                  <>
+                    <Stethoscope className="size-4" />
+                    <span>Submit Consultation Request</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </form>
   );
 
@@ -790,64 +818,63 @@ export function PetOwnerConsultationDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="border-b pb-3.5 pr-1">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
-                <Stethoscope className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <DialogTitle className="text-base sm:text-lg font-bold text-foreground truncate">
-                  City Veterinary Office Consultation Request Form
-                </DialogTitle>
-                <DialogDescription className="text-xs sm:text-sm text-muted-foreground truncate">
-                  Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
-                </DialogDescription>
-              </div>
+      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
+        {/* Top Action Buttons: Quick Submit (Desktop only) & Close */}
+        <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
+          <Button
+            type="submit"
+            form="pet-owner-consultation-form"
+            variant="ghost"
+            size="icon"
+            disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
+            className={cn(
+              "hidden sm:inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+              loading || pets.length === 0 || isConsultationAlreadyScheduled
+                ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+            )}
+            title={
+              pets.length === 0
+                ? "Register a pet first"
+                : isConsultationAlreadyScheduled
+                ? "Consultation already in queue"
+                : "Submit Consultation Request"
+            }
+          >
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            <span className="sr-only">Submit Consultation Request</span>
+          </Button>
+
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+              title="Close"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </Button>
+          </DialogClose>
+        </div>
+
+        <DialogHeader className="border-b pb-3 pr-10 sm:pr-24 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="size-8 sm:size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
+              <Stethoscope className="size-4 sm:size-5" />
             </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                type="submit"
-                form="pet-owner-consultation-form"
-                variant="ghost"
-                size="icon"
-                disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
-                className={cn(
-                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
-                  loading || pets.length === 0 || isConsultationAlreadyScheduled
-                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
-                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
-                )}
-                title={
-                  pets.length === 0
-                    ? "Register a pet first"
-                    : isConsultationAlreadyScheduled
-                    ? "Consultation already in queue"
-                    : "Submit Consultation Request"
-                }
-              >
-                {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                <span className="sr-only">Submit Consultation Request</span>
-              </Button>
-
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                  title="Close"
-                >
-                  <X className="size-4" />
-                  <span className="sr-only">Close</span>
-                </Button>
-              </DialogClose>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate">
+                CVO Consultation Request Form
+              </DialogTitle>
+              <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
+                Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

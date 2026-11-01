@@ -916,8 +916,8 @@ export function ScheduleProcedureDialog({
                 : undefined
             }
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-1.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <div
                   className={cn(
                     "size-7 rounded-lg flex items-center justify-center shrink-0",
@@ -928,25 +928,25 @@ export function ScheduleProcedureDialog({
                 >
                   <Syringe className="size-3.5" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-bold text-xs sm:text-sm text-foreground">Vaccination</h4>
+                    <h4 className="font-bold text-xs sm:text-sm text-foreground truncate">Vaccination</h4>
                     {isVaccinationScheduled && (
                       <Badge
                         variant="outline"
-                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                        className="text-[8.5px] px-1 py-0 h-3.5 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 shrink-0"
                       >
-                        Already Scheduled
+                        Scheduled
                       </Badge>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Anti-Rabies & Core Immunization</p>
+                  <p className="text-[10px] text-muted-foreground truncate">Anti-Rabies & Core Immunization</p>
                 </div>
               </div>
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[9px] font-bold px-1.5 py-0 h-4",
+                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap",
                   isVaccinationScheduled
                     ? "bg-muted text-muted-foreground border-border/60"
                     : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
@@ -980,8 +980,8 @@ export function ScheduleProcedureDialog({
                 : undefined
             }
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-1.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <div
                   className={cn(
                     "size-7 rounded-lg flex items-center justify-center shrink-0",
@@ -992,32 +992,32 @@ export function ScheduleProcedureDialog({
                 >
                   <Scissors className="size-3.5" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-bold text-xs sm:text-sm text-foreground">Spay & Neuter</h4>
+                    <h4 className="font-bold text-xs sm:text-sm text-foreground truncate">Spay & Neuter</h4>
                     {isSpayNeuterScheduled ? (
                       <Badge
                         variant="outline"
-                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                        className="text-[8.5px] px-1 py-0 h-3.5 font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 shrink-0"
                       >
-                        Already Scheduled
+                        Scheduled
                       </Badge>
                     ) : isVaccinationScheduled && service === "spay-neuter" ? (
                       <Badge
                         variant="secondary"
-                        className="text-[9px] px-1.5 py-0 h-4 font-bold bg-primary/15 text-primary border-primary/20"
+                        className="text-[8.5px] px-1 py-0 h-3.5 font-bold bg-primary/15 text-primary border-primary/20 shrink-0"
                       >
-                        Active Procedure
+                        Active
                       </Badge>
                     ) : null}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">Kapon / Sterilization Surgery</p>
+                  <p className="text-[10px] text-muted-foreground truncate">Kapon / Sterilization Surgery</p>
                 </div>
               </div>
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[9px] font-bold px-1.5 py-0 h-4",
+                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap",
                   isSpayNeuterScheduled
                     ? "bg-muted text-muted-foreground border-border/60"
                     : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30"
@@ -1038,12 +1038,12 @@ export function ScheduleProcedureDialog({
           {/* ── SECTION 2: Pet Selection (Hidden if hidePetSelector is true) ── */}
           {!hidePetSelector && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 min-w-0">
+                <Label className="text-[10.5px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">
                   Select Pet for Procedure *
                 </Label>
                 {pets.length > 0 && (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-[10px] sm:text-[11px] text-muted-foreground shrink-0 whitespace-nowrap">
                     {pets.length} registered pet{pets.length === 1 ? "" : "s"}
                   </span>
                 )}
@@ -1185,12 +1185,12 @@ export function ScheduleProcedureDialog({
 
           {/* ── SECTION 3: Date & Slot Selection ── */}
           <div className={cn(embedded ? "space-y-1" : "space-y-2")}>
-            <div className="flex items-center justify-between">
-              <Label className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                Choose Appointment Date (Monday – Friday) *
+            <div className="flex items-center justify-between gap-2 min-w-0 pb-0.5">
+              <Label className="text-[10.5px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">
+                Choose Appointment Date *
               </Label>
-              <Badge variant="outline" className="text-[9px] font-semibold text-primary border-primary/30 h-4 px-1.5">
-                {serviceConfig.operatingHours}
+              <Badge variant="outline" className="text-[9px] font-semibold text-primary border-primary/30 h-auto py-0.5 px-1.5 shrink-0 whitespace-nowrap">
+                Mon – Fri • 8AM – 5PM
               </Badge>
             </div>
 
@@ -1243,9 +1243,9 @@ export function ScheduleProcedureDialog({
 
           {/* ── SECTION 4: Pre-procedure Guidelines & Mandatory Check ── */}
           <div className={cn("rounded-xl border border-border/80 bg-muted/20", embedded ? "p-2 space-y-1" : "p-3.5 space-y-2 rounded-2xl")}>
-            <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-              <ShieldCheck className="size-3.5 text-primary" />
-              Pre-Procedure Clinical Requirements ({serviceConfig.shortTitle})
+            <h4 className="text-[10.5px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5 min-w-0">
+              <ShieldCheck className="size-3.5 text-primary shrink-0" />
+              <span className="truncate">Pre-Procedure Requirements ({serviceConfig.shortTitle})</span>
             </h4>
 
             {embedded ? (
@@ -1269,12 +1269,12 @@ export function ScheduleProcedureDialog({
             )}
 
             <div className={cn("border-t border-border/60", embedded ? "pt-1" : "pt-2")}>
-              <label className="flex items-center gap-2 cursor-pointer text-[10.5px] sm:text-xs font-semibold text-foreground select-none">
+              <label className="flex items-start gap-2 cursor-pointer text-[10.5px] sm:text-xs font-semibold text-foreground select-none leading-snug">
                 <input
                   type="checkbox"
                   checked={checklistConfirmed}
                   onChange={(e) => setChecklistConfirmed(e.target.checked)}
-                  className="size-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                  className="size-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer mt-0.5 shrink-0"
                 />
                 <span>I confirm that my pet meets these health criteria and I will follow prep guidelines.</span>
               </label>
@@ -1292,6 +1292,34 @@ export function ScheduleProcedureDialog({
               className="text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 bg-background min-h-[52px] resize-none w-full"
             />
           </div>
+
+          {/* ── Mobile & Desktop Primary Submit Button ── */}
+          {!embedded && (
+            <div className="pt-2 sticky bottom-0 bg-background/95 backdrop-blur-xs pb-1 sm:static sm:bg-transparent">
+              <Button
+                type="submit"
+                disabled={!isFormValid || submitting}
+                className={cn(
+                  "w-full h-10 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2",
+                  !isFormValid || submitting
+                    ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                )}
+              >
+                {submitting ? (
+                  <>
+                    <CalendarClock className="size-4 animate-spin" />
+                    <span>Booking Appointment...</span>
+                  </>
+                ) : (
+                  <>
+                    <Calendar className="size-4" />
+                    <span>Confirm & Book {serviceConfig.shortTitle} Slot</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </form>
   );
 
@@ -1312,74 +1340,73 @@ export function ScheduleProcedureDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
-                {service === "vaccination" ? (
-                  <Syringe className="size-5" />
-                ) : (
-                  <Scissors className="size-5" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <DialogTitle className="text-lg font-bold text-foreground truncate">
-                  {rescheduleAppointmentId
-                    ? "Reschedule Procedure Appointment"
-                    : "City Veterinary Office Procedure Scheduler"}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground truncate">
-                  {rescheduleAppointmentId
-                    ? `Select a new municipal clinic appointment date for ${currentPet?.name || "your pet"} (Monday – Friday)`
-                    : "Book official municipal appointments with live daily capacity limits (Monday – Friday)"}
-                </DialogDescription>
-              </div>
+      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
+        {/* Top Action Buttons: Quick Submit (Desktop only) & Close */}
+        <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
+          <Button
+            type="submit"
+            form="schedule-procedure-form"
+            variant="ghost"
+            size="icon"
+            disabled={!isFormValid || submitting}
+            className={cn(
+              "hidden sm:inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+              !isFormValid || submitting
+                ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+            )}
+            title={
+              !isFormValid
+                ? isAlreadyScheduled
+                  ? "Appointment already scheduled"
+                  : isSameDayConflict
+                  ? "Same-day conflict"
+                  : "Select an available date and confirm pre-op checklist"
+                : `Confirm ${serviceConfig.shortTitle} Slot`
+            }
+          >
+            {submitting ? (
+              <CalendarClock className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            <span className="sr-only">Confirm {serviceConfig.shortTitle} Slot</span>
+          </Button>
+
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+              title="Close"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </Button>
+          </DialogClose>
+        </div>
+
+        <DialogHeader className="border-b pb-3 pr-10 sm:pr-24 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="size-8 sm:size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+              {service === "vaccination" ? (
+                <Syringe className="size-4 sm:size-5" />
+              ) : (
+                <Scissors className="size-4 sm:size-5" />
+              )}
             </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                type="submit"
-                form="schedule-procedure-form"
-                variant="ghost"
-                size="icon"
-                disabled={!isFormValid || submitting}
-                className={cn(
-                  "size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
-                  !isFormValid || submitting
-                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
-                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
-                )}
-                title={
-                  !isFormValid
-                    ? isAlreadyScheduled
-                      ? "Appointment already scheduled"
-                      : isSameDayConflict
-                      ? "Same-day conflict"
-                      : "Select an available date and confirm pre-op checklist"
-                    : `Confirm ${serviceConfig.shortTitle} Slot`
-                }
-              >
-                {submitting ? (
-                  <CalendarClock className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                <span className="sr-only">Confirm {serviceConfig.shortTitle} Slot</span>
-              </Button>
-
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                  title="Close"
-                >
-                  <X className="size-4" />
-                  <span className="sr-only">Close</span>
-                </Button>
-              </DialogClose>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate">
+                {rescheduleAppointmentId
+                  ? "Reschedule Procedure"
+                  : "CVO Procedure Scheduler"}
+              </DialogTitle>
+              <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
+                {rescheduleAppointmentId
+                  ? `Select a new clinic date for ${currentPet?.name || "your pet"}`
+                  : "Book official municipal appointments with live daily capacity limits"}
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

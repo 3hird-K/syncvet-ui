@@ -127,7 +127,6 @@ import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-c
 import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
 import { PetOwnerQueueTracker } from "@/components/dashboard/pet-owner-queue-tracker";
-import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { syncConsultationsToQueue } from "@/lib/cvo-queue";
 import { parsePetWeightKg } from "@/lib/pet-weight";
 import { PetOwnerOutreachCheckInDialog } from "@/components/dashboard/pet-owner-outreach-checkin-dialog";
@@ -2447,46 +2446,25 @@ export default function PetOwnerPortalPage() {
 
                       {/* Action buttons and friendly arrival status */}
                       <div className="space-y-2 pt-0.5">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedAppointmentForSlip(nextApt);
-                              setAppointmentSlipOpen(true);
-                            }}
-                            className="flex-1 h-8 text-xs font-semibold gap-1.5 rounded-xl cursor-pointer bg-card hover:bg-muted border-border/80 hover:border-primary/40 shadow-2xs transition-all active:scale-[0.99]"
-                          >
-                            <Printer className="size-3.5 text-primary" />
-                            <span>Slip</span>
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedAppointmentForSlip(nextApt);
+                            setAppointmentSlipOpen(true);
+                          }}
+                          className="w-full h-8.5 text-xs font-semibold gap-2 rounded-xl cursor-pointer bg-card hover:bg-muted border-border/80 hover:border-primary/40 shadow-2xs transition-all active:scale-[0.99]"
+                        >
+                          <Printer className="size-3.5 text-primary" />
+                          <span>View Appointment Slip</span>
+                        </Button>
 
-                          {isAptToday ? (
-                            <ScanQueueQrDialog
-                              trigger={
-                                <Button
-                                  size="sm"
-                                  className="flex-1 h-8 text-xs font-bold gap-1.5 rounded-xl cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all active:scale-[0.99]"
-                                >
-                                  <QrCode className="size-3.5" />
-                                  <span>Scan Arrival QR</span>
-                                </Button>
-                              }
-                            />
-                          ) : (
-                            <Button
-                              size="sm"
-                              disabled
-                              className="flex-1 h-8 text-xs font-semibold gap-1.5 rounded-xl bg-muted/60 text-muted-foreground/70 border border-border/60 opacity-60 cursor-not-allowed select-none shadow-none"
-                              title={`Scan Arrival QR activates on your appointment day (${formattedDate}).`}
-                            >
-                              <Clock className="size-3.5 text-muted-foreground/60 shrink-0" />
-                              <span>Scan Arrival QR</span>
-                            </Button>
-                          )}
-                        </div>
-
-                        {!isAptToday && (
+                        {isAptToday ? (
+                          <div className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium select-none text-center">
+                            <CheckCircle2 className="size-3 shrink-0" />
+                            <span>Scheduled for today • Check in via clinic QR scan banner</span>
+                          </div>
+                        ) : (
                           <div className="flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground font-medium select-none">
                             <Clock className="size-3 text-primary/70 shrink-0" />
                             <span>

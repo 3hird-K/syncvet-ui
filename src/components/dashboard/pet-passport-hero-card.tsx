@@ -128,22 +128,22 @@ export function PetPassportHeroCard({
       )}
 
       {/* Hero Identity: Avatar, Name, Metadata and Badges */}
-      <div className="flex items-center gap-3.5 sm:gap-4 relative z-10">
+      <div className="flex items-center gap-3 sm:gap-4 relative z-10 min-w-0">
         <PetAvatar
           photoUrl={pet.photo_url}
           species={pet.species}
           name={pet.name}
-          size="xl"
-          className="shrink-0 ring-2 ring-white/30 shadow-md"
+          size="lg"
+          className="size-14 sm:size-20 shrink-0 ring-2 ring-white/30 shadow-md"
         />
 
         <div className="space-y-1 sm:space-y-1.5 min-w-0 flex-1">
-          <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
+          <h3 className="text-lg sm:text-2xl font-black text-white tracking-tight truncate">
             {pet.name}
           </h3>
 
           {/* Species, Breed, Gender, Age, Weight */}
-          <p className="text-xs text-white/90 font-medium flex items-center gap-1.5 flex-wrap">
+          <p className="text-[11px] sm:text-xs text-white/90 font-medium flex items-center gap-1 sm:gap-1.5 flex-wrap">
             <span>{pet.breed || (isCat ? "Puspin" : "Aspin")}</span>
             <span className="text-white/40">•</span>
             <span>{genderDisplay}</span>
@@ -162,10 +162,10 @@ export function PetPassportHeroCard({
           </p>
 
           {/* Real-time Status Badges */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap pt-0.5">
             <span
               className={cn(
-                "text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md inline-flex items-center gap-1",
+                "text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md inline-flex items-center gap-1 shrink-0",
                 vaxStatus.isOverdue
                   ? "bg-rose-600 text-white"
                   : vaxStatus.isDueSoon
