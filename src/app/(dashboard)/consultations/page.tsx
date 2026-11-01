@@ -39,6 +39,8 @@ import { AdministerVaccinationDialog } from "@/components/dashboard/administer-v
 import { CompleteSurgeryDialog } from "@/components/dashboard/complete-surgery-dialog";
 import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
+import { PetProfileDialog, type PetProfileRecord } from "@/components/dashboard/pet-profile-dialog";
+import { parsePetWeightKg } from "@/lib/pet-weight";
 import { useCVO } from "@/lib/cvo-context";
 import { type CVOConsultation } from "@/data/cvo-store";
 import { toast } from "sonner";
@@ -386,7 +388,7 @@ function ConsultationsContent() {
     queryFn: async () => {
       try {
         const supabase = getPublicSupabaseClient();
-        const { data } = await supabase.from("pets").select("id, name, species, breed, owner_id, photo_url");
+        const { data } = await supabase.from("pets").select("*");
         return data || [];
       } catch {
         return [];
@@ -703,6 +705,79 @@ function ConsultationsContent() {
       return false;
     });
   }, [allUnifiedQueue, isPetOwner, user]);
+
+  // Convert selected consultation & matched database pet into PetProfileRecord
+  const selectedPetRecord = useMemo<PetProfileRecord | null>(() => {
+    if (!selectedConsultation) return null;
+    const enc = selectedConsultation as any;
+
+    const matchedPet = dbPets.find(
+      (p: any) =>
+        p.id === enc.petId ||
+        (p.name &&
+          enc.petName &&
+          p.name.trim().toLowerCase() === enc.petName.trim().toLowerCase())
+    );
+
+    const ownerId = matchedPet?.owner_id || enc.ownerId;
+    const matchedUser = dbUsers.find(
+      (u: any) =>
+        u.id === ownerId ||
+        (enc.ownerName &&
+          u.full_name &&
+          u.full_name.trim().toLowerCase() === enc.ownerName.trim().toLowerCase())
+    );
+
+    const species =
+      (matchedPet?.species as "Dog" | "Cat" | "Livestock") ||
+      (enc.species as "Dog" | "Cat" | "Livestock") ||
+      "Dog";
+
+    const sex =
+      (matchedPet?.sex as "Male" | "Female") ||
+      (enc.sex as "Male" | "Female") ||
+      "Male";
+
+    const rawWeight = matchedPet?.weight_category
+      ? parsePetWeightKg(matchedPet.weight_category, species)
+      : (enc.weightKg || (species === "Cat" ? 4.5 : 12.4));
+
+    return {
+      id: matchedPet?.id || enc.petId || `pet-${enc.id}`,
+      name: matchedPet?.name || enc.petName || "Pet",
+      species,
+      breed: matchedPet?.breed || enc.breed || (species === "Cat" ? "Puspin" : "Aspin"),
+      sex,
+      age: matchedPet?.age || enc.age || "2 years",
+      weightKg: rawWeight > 0 ? rawWeight : (species === "Cat" ? 4.5 : 12.4),
+      color: matchedPet?.color || "Brown/White",
+      ownerId: matchedPet?.owner_id || matchedUser?.id || "",
+      owner: matchedUser?.full_name || enc.ownerName || "Pet Owner",
+      ownerEmail: matchedUser?.email || enc.ownerEmail || "",
+      ownerAvatarUrl: matchedUser?.avatar_url || enc.ownerAvatarUrl || "",
+      barangay: matchedUser?.address || enc.ownerBarangay || "Carmen",
+      address: matchedUser?.address || enc.ownerAddress || enc.ownerBarangay || "District Proper",
+      vaccinated: Boolean(
+        matchedPet?.is_vaccinated ||
+        (enc.category === "vaccination" && enc.status === "completed")
+      ),
+      sterilized: Boolean(
+        matchedPet?.sterilization_status === "Sterilized" ||
+        matchedPet?.sterilized ||
+        (enc.category === "spay-neuter" && enc.status === "completed")
+      ),
+      microchip: matchedPet?.microchip_number || matchedPet?.id?.slice(0, 8) || enc.petId || "pet-cdo",
+      classification: (matchedPet?.classification as any) || "Domestic",
+      photo_url: matchedPet?.photo_url || enc.petPhotoUrl || null,
+      lastVaccinationDate:
+        matchedPet?.last_vaccination_date ||
+        (enc.category === "vaccination" && enc.status === "completed"
+          ? enc.date
+          : undefined),
+      nextVaccinationDate: matchedPet?.next_vaccination_date || undefined,
+      createdAt: matchedPet?.created_at || enc.createdAt,
+    };
+  }, [selectedConsultation, dbPets, dbUsers]);
 
   // Auto-open requested encounter from URL parameters (e.g. redirected from Today's Clinic Queue)
   useEffect(() => {
@@ -1375,456 +1450,44 @@ function ConsultationsContent() {
         </CardContent>
       </Card>
 
-      {/* ── Consultation & Procedure Detail Drawer ── */}
-      <Sheet
-        open={!!selectedConsultation && !examDialogOpen && !officialFormOpen}
+      {/* ── Official Pet Profile & Encounter Action Dialog (Matching Image 2) ── */}
+      <PetProfileDialog
+        pet={selectedPetRecord}
+        open={!!selectedConsultation && !examDialogOpen && !vaxDialogOpen && !surgeryDialogOpen && !officialFormOpen}
         onOpenChange={(open) => {
-          if (!open && !examDialogOpen && !officialFormOpen) {
+          if (!open && !examDialogOpen && !vaxDialogOpen && !surgeryDialogOpen && !officialFormOpen) {
             setSelectedConsultation(null);
           }
         }}
-      >
-        <SheetContent className="sm:max-w-[500px] overflow-y-auto p-6">
-          {selectedConsultation && (
-            <div className="space-y-5">
-              <SheetHeader className="p-0 text-left">
-                <div className="flex items-center justify-between pr-8">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      {selectedConsultation.encounterNo}
-                    </Badge>
-                    {getCategoryBadge(selectedConsultation.category)}
-                  </div>
-                  {getStatusBadge(selectedConsultation.status, selectedConsultation.isOverdue)}
-                </div>
-                <SheetTitle className="text-xl font-bold flex items-center gap-2">
-                  {selectedConsultation.category === "vaccination" ? (
-                    <Syringe className="size-5 text-blue-500" />
-                  ) : selectedConsultation.category === "spay-neuter" ? (
-                    <Scissors className="size-5 text-purple-500" />
-                  ) : (
-                    <Stethoscope className="size-5 text-primary" />
-                  )}
-                  {selectedConsultation.petName} ({selectedConsultation.species})
-                </SheetTitle>
-                <SheetDescription className="text-xs">
-                  {selectedConsultation.category === "vaccination"
-                    ? "Anti-Rabies Vaccination Appointment"
-                    : selectedConsultation.category === "spay-neuter"
-                    ? "Spay / Neuter (Kapon) Procedure"
-                    : "Clinical Consultation & EMR Encounter"}{" "}
-                  on {formatEncounterDate(selectedConsultation.date)} at {selectedConsultation.time}
-                </SheetDescription>
-              </SheetHeader>
-
-              {/* Overdue Warning Banner */}
-              {selectedConsultation.isOverdue && (
-                <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 dark:bg-rose-950/30 space-y-1.5">
-                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-xs">
-                    <AlertTriangle className="size-4 shrink-0" />
-                    <span>Schedule Overdue — Archived (View Only)</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    This scheduled encounter was not processed on its appointed date ({formatEncounterDate(selectedConsultation.date)}). It has been automatically archived in view-only mode to preserve official clinic audit integrity. Editing is disabled.
-                  </p>
-                </div>
-              )}
-
-              {/* Veterinary Examination Action Banner (only for clinical consultations) */}
-              {!isPetOwner && selectedConsultation.category === "consultation" && (
-                <div className={cn(
-                  "p-3.5 rounded-xl border space-y-2",
-                  selectedConsultation.isOverdue
-                    ? "border-muted bg-muted/20 opacity-60"
-                    : "border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/30"
-                )}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Stethoscope className="size-4 text-blue-600 dark:text-blue-400" />
-                      Veterinarian Clinical Chart
-                    </span>
-                    {selectedConsultation.isOverdue ? (
-                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
-                        Locked
-                      </Badge>
-                    ) : selectedConsultation.diagnosis.toLowerCase().includes("pending") && (
-                      <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
-                        Exam Pending
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {selectedConsultation.isOverdue
-                      ? "Cannot record examination findings for an expired schedule."
-                      : "Record vitals, perform the 12-system examination, input medical diagnosis, treatment administered, prescriptions, and follow-up care."}
-                  </p>
-                  <Button
-                    size="sm"
-                    disabled={selectedConsultation.isOverdue}
-                    className={cn(
-                      "w-full gap-2 text-xs font-bold",
-                      selectedConsultation.isOverdue
-                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
-                        : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs"
-                    )}
-                    onClick={() => !selectedConsultation.isOverdue && setExamDialogOpen(true)}
-                  >
-                    <ClipboardCheck className="size-3.5" />
-                    <span>{selectedConsultation.isOverdue ? "Examination Locked (Schedule Due)" : "Fill Up Clinical Examination & Findings"}</span>
-                  </Button>
-                </div>
-              )}
-
-              {/* Anti-Rabies Vaccination Administration Banner */}
-              {!isPetOwner && selectedConsultation.category === "vaccination" && (
-                <div className={cn(
-                  "p-3.5 rounded-xl border space-y-2",
-                  selectedConsultation.isOverdue
-                    ? "border-muted bg-muted/20 opacity-60"
-                    : selectedConsultation.status === "completed"
-                    ? (isLockedPast24Hours
-                        ? "border-border/80 bg-muted/25"
-                        : "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25")
-                    : isVaccineOutOfStock
-                    ? "border-rose-500/30 bg-rose-500/10 dark:bg-rose-950/25"
-                    : "border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/30"
-                )}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Syringe className={cn(
-                        "size-4",
-                        selectedConsultation.status === "completed"
-                          ? (isLockedPast24Hours ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400")
-                          : isVaccineOutOfStock
-                          ? "text-rose-600 dark:text-rose-400"
-                          : "text-blue-600 dark:text-blue-400"
-                      )} />
-                      Anti-Rabies Prophylaxis Protocol
-                    </span>
-                    {selectedConsultation.isOverdue ? (
-                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
-                        Locked
-                      </Badge>
-                    ) : selectedConsultation.status === "completed" ? (
-                      isLockedPast24Hours ? (
-                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border/80 font-bold flex items-center gap-1">
-                          <Lock className="size-3" /> Locked (Past 24h)
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="size-3" /> Dose Administered
-                        </Badge>
-                      )
-                    ) : isVaccineOutOfStock ? (
-                      <Badge variant="outline" className="text-[10px] bg-rose-500/15 text-rose-600 border-rose-500/30 font-bold flex items-center gap-1">
-                        <AlertTriangle className="size-3" /> Out of Stock
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold">
-                        RA 9482 Ready
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {selectedConsultation.isOverdue
-                      ? "Vaccination schedule expired. Rebooking required for cold-chain allocation."
-                      : selectedConsultation.status === "completed"
-                      ? isLockedPast24Hours
-                        ? "Rabies vaccine dose successfully administered. This record has been finalized and cannot be updated after 24 hours pursuant to CVO regulatory audit standards."
-                        : "Rabies vaccine dose successfully administered and verified in CVO Immunization Ledger. Pet is protected."
-                      : isVaccineOutOfStock
-                      ? "Vaccine doses currently unavailable in cold-chain inventory (0 stock). You cannot administer this vaccination until new stock is received or logged in Vaccine Inventory."
-                      : "Conduct pre-vaccination clinical triage, verify body temperature & weight, inject 1.0 mL SC dose, issue municipal rabies tag, and schedule annual booster."}
-                  </p>
-
-                  {/* 24-Hour Policy Notice Bar when completed */}
-                  {selectedConsultation.status === "completed" && !selectedConsultation.isOverdue && (
-                    <div className={cn(
-                      "flex items-center gap-2 p-2 rounded-lg text-[11px] font-medium border",
-                      isLockedPast24Hours
-                        ? "bg-muted/40 border-border/70 text-muted-foreground"
-                        : "bg-amber-500/10 border-amber-500/25 text-amber-800 dark:text-amber-300"
-                    )}>
-                      {isLockedPast24Hours ? (
-                        <>
-                          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span><strong>Locked:</strong> You cannot update after 24 hours of administration.</span>
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                          <span><strong>Notice:</strong> You can review or update this dose record within 24 hours only (<strong>{hoursRemaining}h remaining</strong>). You cannot update after 24 hours.</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  <Button
-                    size="sm"
-                    disabled={selectedConsultation.isOverdue || isLockedPast24Hours || (isVaccineOutOfStock && selectedConsultation.status !== "completed")}
-                    className={cn(
-                      "w-full gap-2 text-xs font-bold",
-                      selectedConsultation.isOverdue || isLockedPast24Hours || (isVaccineOutOfStock && selectedConsultation.status !== "completed")
-                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
-                        : selectedConsultation.status === "completed"
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
-                        : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs"
-                    )}
-                    onClick={() => {
-                      if (selectedConsultation.isOverdue) return;
-                      if (isLockedPast24Hours) {
-                        toast.error("Record Finalized", {
-                          description: "You cannot update this vaccination record after 24 hours of administration.",
-                        });
-                        return;
-                      }
-                      if (isVaccineOutOfStock && selectedConsultation.status !== "completed") {
-                        toast.error("Vaccine Out of Stock", {
-                          description: "Cannot administer dose. Please receive or log inventory stock in Vaccine Inventory first.",
-                        });
-                        return;
-                      }
-                      setVaxDialogOpen(true);
-                    }}
-                  >
-                    {isLockedPast24Hours ? (
-                      <Lock className="size-3.5" />
-                    ) : (
-                      <Syringe className="size-3.5" />
-                    )}
-                    <span>
-                      {selectedConsultation.isOverdue
-                        ? "Vaccination Locked"
-                        : selectedConsultation.status === "completed"
-                        ? isLockedPast24Hours
-                          ? "Locked — Cannot Update After 24 Hours"
-                          : "Review / Update Vaccine Dose Record"
-                        : isVaccineOutOfStock
-                        ? "Cannot Administer (Out of Stock)"
-                        : "Administer Vaccine & Record Batch / Dose"}
-                    </span>
-                  </Button>
-                </div>
-              )}
-
-              {/* Spay & Neuter (Kapon) Surgical Protocol Banner */}
-              {!isPetOwner && selectedConsultation.category === "spay-neuter" && (
-                <div className={cn(
-                  "p-3.5 rounded-xl border space-y-2",
-                  selectedConsultation.isOverdue
-                    ? "border-muted bg-muted/20 opacity-60"
-                    : selectedConsultation.status === "completed"
-                    ? (isLockedPast24Hours
-                        ? "border-border/80 bg-muted/25"
-                        : "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/25")
-                    : "border-primary/30 bg-primary/5 dark:bg-primary/10"
-                )}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Scissors className={cn(
-                        "size-4",
-                        selectedConsultation.status === "completed"
-                          ? (isLockedPast24Hours ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400")
-                          : "text-primary"
-                      )} />
-                      Spay & Neuter (Kapon) Surgical Protocol
-                    </span>
-                    {selectedConsultation.isOverdue ? (
-                      <Badge variant="outline" className="text-[10px] bg-rose-500/10 text-rose-600 border-rose-500/30">
-                        Locked
-                      </Badge>
-                    ) : selectedConsultation.status === "completed" ? (
-                      isLockedPast24Hours ? (
-                        <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border/80 font-bold flex items-center gap-1">
-                          <Lock className="size-3" /> Locked (Past 24h)
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-bold">
-                          Sterilization Complete
-                        </Badge>
-                      )
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/25 font-bold">
-                        Pre-Op Ready
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {selectedConsultation.isOverdue
-                      ? "Surgical schedule expired. Pet owner must be contacted to reschedule surgery."
-                      : selectedConsultation.status === "completed"
-                      ? isLockedPast24Hours
-                        ? "Gonadectomy procedure completed. Record is finalized and cannot be updated after 24 hours pursuant to CVO regulatory audit standards."
-                        : "Gonadectomy procedure completed under general anesthesia. Pet is officially recorded as sterilized."
-                      : "Pre-anesthetic evaluation, gonadectomy surgical procedure, and post-op analgesia protocol."}
-                  </p>
-
-                  {/* 24-Hour Policy Notice Bar for Completed Surgery */}
-                  {selectedConsultation.status === "completed" && !selectedConsultation.isOverdue && (
-                    <div className={cn(
-                      "flex items-center gap-2 p-2 rounded-lg text-[11px] font-medium border",
-                      isLockedPast24Hours
-                        ? "bg-muted/40 border-border/70 text-muted-foreground"
-                        : "bg-amber-500/10 border-amber-500/25 text-amber-800 dark:text-amber-300"
-                    )}>
-                      {isLockedPast24Hours ? (
-                        <>
-                          <Lock className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span><strong>Locked:</strong> You cannot update after 24 hours of surgery completion.</span>
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                          <span><strong>Notice:</strong> Updates allowed within 24 hours only (<strong>{hoursRemaining}h remaining</strong>). You cannot update after 24 hours.</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  <Button
-                    size="sm"
-                    disabled={selectedConsultation.isOverdue || isLockedPast24Hours}
-                    className={cn(
-                      "w-full gap-2 text-xs font-bold",
-                      selectedConsultation.isOverdue || isLockedPast24Hours
-                        ? "cursor-not-allowed opacity-50 bg-muted text-muted-foreground"
-                        : selectedConsultation.status === "completed"
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
-                        : "bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs"
-                    )}
-                    onClick={() => {
-                      if (selectedConsultation.isOverdue) return;
-                      if (isLockedPast24Hours) {
-                        toast.error("Record Finalized", {
-                          description: "You cannot update this surgical record after 24 hours of completion.",
-                        });
-                        return;
-                      }
-                      setSurgeryDialogOpen(true);
-                    }}
-                  >
-                    {isLockedPast24Hours ? (
-                      <Lock className="size-3.5" />
-                    ) : (
-                      <Scissors className="size-3.5" />
-                    )}
-                    <span>
-                      {selectedConsultation.isOverdue
-                        ? "Surgery Locked"
-                        : selectedConsultation.status === "completed"
-                        ? isLockedPast24Hours
-                          ? "Locked — Cannot Update After 24 Hours"
-                          : "Review / Update Surgical Clearance Record"
-                        : "Execute Surgery & Complete Kapon"}
-                    </span>
-                  </Button>
-                </div>
-              )}
-
-              {/* Owner Info */}
-              <div className="p-3.5 rounded-lg border border-border/60 bg-muted/15 text-xs">
-                <div className="flex items-start gap-3">
-                  <Avatar className="size-10 shrink-0 border border-border/80 shadow-2xs mt-0.5">
-                    {selectedConsultation.ownerAvatarUrl && (
-                      <AvatarImage src={selectedConsultation.ownerAvatarUrl} alt={selectedConsultation.ownerName} className="object-cover" />
-                    )}
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                      {getInitials(selectedConsultation.ownerName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <p className="font-bold text-foreground flex items-center gap-1.5">
-                      <User className="size-3.5 text-primary" /> Owner Information
-                    </p>
-                    <p className="text-muted-foreground truncate">Name: <strong className="text-foreground">{selectedConsultation.ownerName}</strong></p>
-                    <p className="text-muted-foreground truncate">Contact: {selectedConsultation.ownerContact}</p>
-                    <p className="text-muted-foreground truncate">Barangay: {cleanBarangay(selectedConsultation.ownerBarangay)}, Cagayan de Oro City</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Findings & Medical Summary */}
-              <div className="space-y-3 text-xs">
-                <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                    {selectedConsultation.category === "consultation" ? "Chief Complaint" : "Procedure Title"}
-                  </Label>
-                  <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground font-medium">
-                    {selectedConsultation.chiefComplaint}
-                  </p>
-                </div>
-
-                <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                    {selectedConsultation.category === "consultation" ? "Diagnosis" : "Protocol / Service Category"}
-                  </Label>
-                  <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground font-semibold">
-                    {selectedConsultation.diagnosis}
-                  </p>
-                </div>
-
-                <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                    {selectedConsultation.category === "consultation" ? "Treatment Administered" : "Clinical Action"}
-                  </Label>
-                  <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-foreground">
-                    {selectedConsultation.treatment || "Standard supportive care."}
-                  </p>
-                </div>
-
-                <div>
-                  <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                    <Pill className="size-3 text-primary" /> {selectedConsultation.category === "consultation" ? "Prescriptions & Instructions" : "Post-Care Guidelines"}
-                  </Label>
-                  <div className="mt-0.5 p-2.5 rounded-md bg-primary/5 border border-primary/20 space-y-1">
-                    <p className="font-semibold text-foreground">{selectedConsultation.medication}</p>
-                    <p className="text-muted-foreground">{selectedConsultation.dosageInstructions}</p>
-                  </div>
-                </div>
-
-                {selectedConsultation.veterinarianNotes && (
-                  <div>
-                    <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Veterinarian / Procedure Notes</Label>
-                    <p className="mt-0.5 p-2 rounded-md bg-muted/20 border border-border/50 text-muted-foreground italic">
-                      {selectedConsultation.veterinarianNotes}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {selectedConsultation.category === "consultation" && (
-                <div className="pt-2">
-                  <Button
-                    className="w-full gap-2 text-xs font-bold bg-primary text-primary-foreground cursor-pointer shadow-xs"
-                    onClick={() => setOfficialFormOpen(true)}
-                  >
-                    <FileText className="size-3.5" />
-                    <span>View Official CVO Field Treatment Form</span>
-                  </Button>
-                </div>
-              )}
-
-              <div className="pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between">
-                <span className="flex items-center gap-1.5 truncate">
-                  {isRecognizedAttendingVet(selectedConsultation.vetName) ? (
-                    <>
-                      <div className="size-5 shrink-0 rounded-full bg-gradient-to-br from-primary to-emerald-700 text-white flex items-center justify-center border border-primary/20 shadow-2xs">
-                        <Stethoscope className="size-2.5" />
-                      </div>
-                      Attending: <strong className="text-foreground ml-0.5">{cleanVetName(selectedConsultation.vetName)}</strong>
-                    </>
-                  ) : (
-                    <>
-                      Attending: <span className="text-muted-foreground/60 italic ml-0.5">Unassigned</span>
-                    </>
-                  )}
-                </span>
-                <span className="shrink-0 text-[11px]">City Veterinary Office — CDO</span>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+        encounter={selectedConsultation}
+        onAdministerVaccine={(enc) => {
+          setSelectedConsultation(enc);
+          setVaxDialogOpen(true);
+        }}
+        onFillExamination={(enc) => {
+          setSelectedConsultation(enc);
+          setExamDialogOpen(true);
+        }}
+        onCompleteSurgery={(enc) => {
+          setSelectedConsultation(enc);
+          setSurgeryDialogOpen(true);
+        }}
+        onViewOfficialSheet={(enc) => {
+          setSelectedConsultation(enc);
+          setOfficialFormOpen(true);
+        }}
+        onUpdateEncounterStatus={(enc, newStatus) => {
+          handleUpdateStatus(enc, newStatus as any);
+        }}
+        isVaccineOutOfStock={isVaccineOutOfStock}
+        consultations={allConsultations}
+        onAvatarChange={() => {
+          queryClient.invalidateQueries({ queryKey: ["queue-pets"] });
+        }}
+        onPetUpdate={() => {
+          queryClient.invalidateQueries({ queryKey: ["queue-pets"] });
+        }}
+      />
 
       <OfficialConsultationSheetDialog
         consultation={selectedConsultation}

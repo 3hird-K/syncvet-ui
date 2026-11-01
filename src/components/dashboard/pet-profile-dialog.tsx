@@ -25,6 +25,9 @@ import {
   Lock,
   Camera,
   Check,
+  Scissors,
+  ClipboardCheck,
+  Clock,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { Badge } from "@/components/ui/badge";
@@ -82,7 +85,7 @@ export interface PetProfileRecord {
   createdAt?: string;
 }
 
-interface PetProfileDialogProps {
+export interface PetProfileDialogProps {
   pet: PetProfileRecord | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -91,6 +94,14 @@ interface PetProfileDialogProps {
   onAvatarChange?: (url: string) => void;
   onPetUpdate?: (pet: PetProfileRecord) => void;
   consultations?: CVOConsultation[];
+  // Active encounter / scheduled procedure actions in consultations queue:
+  encounter?: any;
+  onAdministerVaccine?: (encounter: any) => void;
+  onFillExamination?: (encounter: any) => void;
+  onCompleteSurgery?: (encounter: any) => void;
+  onViewOfficialSheet?: (encounter: any) => void;
+  onUpdateEncounterStatus?: (encounter: any, newStatus: string) => void;
+  isVaccineOutOfStock?: boolean;
 }
 
 export function PetProfileDialog({
@@ -101,6 +112,13 @@ export function PetProfileDialog({
   onAvatarChange,
   onPetUpdate,
   consultations = [],
+  encounter,
+  onAdministerVaccine,
+  onFillExamination,
+  onCompleteSurgery,
+  onViewOfficialSheet,
+  onUpdateEncounterStatus,
+  isVaccineOutOfStock = false,
 }: PetProfileDialogProps) {
   const [activeProfileTab, setActiveProfileTab] = useState<
     "overview" | "passport" | "consultation" | "procedure" | "records"
@@ -783,6 +801,12 @@ export function PetProfileDialog({
                       >
                         {currentPet.sterilized ? "Neutered/Spayed" : "Intact (Not Sterilized)"}
                       </span>
+
+                      {encounter && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-md bg-white/20 text-white border border-white/30 inline-flex items-center gap-1">
+                          #{encounter.encounterNo || encounter.id}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -798,6 +822,214 @@ export function PetProfileDialog({
                 {/* ── OVERVIEW TAB ── */}
                 {activeProfileTab === "overview" && (
                   <>
+                    {/* Compact Scheduled Action Strip (Takes minimal space) */}
+                    {encounter && (
+                      <div
+                        className={cn(
+                          "px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs transition-all",
+                          encounter.isOverdue
+                            ? "border-rose-500/30 bg-rose-500/8 dark:bg-rose-950/20"
+                            : encounter.category === "vaccination"
+                            ? (encounter.status === "completed"
+                                ? "border-emerald-500/30 bg-emerald-500/8 dark:bg-emerald-950/20"
+                                : isVaccineOutOfStock
+                                ? "border-rose-500/30 bg-rose-500/8 dark:bg-rose-950/20"
+                                : "border-blue-500/30 bg-blue-500/8 dark:bg-blue-950/20")
+                            : encounter.category === "spay-neuter"
+                            ? (encounter.status === "completed"
+                                ? "border-emerald-500/30 bg-emerald-500/8 dark:bg-emerald-950/20"
+                                : "border-purple-500/30 bg-purple-500/8 dark:bg-purple-950/20")
+                            : (encounter.status === "completed"
+                                ? "border-emerald-500/30 bg-emerald-500/8 dark:bg-emerald-950/20"
+                                : "border-blue-500/30 bg-blue-500/8 dark:bg-blue-950/20")
+                        )}
+                      >
+                        {/* Left: Icon + Title + Tag + Schedule/Complaint in compact layout */}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div
+                            className={cn(
+                              "size-7 rounded-lg flex items-center justify-center shrink-0 border shadow-2xs",
+                              encounter.category === "vaccination"
+                                ? "bg-blue-600 text-white border-blue-700"
+                                : encounter.category === "spay-neuter"
+                                ? "bg-purple-600 text-white border-purple-700"
+                                : "bg-blue-600 text-white border-blue-700"
+                            )}
+                          >
+                            {encounter.category === "vaccination" ? (
+                              <Syringe className="size-3.5" />
+                            ) : encounter.category === "spay-neuter" ? (
+                              <Scissors className="size-3.5" />
+                            ) : (
+                              <Stethoscope className="size-3.5" />
+                            )}
+                          </div>
+
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-foreground truncate">
+                                {encounter.category === "vaccination"
+                                  ? "Anti-Rabies Prophylaxis"
+                                  : encounter.category === "spay-neuter"
+                                  ? "Spay / Neuter (Kapon)"
+                                  : "Clinical EMR Consult"}
+                              </span>
+                              <span className="font-mono text-[9.5px] font-semibold text-muted-foreground bg-muted/70 px-1.5 py-0.2 rounded border border-border/60">
+                                {encounter.encounterNo}
+                              </span>
+                            </div>
+
+                            <p className="text-[10px] sm:text-[10.5px] text-muted-foreground truncate leading-tight">
+                              {encounter.category === "consultation" && encounter.chiefComplaint
+                                ? `"${encounter.chiefComplaint}" • ${encounter.date}`
+                                : `Scheduled: ${encounter.date} at ${encounter.time || "09:00 AM"}${encounter.vetName ? ` • ${encounter.vetName}` : ""}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Right: Status Dropdown/Badge + Action Buttons in one single compact row */}
+                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                          {/* Queue Lifecycle Status (Styled as a compact badge dropdown) */}
+                          {onUpdateEncounterStatus && !encounter.isOverdue ? (
+                            <Select
+                              value={encounter.status}
+                              onValueChange={(val) => onUpdateEncounterStatus(encounter, val)}
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  "h-7 text-[10px] font-bold px-2 rounded-lg border-0 shadow-2xs gap-1 cursor-pointer focus:ring-0",
+                                  encounter.status === "completed"
+                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
+                                    : encounter.status === "in-consultation" || encounter.status === "treatment"
+                                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
+                                    : "bg-blue-500/15 text-blue-700 dark:text-blue-300 hover:bg-blue-500/25"
+                                )}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="text-xs min-w-32">
+                                <SelectItem value="waiting" className="text-xs py-1">Waiting</SelectItem>
+                                <SelectItem value="in-consultation" className="text-xs py-1">In Consultation</SelectItem>
+                                <SelectItem value="treatment" className="text-xs py-1">Treatment</SelectItem>
+                                <SelectItem value="completed" className="text-xs py-1">Completed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              className={cn(
+                                "text-[10px] font-bold border-0 py-1 px-2 shadow-2xs",
+                                encounter.isOverdue
+                                  ? "bg-rose-600 text-white"
+                                  : encounter.status === "completed"
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-blue-600 text-white"
+                              )}
+                            >
+                              {encounter.isOverdue
+                                ? "Overdue"
+                                : encounter.status
+                                ? encounter.status.toUpperCase()
+                                : "WAITING"}
+                            </Badge>
+                          )}
+
+                          {/* Secondary: Official Field Sheet button (for consultations) */}
+                          {encounter.category === "consultation" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onViewOfficialSheet?.(encounter)}
+                              className="h-7 px-2 text-[10.5px] font-medium gap-1 rounded-lg border-border hover:bg-muted cursor-pointer shrink-0"
+                              title="View Official CVO Field Sheet"
+                            >
+                              <FileText className="size-3 text-primary" />
+                              <span className="hidden md:inline">Field Sheet</span>
+                            </Button>
+                          )}
+
+                          {/* Primary Action Button */}
+                          {encounter.category === "vaccination" && (
+                            <Button
+                              size="sm"
+                              disabled={encounter.isOverdue || (isVaccineOutOfStock && encounter.status !== "completed")}
+                              onClick={() => onAdministerVaccine?.(encounter)}
+                              className={cn(
+                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                encounter.isOverdue
+                                  ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                                  : encounter.status === "completed"
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : isVaccineOutOfStock
+                                  ? "bg-rose-600 hover:bg-rose-700 text-white cursor-not-allowed"
+                                  : "bg-blue-600 hover:bg-blue-700 text-white"
+                              )}
+                            >
+                              <Syringe className="size-3.5" />
+                              <span>
+                                {encounter.isOverdue
+                                  ? "Locked"
+                                  : encounter.status === "completed"
+                                  ? "Update Dose"
+                                  : isVaccineOutOfStock
+                                  ? "Out of Stock"
+                                  : "Administer Dose"}
+                              </span>
+                            </Button>
+                          )}
+
+                          {encounter.category === "consultation" && (
+                            <Button
+                              size="sm"
+                              disabled={encounter.isOverdue}
+                              onClick={() => onFillExamination?.(encounter)}
+                              className={cn(
+                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                encounter.isOverdue
+                                  ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                                  : encounter.status === "completed"
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : "bg-blue-600 hover:bg-blue-700 text-white"
+                              )}
+                            >
+                              <ClipboardCheck className="size-3.5" />
+                              <span>
+                                {encounter.isOverdue
+                                  ? "Locked"
+                                  : encounter.status === "completed"
+                                  ? "Update Findings"
+                                  : "Fill Exam"}
+                              </span>
+                            </Button>
+                          )}
+
+                          {encounter.category === "spay-neuter" && (
+                            <Button
+                              size="sm"
+                              disabled={encounter.isOverdue}
+                              onClick={() => onCompleteSurgery?.(encounter)}
+                              className={cn(
+                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                encounter.isOverdue
+                                  ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                                  : encounter.status === "completed"
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : "bg-purple-600 hover:bg-purple-700 text-white"
+                              )}
+                            >
+                              <Scissors className="size-3.5" />
+                              <span>
+                                {encounter.isOverdue
+                                  ? "Locked"
+                                  : encounter.status === "completed"
+                                  ? "Review Kapon"
+                                  : "Execute Kapon"}
+                              </span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {/* Rabies Immunization Status Card (Exact Match with Image 2) */}
                     <div
                       className={cn(
