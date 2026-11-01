@@ -181,8 +181,9 @@ export default function AnnouncementsManagementPage() {
 
   // Realtime subscription
   useEffect(() => {
+    const channelName = `announcements-page-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("announcements-page-realtime")
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "announcements" },

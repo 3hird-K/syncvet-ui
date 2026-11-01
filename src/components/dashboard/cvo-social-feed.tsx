@@ -194,8 +194,9 @@ export function CVOSocialFeed({
 
   // Realtime subscription for announcements and field operations
   useEffect(() => {
+    const channelName = `cvo-fb-feed-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("cvo-fb-feed-realtime")
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "announcements" },

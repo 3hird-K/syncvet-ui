@@ -117,8 +117,9 @@ export function CVOAnnouncementsCard({
 
   // Realtime subscription on announcements table
   useEffect(() => {
+    const channelName = `cvo-announcements-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("cvo-announcements-realtime")
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "announcements" },

@@ -141,7 +141,7 @@ export function SidebarContent({
   useEffect(() => {
     if (!user?.id) return;
     const supabase = getPublicSupabaseClient();
-    const channelId = `sidebar-user-${user.id}`;
+    const channelId = `sidebar-user-${user.id}-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
       .channel(channelId)
       .on(

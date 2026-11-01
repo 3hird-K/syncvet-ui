@@ -461,8 +461,9 @@ export default function PetOwnerPortalPage() {
 
   // Supabase Realtime subscription for live appointments and procedure updates
   useEffect(() => {
+    const channelName = `realtime-pet-owner-appointments-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("realtime-pet-owner-appointments")
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "appointments" },
@@ -738,8 +739,9 @@ export default function PetOwnerPortalPage() {
   // Supabase Realtime channel subscription for pets to update TanStack Query live on deletion/changes
   useEffect(() => {
     if (!user?.id) return;
+    const channelName = `owner-pets-${user.id}-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel(`owner-pets-${user.id}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
