@@ -32,6 +32,13 @@ import {
   FileText,
   CheckCircle2,
   Copy,
+  ImageIcon,
+  ExternalLink,
+  CalendarClock,
+  Printer,
+  AlertTriangle,
+  AlertCircle,
+  Check,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { TableColumnFilter } from "@/components/dashboard/table-column-filter";
@@ -75,6 +82,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -86,6 +94,9 @@ import { ExportTableDialog } from "@/components/dashboard/export-table-dialog";
 import { RegisterPetDialog } from "@/components/dashboard/register-pet-dialog";
 import { EditPetDialog } from "@/components/dashboard/edit-pet-dialog";
 import { DeletePetDialog } from "@/components/dashboard/delete-pet-dialog";
+import { PetAvatarPickerDialog } from "@/components/dashboard/pet-avatar-picker-dialog";
+import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
+import { PetProfileDialog } from "@/components/dashboard/pet-profile-dialog";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { useCVO } from "@/lib/cvo-context";
 import { useUser } from "@clerk/nextjs";
@@ -127,8 +138,10 @@ export default function PetRegistryPage() {
   const [pageSize, setPageSize] = useState(5);
   const [selectedPet, setSelectedPet] = useState<PetRecord | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("overview");
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [activeProfileTab, setActiveProfileTab] = useState<"overview" | "passport" | "consultation" | "procedure" | "records">("overview");
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [consultationSheetOpen, setConsultationSheetOpen] = useState(false);
+  const [selectedConsultationForSheet, setSelectedConsultationForSheet] = useState<any>(null);
 
   // CRUD states for Edit & Delete
   const [petToEdit, setPetToEdit] = useState<any>(null);
@@ -348,6 +361,83 @@ export default function PetRegistryPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Vaccination status calculation matching pet-owner view
+  const vaxStatus = useMemo(() => {
+    if (!selectedPet) {
+      return {
+        isVaccinated: false,
+        isOverdue: false,
+        isDueSoon: false,
+        daysUntilBooster: 0,
+        badgeText: "Unvaccinated",
+      };
+    }
+
+    const isVaccinated = selectedPet.vaccinated;
+    if (!isVaccinated) {
+      return {
+        isVaccinated: false,
+        isOverdue: false,
+        isDueSoon: false,
+        daysUntilBooster: 0,
+        badgeText: "Unvaccinated",
+      };
+    }
+
+    if (selectedPet.nextVaccinationDate) {
+      const nextDate = new Date(selectedPet.nextVaccinationDate);
+      const today = new Date();
+      const diffTime = nextDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        return {
+          isVaccinated: false,
+          isOverdue: true,
+          isDueSoon: false,
+          daysUntilBooster: 0,
+          badgeText: "Rabies Overdue",
+        };
+      } else if (diffDays <= 30) {
+        return {
+          isVaccinated: true,
+          isOverdue: false,
+          isDueSoon: true,
+          daysUntilBooster: diffDays,
+          badgeText: `Due Soon (${diffDays}d)`,
+        };
+      }
+    }
+
+    return {
+      isVaccinated: true,
+      isOverdue: false,
+      isDueSoon: false,
+      daysUntilBooster: 365,
+      badgeText: "Rabies Protected",
+    };
+  }, [selectedPet]);
+
+  const getPassportVerifyUrl = (pet: PetRecord) => {
+    if (typeof window === "undefined") return "";
+    const tag = pet.microchip || pet.id;
+    const isVax = pet.vaccinated ? "1" : "0";
+    return `${window.location.origin}/verify/pet/${pet.id}?name=${encodeURIComponent(pet.name)}&species=${encodeURIComponent(pet.species)}&breed=${encodeURIComponent(pet.breed)}&tag=${encodeURIComponent(tag)}&owner=${encodeURIComponent(pet.owner)}&bgy=${encodeURIComponent(pet.barangay)}&vax=${isVax}&lastVax=${encodeURIComponent(pet.lastVaccinationDate || "")}&nextVax=${encodeURIComponent(pet.nextVaccinationDate || "")}`;
+  };
+
+  const handleDownloadQrOnly = () => {
+    if (!qrCodeUrl || !selectedPet) return;
+    const a = document.createElement("a");
+    a.href = qrCodeUrl;
+    a.download = `cvo-pet-passport-${selectedPet.name || selectedPet.id}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Pet Passport QR Downloaded", {
+      description: `Saved QR code for ${selectedPet.name || "pet"}`,
+    });
+  };
 
   // Generate QR for selected pet
   useEffect(() => {
@@ -690,7 +780,7 @@ export default function PetRegistryPage() {
                     className="hover:bg-muted/50 cursor-pointer"
                     onClick={() => {
                       setSelectedPet(pet);
-                      setActiveTab("overview");
+                      setActiveProfileTab("overview");
                     }}
                   >
                     {visibleColumns.includes("id") && (
@@ -793,541 +883,35 @@ export default function PetRegistryPage() {
         </CardContent>
       </Card>
 
-      {/* ── Electronic Veterinary Record (EMR) Full Drawer ── */}
-      <Sheet open={!!selectedPet} onOpenChange={(open) => !open && setSelectedPet(null)}>
-        <SheetContent showCloseButton={false} className="sm:max-w-[620px] overflow-y-auto p-5 sm:p-6 bg-background space-y-4">
-          {selectedPet && (
-            <div className="space-y-4">
-              <SheetHeader className="sr-only">
-                <SheetTitle>{selectedPet.name} - Electronic Veterinary Record</SheetTitle>
-                <SheetDescription>Official digital animal passport and clinical EMR record for {selectedPet.name}</SheetDescription>
-              </SheetHeader>
-
-              {/* Drawer Top Navigation & Actions Bar with Perfectly Aligned X Icon */}
-              <div className="flex items-center justify-between pb-2.5 border-b border-border/50">
-                <div className="flex items-center gap-2">
-                  <div className="size-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
-                    <PawIcon className="size-3.5" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-foreground block leading-tight">Patient Health & EMR</span>
-                    <span className="text-[10px] text-muted-foreground block leading-tight">Official Municipal Record</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  {/* View QR Code Passport Modal */}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setQrDialogOpen(true)}
-                    className="size-8 rounded-lg border-border/70 hover:bg-muted cursor-pointer transition-colors text-muted-foreground hover:text-foreground hover:border-primary/40 hover:text-primary"
-                    title="View QR Code Passport"
-                  >
-                    <QrCode className="size-3.5" />
-                    <span className="sr-only">View QR Passport</span>
-                  </Button>
-
-                  {/* Edit Pet (Icon only) */}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setPetToEdit(selectedPet);
-                      setEditDialogOpen(true);
-                    }}
-                    className="size-8 rounded-lg border-border/70 hover:bg-muted cursor-pointer"
-                    title="Edit Pet Details"
-                  >
-                    <Pencil className="size-3.5 text-muted-foreground hover:text-foreground" />
-                    <span className="sr-only">Edit Pet</span>
-                  </Button>
-
-                  {/* Delete Pet (Icon only) */}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPetToDelete(selectedPet);
-                      setDeleteDialogOpen(true);
-                    }}
-                    className="size-8 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 border-rose-500/30 cursor-pointer"
-                    title="Delete Pet Record"
-                  >
-                    <Trash2 className="size-3.5" />
-                    <span className="sr-only">Delete Pet</span>
-                  </Button>
-
-                  {/* Integrated Close (X) Icon Button */}
-                  <SheetClose asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted border-border/70 cursor-pointer ml-1"
-                      title="Close Drawer"
-                    >
-                      <X className="size-4" />
-                      <span className="sr-only">Close</span>
-                    </Button>
-                  </SheetClose>
-                </div>
-              </div>
-
-              {/* Profile Hero Header Card */}
-              <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-muted/30 p-4.5 sm:p-5 shadow-xs">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <PetAvatar
-                    photoUrl={selectedPet.photo_url}
-                    species={selectedPet.species}
-                    name={selectedPet.name}
-                    size="lg"
-                  />
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-xl font-bold tracking-tight text-foreground truncate">
-                        {selectedPet.name}
-                      </h2>
-                      <Badge
-                        className={cn(
-                          "text-[10px] font-bold border-0 py-0.5 px-2",
-                          selectedPet.vaccinated
-                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                            : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                        )}
-                      >
-                        {selectedPet.vaccinated ? "Rabies Vaccinated" : "Unvaccinated"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground font-medium truncate">
-                      {selectedPet.breed} • {selectedPet.sex}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Identification & Barcode Strip */}
-                <div className="mt-3.5 pt-3 border-t border-border/50 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-wider">Pet ID:</span>
-                    <span className="font-mono font-semibold text-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/40 select-all text-[10px] truncate max-w-[220px]" title={selectedPet.id}>
-                      {selectedPet.id}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Tag className="size-3 text-primary" />
-                      <span className="font-mono text-[10px] font-medium text-foreground">
-                        Tag #{selectedPet.microchip || selectedPet.id.slice(0, 8)}
-                      </span>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setQrDialogOpen(true)}
-                      className="h-6 px-2 text-[10px] font-bold text-primary border-primary/30 hover:bg-primary/10 gap-1 rounded-md cursor-pointer shrink-0 shadow-2xs"
-                      title="View Digital QR Passport Modal"
-                    >
-                      <QrCode className="size-3" />
-                      <span>View QR</span>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* 4-Up Clinical Metric Tiles */}
-              <div className="grid grid-cols-4 gap-2">
-                <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 text-center space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider">Age</span>
-                  <span className="text-xs font-black text-foreground block truncate">{selectedPet.age}</span>
-                  <span className="text-[9px] text-muted-foreground/80 block">
-                    {selectedPet.species === "Dog" ? "Canine" : "Feline"}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 text-center space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider">Weight</span>
-                  <span className="text-xs font-black text-foreground block truncate">{selectedPet.weightKg} kg</span>
-                  <span className="text-[9px] text-muted-foreground/80 block">
-                    {selectedPet.weightKg >= 18 ? "Large" : selectedPet.weightKg >= 8 ? "Medium" : "Small"}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 text-center space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider">Spay / Neuter</span>
-                  <span className={cn(
-                    "text-xs font-black block truncate",
-                    selectedPet.sterilized ? "text-cyan-600 dark:text-cyan-400" : "text-muted-foreground"
-                  )}>
-                    {selectedPet.sterilized ? (selectedPet.sex === "Female" ? "Spayed" : "Neutered") : "Intact"}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground/80 block">
-                    {selectedPet.sterilized ? "Sterilized" : "Reproductive"}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl border border-border/70 bg-card/60 text-center space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground block tracking-wider">Immunity</span>
-                  <span className={cn(
-                    "text-xs font-black block truncate",
-                    selectedPet.vaccinated ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                  )}>
-                    {selectedPet.vaccinated ? "Protected" : "Due"}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground/80 block">Anti-Rabies</span>
-                </div>
-              </div>
-
-              {/* Electronic Veterinary Record Tabs */}
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid grid-cols-4 h-9.5 w-full bg-muted/40 p-1 rounded-xl">
-                  <TabsTrigger value="overview" className="text-xs font-semibold rounded-lg">Overview</TabsTrigger>
-                  <TabsTrigger value="records" className="text-xs font-semibold rounded-lg">History & EMR</TabsTrigger>
-                  <TabsTrigger value="vaccinations" className="text-xs font-semibold rounded-lg">Vaccines</TabsTrigger>
-                  <TabsTrigger value="passport" className="text-xs font-semibold rounded-lg gap-1.5">
-                    <QrCode className="size-3" />
-                    <span>Passport</span>
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* Tab 1: Overview */}
-                <TabsContent value="overview" className="space-y-3.5 pt-2 text-xs">
-                  {/* Medical History Highlights directly on Overview */}
-                  <div className="p-4 rounded-xl border border-border/80 bg-card/60 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                        <Activity className="size-3.5" /> Medical History & Encounters
-                      </p>
-                      <Badge variant="outline" className="text-[9px] font-semibold text-muted-foreground">
-                        {petMedicalHistory.length} Record{petMedicalHistory.length !== 1 ? "s" : ""}
-                      </Badge>
-                    </div>
-
-                    <div className="space-y-2">
-                      {petMedicalHistory.slice(0, 3).map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-3 rounded-lg border border-border/50 bg-muted/20 hover:bg-muted/30 transition-colors space-y-1.5"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              {item.category === "Vaccination" ? (
-                                <Badge className="text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border-0 py-0 px-1.5">
-                                  <Syringe className="size-2.5 mr-0.5 inline" /> Vaccine
-                                </Badge>
-                              ) : item.category === "Surgery" ? (
-                                <Badge className="text-[9px] font-bold bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-0 py-0 px-1.5">
-                                  <Scissors className="size-2.5 mr-0.5 inline" /> Surgery
-                                </Badge>
-                              ) : item.category === "Consultation" ? (
-                                <Badge className="text-[9px] font-bold bg-blue-500/15 text-blue-600 border-0 py-0 px-1.5">
-                                  <Stethoscope className="size-2.5 mr-0.5 inline" /> Consult
-                                </Badge>
-                              ) : (
-                                <Badge className="text-[9px] font-bold bg-purple-500/15 text-purple-600 border-0 py-0 px-1.5">
-                                  <FileText className="size-2.5 mr-0.5 inline" /> Intake
-                                </Badge>
-                              )}
-                              <span className="font-semibold text-foreground text-xs">{item.title}</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-muted-foreground">{item.date}</span>
-                          </div>
-
-                          {item.diagnosis && (
-                            <p className="text-[11px] text-muted-foreground">
-                              <span className="font-medium text-foreground">Diagnosis:</span> {item.diagnosis}
-                            </p>
-                          )}
-                          {item.medication && (
-                            <p className="text-[11px] text-muted-foreground">
-                              <span className="font-medium text-foreground">Rx / Lot:</span> {item.medication}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[10px] text-muted-foreground">
-                            <span>Clinician: <strong className="text-foreground">{item.vetName}</strong></span>
-                            <span className="font-semibold text-emerald-600">{item.status}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Biological Profile Card */}
-                  <div className="p-4 rounded-xl border border-border/80 bg-card/60 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                        <Stethoscope className="size-3.5" /> Biological & Physical Profile
-                      </p>
-                      <Badge variant="outline" className="text-[9px] font-semibold text-muted-foreground">
-                        {selectedPet.classification} Animal
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5 text-xs">
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Breed & Lineage</span>
-                        <strong className="text-foreground text-xs block truncate">{selectedPet.breed}</strong>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Sex & Age</span>
-                        <strong className="text-foreground text-xs block">{selectedPet.sex} • {selectedPet.age}</strong>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Recorded Weight</span>
-                        <strong className="text-foreground text-xs block">{selectedPet.weightKg} kg</strong>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Color & Markings</span>
-                        <strong className="text-foreground text-xs block truncate">{selectedPet.color || "Standard"}</strong>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Sterilization State</span>
-                        <strong className="text-foreground text-xs block">
-                          {selectedPet.sterilized ? (selectedPet.sex === "Female" ? "Spayed (Ovariohysterectomy)" : "Neutered (Castration)") : "Intact (Not Sterilized)"}
-                        </strong>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-muted/30 border border-border/50 space-y-0.5">
-                        <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider block">Microchip / Municipal Tag</span>
-                        <strong className="font-mono text-xs text-foreground block truncate">{selectedPet.microchip}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Registered Owner Card */}
-                  <div className="p-4 rounded-xl border border-border/80 bg-card/60 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
-                        <User className="size-3.5" /> Registered Citizen Pet Owner
-                      </p>
-                      <Badge variant="outline" className="text-[9px] font-semibold text-emerald-600 bg-emerald-500/10 border-emerald-500/20">
-                        Verified Household
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
-                      <Avatar className="size-11 shrink-0 border-2 border-primary/20 shadow-xs">
-                        {selectedPet.ownerAvatarUrl ? (
-                          <AvatarImage src={selectedPet.ownerAvatarUrl} alt={selectedPet.owner} className="object-cover" />
-                        ) : null}
-                        <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
-                          {selectedPet.owner.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="space-y-0.5 min-w-0">
-                        <p className="font-bold text-sm text-foreground truncate">{selectedPet.owner}</p>
-                        <p className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
-                          <MapPin className="size-3 text-primary shrink-0" />
-                          <span>{selectedPet.address || "District Proper, Cagayan de Oro City"}</span>
-                        </p>
-                        {selectedPet.ownerEmail && (
-                          <p className="text-[11px] text-muted-foreground truncate">{selectedPet.ownerEmail}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                {/* Tab 2: Full History & EMR */}
-                <TabsContent value="records" className="space-y-3 pt-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <Activity className="size-3.5 text-primary" /> Full Clinical & Treatment History
-                    </p>
-                    <span className="text-[10px] text-muted-foreground">
-                      {petMedicalHistory.length} Recorded Procedure{petMedicalHistory.length !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-
-                  {petMedicalHistory.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground rounded-xl border border-dashed border-border/80 bg-card/40 space-y-1">
-                      <Stethoscope className="size-6 text-muted-foreground/40 mx-auto" />
-                      <p className="text-xs font-semibold">No Medical History Found</p>
-                      <p className="text-[11px]">No clinical records or treatment encounters recorded yet.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {petMedicalHistory.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-3.5 rounded-xl border border-border/80 bg-card/60 space-y-2 shadow-2xs hover:border-primary/30 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              {item.category === "Vaccination" ? (
-                                <Badge className="text-[9px] font-bold bg-emerald-500/15 text-emerald-600 border-0 py-0.5 px-2">
-                                  <Syringe className="size-2.5 mr-1 inline" /> Vaccination
-                                </Badge>
-                              ) : item.category === "Surgery" ? (
-                                <Badge className="text-[9px] font-bold bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-0 py-0.5 px-2">
-                                  <Scissors className="size-2.5 mr-1 inline" /> Surgery
-                                </Badge>
-                              ) : item.category === "Consultation" ? (
-                                <Badge className="text-[9px] font-bold bg-blue-500/15 text-blue-600 border-0 py-0.5 px-2">
-                                  <Stethoscope className="size-2.5 mr-1 inline" /> Consultation
-                                </Badge>
-                              ) : (
-                                <Badge className="text-[9px] font-bold bg-purple-500/15 text-purple-600 border-0 py-0.5 px-2">
-                                  <FileText className="size-2.5 mr-1 inline" /> Intake Record
-                                </Badge>
-                              )}
-                              <span className="font-bold text-foreground text-xs">{item.title}</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/40 font-medium">
-                              {item.date}
-                            </span>
-                          </div>
-
-                          {item.diagnosis && (
-                            <div className="p-2 rounded-lg bg-muted/20 border border-border/40 text-[11px] space-y-0.5">
-                              <span className="font-semibold text-foreground block">Diagnosis / Clinical Findings:</span>
-                              <p className="text-muted-foreground">{item.diagnosis}</p>
-                            </div>
-                          )}
-
-                          {item.treatment && (
-                            <p className="text-[11px] text-muted-foreground">
-                              <span className="font-semibold text-foreground">Treatment Administered:</span> {item.treatment}
-                            </p>
-                          )}
-
-                          {item.medication && (
-                            <p className="text-[11px] text-muted-foreground">
-                              <span className="font-semibold text-foreground">Prescription / Lot #:</span> {item.medication}
-                            </p>
-                          )}
-
-                          <div className="flex items-center justify-between pt-1.5 border-t border-border/40 text-[10px] text-muted-foreground">
-                            <span>Attending Clinician: <strong className="text-foreground">{item.vetName}</strong></span>
-                            <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                              <CheckCircle2 className="size-3" /> {item.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
-
-                {/* Tab 3: Vaccinations */}
-                <TabsContent value="vaccinations" className="space-y-3 pt-2 text-xs">
-                  <div className={cn(
-                    "p-3.5 rounded-xl border space-y-2",
-                    selectedPet.vaccinated
-                      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-900 dark:text-emerald-100"
-                      : "border-rose-500/30 bg-rose-500/5 text-rose-900 dark:text-rose-100"
-                  )}>
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-xs flex items-center gap-1.5">
-                        <ShieldCheck className={cn("size-4", selectedPet.vaccinated ? "text-emerald-600" : "text-rose-600")} />
-                        Anti-Rabies Protection Ledger (RA 9482)
-                      </p>
-                      <Badge
-                        className={cn(
-                          "text-[10px] font-bold border-0",
-                          selectedPet.vaccinated
-                            ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
-                            : "bg-rose-500/20 text-rose-700 dark:text-rose-300"
-                        )}
-                      >
-                        {selectedPet.vaccinated ? "Certified Up-To-Date" : "Vaccination Due"}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
-                      <div className="p-2 rounded-lg bg-background/60 border border-border/40">
-                        <span className="text-[10px] text-muted-foreground block">Last Dose Date</span>
-                        <strong className="text-foreground">{selectedPet.lastVaccinationDate || "No record on file"}</strong>
-                      </div>
-                      <div className="p-2 rounded-lg bg-background/60 border border-border/40">
-                        <span className="text-[10px] text-muted-foreground block">Next Annual Booster</span>
-                        <strong className="text-foreground">{selectedPet.nextVaccinationDate || "Immediate Attention Required"}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                      <FileCheck2 className="size-3 text-primary" />
-                      Official Cagayan de Oro Immunization Certificate
-                    </p>
-                    <div className="p-3 rounded-xl border border-border/70 bg-card/60 space-y-2">
-                      <div className="flex items-center justify-between font-bold text-foreground">
-                        <span className="text-xs">Rabisin Inactivated Rabies Vaccine (1.0 mL SC)</span>
-                        <Badge variant="outline" className="text-[9px] bg-primary/5 text-primary border-primary/20">
-                          Annual Core
-                        </Badge>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground space-y-0.5">
-                        <p>Lot #RB-2026-9844 • Government Cold-Chain Batch</p>
-                        <p>Attending City Veterinarian: <strong>Dr. Helen Ann P. Tacandong, DVM</strong></p>
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-
-                {/* Tab 4: QR Pet Passport */}
-                <TabsContent value="passport" className="space-y-4 pt-2 text-xs text-center">
-                  <div className="p-5 rounded-2xl border border-border/80 bg-gradient-to-b from-card via-card to-muted/20 space-y-3.5 shadow-xs">
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                        Official CDO Digital Animal Passport
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        City Veterinary Office • Municipal Animal Registry of Cagayan de Oro
-                      </p>
-                    </div>
-
-                    {qrCodeUrl ? (
-                      <div className="p-2.5 rounded-2xl border-2 border-primary/20 bg-white max-w-fit mx-auto shadow-sm">
-                        <img
-                          src={qrCodeUrl}
-                          alt="QR Code Passport"
-                          className="size-36 mx-auto rounded-lg"
-                        />
-                      </div>
-                    ) : (
-                      <div className="size-36 mx-auto flex items-center justify-center bg-muted rounded-2xl border">
-                        <QrCode className="size-8 text-muted-foreground animate-pulse" />
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <p className="font-mono font-bold text-xs text-foreground tracking-wider bg-muted/50 max-w-fit mx-auto px-3 py-1 rounded-full border border-border/60">
-                        {selectedPet.id}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground max-w-xs mx-auto pt-1 leading-snug">
-                        Scan with any smartphone camera to verify patient microchip, anti-rabies immunity validity, and registered owner records.
-                      </p>
-                    </div>
-
-                    {qrCodeUrl && (
-                      <div className="pt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const a = document.createElement("a");
-                            a.href = qrCodeUrl;
-                            a.download = `cvo-pet-passport-${selectedPet.name || selectedPet.id}.png`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            toast.success("Pet Passport QR Downloaded", {
-                              description: `Saved QR code for ${selectedPet.name || "pet"}`,
-                            });
-                          }}
-                          className="h-8.5 px-4 gap-1.5 text-xs font-semibold cursor-pointer border-border hover:bg-muted rounded-lg shadow-2xs"
-                        >
-                          <Download className="size-3.5 text-emerald-600" />
-                          <span>Download High-Res QR Passport</span>
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      {/* ── Official Pet Profile Dialog (Matches Pet Owner View) ── */}
+      <PetProfileDialog
+        pet={selectedPet}
+        open={!!selectedPet}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedPet(null);
+          }
+        }}
+        onEditPet={(pet) => {
+          setPetToEdit(pet);
+          setEditDialogOpen(true);
+        }}
+        onDeletePet={(pet) => {
+          setPetToDelete(pet);
+          setDeleteDialogOpen(true);
+        }}
+        onAvatarChange={(url) => {
+          if (selectedPet) {
+            setSelectedPet({ ...selectedPet, photo_url: url });
+          }
+        }}
+        onPetUpdate={(updatedPet) => {
+          if (selectedPet && selectedPet.id === updatedPet.id) {
+            setSelectedPet((prev) => (prev ? { ...prev, ...updatedPet } : null));
+          }
+        }}
+        consultations={consultations}
+      />
 
       {/* ── Edit Pet Dialog ── */}
       <EditPetDialog
@@ -1356,115 +940,6 @@ export default function PetRegistryPage() {
           setDeleteDialogOpen(false);
         }}
       />
-
-      {/* ── Pet Digital Passport QR Modal ── */}
-      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md p-6 bg-background rounded-2xl shadow-2xl">
-          <DialogHeader className="border-b pb-3 pr-8 space-y-1">
-            <div className="flex items-center gap-2 text-primary">
-              <QrCode className="size-5 shrink-0" />
-              <DialogTitle className="text-base font-bold text-foreground">
-                Digital Animal Passport
-              </DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-muted-foreground">
-              Official CDO City Veterinary Office verification pass
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedPet && (
-            <div className="flex flex-col items-center justify-center pt-2 space-y-4 text-center">
-              {qrCodeUrl ? (
-                <div className="p-3.5 bg-white rounded-2xl border-2 border-primary/25 shadow-md max-w-fit mx-auto">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={qrCodeUrl}
-                    alt={`${selectedPet.name} QR Passport`}
-                    className="size-48 rounded-lg"
-                  />
-                </div>
-              ) : (
-                <div className="size-48 flex items-center justify-center bg-muted rounded-2xl border">
-                  <QrCode className="size-10 text-muted-foreground animate-pulse" />
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-center gap-2">
-                  <h3 className="font-extrabold text-lg text-foreground">
-                    {selectedPet.name}
-                  </h3>
-                  <Badge
-                    className={cn(
-                      "text-[10px] font-bold border-0 py-0.5 px-2",
-                      selectedPet.vaccinated
-                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                    )}
-                  >
-                    {selectedPet.vaccinated ? "Rabies Vaccinated" : "Unvaccinated"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {selectedPet.species} • {selectedPet.breed} • {selectedPet.sex}
-                </p>
-                <div className="pt-1 flex items-center justify-center gap-1.5">
-                  <Tag className="size-3 text-primary" />
-                  <span className="font-mono text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
-                    Tag #{selectedPet.microchip || selectedPet.id}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                Scan with any smartphone camera or CVO scanner to verify microchip, anti-rabies immunity validity, and registered owner records.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-2 w-full pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      `${window.location.origin}/verify/pet/${selectedPet.id}`
-                    );
-                    toast.success("Verification Link Copied", {
-                      description: "Public link copied to clipboard.",
-                    });
-                  }}
-                  className="h-9 text-xs font-semibold gap-1.5 cursor-pointer rounded-xl border-border hover:bg-muted"
-                >
-                  <Copy className="size-3.5" />
-                  <span>Copy Link</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    if (!qrCodeUrl) return;
-                    const a = document.createElement("a");
-                    a.href = qrCodeUrl;
-                    a.download = `cvo-pet-passport-${selectedPet.name || selectedPet.id}.png`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    toast.success("Pet Passport QR Downloaded", {
-                      description: `Saved QR code for ${selectedPet.name || "pet"}`,
-                    });
-                  }}
-                  className="h-9 text-xs font-semibold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer rounded-xl shadow-xs"
-                >
-                  <Download className="size-3.5" />
-                  <span>Download QR</span>
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* ── Pre-Export Filter Dialog ── */}
       <ExportTableDialog
