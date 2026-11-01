@@ -37,10 +37,13 @@ import {
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
 import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
+import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
+import { useSlotConfiguration } from "@/lib/cvo-slots";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Settings2, Scissors } from "lucide-react";
 
 const DEFAULT_ANNOUNCEMENTS: CVOAnnouncement[] = [
   {
@@ -121,7 +124,12 @@ export default function AnnouncementsManagementPage() {
     metadata?.roleTitle ||
     (isAdminEmail ? "Administrator" : "Veterinarian")
   );
+  const isStaff =
+    isAdminEmail ||
+    userRole === "Administrator" ||
+    userRole === "Veterinarian";
   const authorName = dbUser?.full_name || user?.fullName || "City Veterinary Staff";
+  const { slotConfig } = useSlotConfiguration();
 
   // Fetch announcements
   const { data: dbAnnouncements } = useQuery<CVOAnnouncement[]>({
@@ -734,8 +742,82 @@ export default function AnnouncementsManagementPage() {
           )}
         </div>
 
-        {/* Right Column: Broadcast Guidelines */}
+        {/* Right Column: Broadcast Guidelines & Live Procedure Quotas */}
         <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-4">
+
+          {/* Card 1: Municipal Procedure Daily Quotas Configuration */}
+          <Card className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs space-y-3.5 overflow-hidden">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-8.5 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+                <Settings2 className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-foreground truncate">
+                  Municipal Procedure Quotas
+                </h4>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  Live citizen booking capacity
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              {/* Vaccination Quota Badge */}
+              <div className="p-2.5 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-1 min-w-0">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 min-w-0 truncate">
+                    <Syringe className="size-3 shrink-0 text-emerald-600" />
+                    <span className="truncate">Vaccine</span>
+                  </span>
+                  <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-bold shrink-0">
+                    Daily
+                  </Badge>
+                </div>
+                <div className="flex items-baseline gap-1 pt-0.5">
+                  <span className="text-lg sm:text-xl font-black text-foreground">{slotConfig.defaultVaccinationSlots}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">slots/day</span>
+                </div>
+              </div>
+
+              {/* Spay & Neuter Quota Badge */}
+              <div className="p-2.5 rounded-xl border border-indigo-500/25 bg-indigo-500/5 space-y-1 min-w-0">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10.5px] font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1 min-w-0 truncate">
+                    <Scissors className="size-3 shrink-0 text-indigo-600" />
+                    <span className="truncate">Kapon</span>
+                  </span>
+                  <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 font-bold shrink-0">
+                    Surgical
+                  </Badge>
+                </div>
+                <div className="flex items-baseline gap-1 pt-0.5">
+                  <span className="text-lg sm:text-xl font-black text-foreground">{slotConfig.defaultSpayNeuterSlots}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">slots/day</span>
+                </div>
+              </div>
+            </div>
+
+            <SlotCapacityManagerDialog
+              isStaff={isStaff}
+              userRole={userRole}
+              trigger={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-8 text-xs font-bold gap-1.5 rounded-xl border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50 transition-all cursor-pointer shadow-2xs justify-center"
+                >
+                  <Settings2 className="size-3.5" />
+                  <span>{isStaff ? "Configure Procedure Quotas" : "View Quota Schedule"}</span>
+                </Button>
+              }
+            />
+
+            {Object.keys(slotConfig.dateOverrides || {}).length > 0 && (
+              <p className="text-[10px] text-muted-foreground bg-muted/40 p-2 rounded-xl border border-border/50 leading-relaxed">
+                ⚡ <strong>{Object.keys(slotConfig.dateOverrides).length} custom date override{Object.keys(slotConfig.dateOverrides).length === 1 ? "" : "s"}</strong> active for outreach or holiday operations.
+              </p>
+            )}
+          </Card>
 
           {/* Card 2: Publishing Policy Notice */}
           <Card className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs space-y-3">

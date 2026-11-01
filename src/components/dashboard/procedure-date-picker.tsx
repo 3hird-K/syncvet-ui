@@ -17,6 +17,7 @@ import {
   calculateSlotStatus,
   getSlotConfiguration,
   type DaySlotStatus,
+  type SlotConfiguration,
 } from "@/lib/cvo-slots";
 
 interface ProcedureDatePickerProps {
@@ -29,6 +30,7 @@ interface ProcedureDatePickerProps {
   conflictPetName?: string;
   className?: string;
   placeholder?: string;
+  config?: SlotConfiguration;
 }
 
 export function ProcedureDatePicker({
@@ -41,9 +43,25 @@ export function ProcedureDatePicker({
   conflictPetName,
   className,
   placeholder = "Select an available appointment date",
+  config: propConfig,
 }: ProcedureDatePickerProps) {
   const [open, setOpen] = React.useState(false);
-  const config = React.useMemo(() => getSlotConfiguration(), []);
+  const [localConfig, setLocalConfig] = React.useState<SlotConfiguration>(() => getSlotConfiguration());
+
+  React.useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const custom = e as CustomEvent<SlotConfiguration>;
+      setLocalConfig(custom.detail || getSlotConfiguration());
+    };
+    window.addEventListener("cvo-slot-config-updated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("cvo-slot-config-updated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
+
+  const config = propConfig || localConfig;
 
   const conflictDateFormatted = React.useMemo(() => {
     if (!conflictDate) return "";

@@ -56,7 +56,9 @@ import {
   type ProcedureServiceType,
   PROCEDURE_SERVICES,
   getSlotConfiguration,
+  getCapacityForDate,
   calculateSlotStatus,
+  useSlotConfiguration,
 } from "@/lib/cvo-slots";
 import { ProcedureDatePicker } from "./procedure-date-picker";
 
@@ -103,6 +105,7 @@ export function ScheduleProcedureDialog({
   const { user } = useUser();
   const queryClient = useQueryClient();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
+  const { slotConfig } = useSlotConfiguration();
 
   // Fetch all existing booked appointments to compute live slots
   // Fetch all existing booked appointments to compute live slots & detect duplicate bookings
@@ -312,7 +315,7 @@ export function ScheduleProcedureDialog({
   useEffect(() => {
     if (!open && !embedded) return;
     const channel = supabase
-      .channel("realtime-procedure-slots")
+      .channel(`realtime-procedure-slots-${Math.random().toString(36).substring(2, 9)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "appointments" },
@@ -327,6 +330,45 @@ export function ScheduleProcedureDialog({
       supabase.removeChannel(channel);
     };
   }, [open, embedded, supabase, queryClient]);
+
+  // Active slot capacity and real-time booked deduction for the selected date (or today)
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const activeCheckDateStr = useMemo(() => {
+    return appointmentDate ? format(appointmentDate, "yyyy-MM-dd") : todayStr;
+  }, [appointmentDate, todayStr]);
+
+  const activeVaxCapacity = useMemo(() => {
+    return getCapacityForDate(appointmentDate || new Date(), "vaccination", slotConfig);
+  }, [appointmentDate, slotConfig]);
+
+  const activeSurgeryCapacity = useMemo(() => {
+    return getCapacityForDate(appointmentDate || new Date(), "spay-neuter", slotConfig);
+  }, [appointmentDate, slotConfig]);
+
+  const activeBookedVaxCount = useMemo(() => {
+    return bookedAppointments.filter((a) => {
+      const s = (a.service_id || "").toLowerCase();
+      return (
+        (s === "vaccination" || s.includes("vax") || s.includes("rabies")) &&
+        a.date === activeCheckDateStr &&
+        a.status !== "cancelled"
+      );
+    }).length;
+  }, [bookedAppointments, activeCheckDateStr]);
+
+  const activeBookedSurgeryCount = useMemo(() => {
+    return bookedAppointments.filter((a) => {
+      const s = (a.service_id || "").toLowerCase();
+      return (
+        (s === "spay-neuter" || s.includes("spay") || s.includes("neuter") || s.includes("kapon")) &&
+        a.date === activeCheckDateStr &&
+        a.status !== "cancelled"
+      );
+    }).length;
+  }, [bookedAppointments, activeCheckDateStr]);
+
+  const remainingVaxSlots = Math.max(0, activeVaxCapacity - activeBookedVaxCount);
+  const remainingSurgerySlots = Math.max(0, activeSurgeryCapacity - activeBookedSurgeryCount);
 
   // Selected pet object
   const currentPet = useMemo(() => {
@@ -697,6 +739,7 @@ export function ScheduleProcedureDialog({
         date: appointmentDate,
         service,
         bookedAppointments,
+        config: slotConfig,
       });
 
       if (!status.isAvailable) {
@@ -946,18 +989,38 @@ export function ScheduleProcedureDialog({
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap",
+                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap gap-1 items-center flex",
                   isVaccinationScheduled
                     ? "bg-muted text-muted-foreground border-border/60"
+                    : remainingVaxSlots === 0
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
                     : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                 )}
               >
-                10 Slots / Day
+                {!isVaccinationScheduled && (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full shrink-0",
+                      remainingVaxSlots === 0 ? "bg-amber-500" : "bg-emerald-500 animate-pulse"
+                    )}
+                  />
+                )}
+                <span>
+                  {isVaccinationScheduled
+                    ? "Scheduled"
+                    : activeBookedVaxCount > 0
+                    ? `${remainingVaxSlots} of ${activeVaxCapacity} Slots`
+                    : `${activeVaxCapacity} Slots`}
+                </span>
               </Badge>
             </div>
             <p className="text-[10px] text-muted-foreground leading-snug">
               {isVaccinationScheduled
                 ? `Confirmed on ${existingVaccinationDateFormatted}. Double booking is disabled.`
+                : remainingVaxSlots === 0
+                ? "Daily quota filled for this date. Please pick another date."
+                : activeBookedVaxCount > 0
+                ? `${activeBookedVaxCount} queued · Walk-in queue & immunization.`
                 : "Annual rabies vaccine & health certificate validation."}
             </p>
           </div>
@@ -1017,18 +1080,38 @@ export function ScheduleProcedureDialog({
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap",
+                  "text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 h-auto leading-none shrink-0 whitespace-nowrap gap-1 items-center flex",
                   isSpayNeuterScheduled
                     ? "bg-muted text-muted-foreground border-border/60"
+                    : remainingSurgerySlots === 0
+                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
                     : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30"
                 )}
               >
-                5 Slots / Day
+                {!isSpayNeuterScheduled && (
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full shrink-0",
+                      remainingSurgerySlots === 0 ? "bg-rose-500" : "bg-indigo-500 animate-pulse"
+                    )}
+                  />
+                )}
+                <span>
+                  {isSpayNeuterScheduled
+                    ? "Scheduled"
+                    : activeBookedSurgeryCount > 0
+                    ? `${remainingSurgerySlots} of ${activeSurgeryCapacity} Slots`
+                    : `${activeSurgeryCapacity} Slots`}
+                </span>
               </Badge>
             </div>
             <p className="text-[10px] text-muted-foreground leading-snug">
               {isSpayNeuterScheduled
                 ? `Confirmed on ${existingSpayNeuterDateFormatted}. Double booking is disabled.`
+                : remainingSurgerySlots === 0
+                ? "Surgery quota filled for this date. Please pick another date."
+                : activeBookedSurgeryCount > 0
+                ? `${activeBookedSurgeryCount} booked · By scheduled surgery slot.`
                 : "Surgical procedure with licensed veterinary anesthesia team."}
             </p>
           </div>
@@ -1203,6 +1286,7 @@ export function ScheduleProcedureDialog({
               conflictServiceTitle={conflictingServiceTitle}
               conflictPetName={currentPet?.name}
               placeholder={`Pick an available weekday for ${serviceConfig.shortTitle}`}
+              config={slotConfig}
             />
 
             {/* Same-day procedure conflict warning (Veterinary Safety Rule) */}

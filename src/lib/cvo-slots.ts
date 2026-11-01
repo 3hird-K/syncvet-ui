@@ -23,7 +23,12 @@ export interface DaySlotStatus {
   statusLabel: string;
 }
 
+import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+
 const STORAGE_KEY_SLOT_CONFIG = "syncvet_cvo_slot_configuration_v1";
+const SYSTEM_QUOTA_ANNOUNCEMENT_TITLE = "[CVO_PROCEDURE_QUOTA_CONFIG]";
 
 const DEFAULT_CONFIG: SlotConfiguration = {
   defaultVaccinationSlots: 10,
@@ -46,10 +51,152 @@ export function saveSlotConfiguration(config: SlotConfiguration) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY_SLOT_CONFIG, JSON.stringify(config));
-    window.dispatchEvent(new Event("cvo-slot-config-updated"));
+    window.dispatchEvent(new CustomEvent("cvo-slot-config-updated", { detail: config }));
   } catch (err) {
     console.error("Failed to save slot configuration", err);
   }
+}
+
+/**
+ * Fetch slot configuration from Supabase with localStorage fallback
+ */
+export async function fetchSlotConfigurationFromDb(): Promise<SlotConfiguration> {
+  const local = getSlotConfiguration();
+  try {
+    const supabase = getPublicSupabaseClient();
+    const { data, error } = await supabase
+      .from("announcements")
+      .select("content")
+      .eq("title", SYSTEM_QUOTA_ANNOUNCEMENT_TITLE)
+      .maybeSingle();
+
+    if (data?.content && !error) {
+      const parsed = JSON.parse(data.content);
+      const merged: SlotConfiguration = {
+        defaultVaccinationSlots: Number(parsed.defaultVaccinationSlots) || DEFAULT_CONFIG.defaultVaccinationSlots,
+        defaultSpayNeuterSlots: Number(parsed.defaultSpayNeuterSlots) || DEFAULT_CONFIG.defaultSpayNeuterSlots,
+        dateOverrides: parsed.dateOverrides || {},
+      };
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY_SLOT_CONFIG, JSON.stringify(merged));
+      }
+      return merged;
+    }
+  } catch (err) {
+    console.warn("Notice: Fetching slot configuration from DB fallback to local:", err);
+  }
+  return local;
+}
+
+/**
+ * Save slot configuration to both Supabase and localStorage, and broadcast realtime update
+ */
+export async function saveSlotConfigurationToDb(config: SlotConfiguration): Promise<void> {
+  saveSlotConfiguration(config);
+
+  try {
+    const supabase = getPublicSupabaseClient();
+
+    // Check if configuration announcement record already exists
+    const { data: existing } = await supabase
+      .from("announcements")
+      .select("id")
+      .eq("title", SYSTEM_QUOTA_ANNOUNCEMENT_TITLE)
+      .maybeSingle();
+
+    const payload = {
+      title: SYSTEM_QUOTA_ANNOUNCEMENT_TITLE,
+      content: JSON.stringify(config),
+      category: "Clinic Schedule",
+      priority: "normal",
+      author_name: "CVO Administrator",
+      author_role: "Administrator",
+      is_active: false, // hidden from citizen announcements feed
+      is_pinned: false,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing?.id) {
+      await supabase
+        .from("announcements")
+        .update(payload)
+        .eq("id", existing.id);
+    } else {
+      await supabase
+        .from("announcements")
+        .insert([payload]);
+    }
+  } catch (err) {
+    console.error("Failed to persist slot configuration to Supabase:", err);
+  }
+}
+
+/**
+ * React hook that returns the active SlotConfiguration and keeps it synchronized in real-time
+ */
+export function useSlotConfiguration() {
+  const queryClient = useQueryClient();
+  const [localConfig, setLocalConfig] = useState<SlotConfiguration>(() => getSlotConfiguration());
+
+  const { data: config = localConfig, isLoading } = useQuery<SlotConfiguration>({
+    queryKey: ["cvo-slot-configuration"],
+    queryFn: fetchSlotConfigurationFromDb,
+    initialData: localConfig,
+    staleTime: 10_000,
+  });
+
+  useEffect(() => {
+    const supabase = getPublicSupabaseClient();
+    const channelName = `cvo-quota-sync-${Math.random().toString(36).substring(2, 9)}`;
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "announcements" },
+        (payload: any) => {
+          if (payload.new?.title === SYSTEM_QUOTA_ANNOUNCEMENT_TITLE && payload.new?.content) {
+            try {
+              const parsed = JSON.parse(payload.new.content);
+              saveSlotConfiguration(parsed);
+              setLocalConfig(parsed);
+              queryClient.setQueryData(["cvo-slot-configuration"], parsed);
+              queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+              queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
+            } catch {}
+          }
+        }
+      )
+      .subscribe();
+
+    const handleLocalUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<SlotConfiguration>;
+      const newConf = customEvent.detail || getSlotConfiguration();
+      setLocalConfig(newConf);
+      queryClient.setQueryData(["cvo-slot-configuration"], newConf);
+    };
+
+    window.addEventListener("cvo-slot-config-updated", handleLocalUpdate);
+    window.addEventListener("storage", handleLocalUpdate);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("cvo-slot-config-updated", handleLocalUpdate);
+      window.removeEventListener("storage", handleLocalUpdate);
+    };
+  }, [queryClient]);
+
+  const updateConfig = async (newConfig: SlotConfiguration) => {
+    setLocalConfig(newConfig);
+    queryClient.setQueryData(["cvo-slot-configuration"], newConfig);
+    await saveSlotConfigurationToDb(newConfig);
+  };
+
+  return {
+    slotConfig: config,
+    isLoading,
+    updateConfig,
+  };
 }
 
 export function getCapacityForDate(date: Date, service: ProcedureServiceType, config?: SlotConfiguration): number {

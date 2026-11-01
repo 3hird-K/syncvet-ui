@@ -459,9 +459,9 @@ export function PetOwnerQueueTracker({
             trigger={
               <Button
                 size="sm"
-                className="h-8.5 px-3.5 text-xs font-bold gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="h-7.5 px-3 text-[11px] font-semibold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Camera className="size-3.5" />
+                <Camera className="size-3" />
                 <span>Scan QR</span>
               </Button>
             }

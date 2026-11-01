@@ -122,7 +122,7 @@ import { EditProfileDialog } from "@/components/dashboard/edit-profile-dialog";
 import { DeleteConsultationDialog } from "@/components/dashboard/delete-consultation-dialog";
 import { ScheduleProcedureDialog } from "@/components/dashboard/schedule-procedure-dialog";
 import { ProcedureAppointmentSlipDialog } from "@/components/dashboard/procedure-appointment-slip-dialog";
-import { getSlotConfiguration, PROCEDURE_SERVICES } from "@/lib/cvo-slots";
+import { getSlotConfiguration, PROCEDURE_SERVICES, useSlotConfiguration } from "@/lib/cvo-slots";
 import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-card";
 import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
@@ -147,6 +147,7 @@ export default function PetOwnerPortalPage() {
   const { consultations, activeRoleView, setActiveRoleView } = useCVO();
   const { openChatWithPet, unreadCount } = useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
+  const { slotConfig } = useSlotConfiguration();
 
   const [activeTab, setActiveTab] = useState("feed");
   const [showPetCards, setShowPetCards] = useState(false);
@@ -365,15 +366,6 @@ export default function PetOwnerPortalPage() {
   const [selectedAppointmentForSlip, setSelectedAppointmentForSlip] = useState<any>(null);
   const [appointmentSlipOpen, setAppointmentSlipOpen] = useState(false);
   const [appointmentFilter, setAppointmentFilter] = useState<"all" | "upcoming" | "missed" | "completed">("all");
-  const [slotConfig, setSlotConfig] = useState(() => getSlotConfiguration());
-
-  useEffect(() => {
-    const handleConfigUpdate = () => {
-      setSlotConfig(getSlotConfiguration());
-    };
-    window.addEventListener("cvo-slot-config-updated", handleConfigUpdate);
-    return () => window.removeEventListener("cvo-slot-config-updated", handleConfigUpdate);
-  }, []);
 
   const [isConsultationValid, setIsConsultationValid] = useState(false);
   const [isProcedureValid, setIsProcedureValid] = useState(false);
@@ -2386,27 +2378,46 @@ export default function PetOwnerPortalPage() {
                   }
 
                   return (
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-primary/8 via-primary/[0.03] to-transparent border border-primary/25 space-y-3 shadow-2xs">
-                      {/* Header row with live indicator and relative badge */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="relative flex size-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-                            Next Appointment
-                          </span>
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-primary/8 via-primary/[0.03] to-transparent border border-primary/25 space-y-2 shadow-2xs">
+                      {/* Pet profile, appointment date, and relative badge */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="relative shrink-0">
+                            <PetAvatar
+                              photoUrl={nextAptPet?.photo_url}
+                              species={nextAptPet?.species}
+                              name={nextAptPetName}
+                              size="sm"
+                              className="size-9 shadow-xs ring-2 ring-primary/20 ring-offset-1 ring-offset-background"
+                            />
+                          </div>
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-bold text-xs sm:text-[13px] text-foreground truncate">
+                                {nextAptPetName}
+                              </h4>
+                              {(nextApt.service_type || nextApt.serviceType) && (
+                                <span className="text-[9.5px] font-medium px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 truncate">
+                                  {nextApt.service_type || nextApt.serviceType}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                              <Calendar className="size-3 shrink-0 text-primary" />
+                              <span>{formattedDate}</span>
+                            </p>
+                          </div>
                         </div>
+
                         {relativeLabel && (
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[10px] font-semibold px-2 py-0.5 rounded-full",
+                              "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0",
                               isAptToday
-                                ? "bg-emerald-600 text-white border-transparent shadow-2xs font-bold"
+                                ? "bg-emerald-600 text-white border-transparent shadow-2xs"
                                 : relativeLabel === "Tomorrow"
-                                ? "bg-primary/10 text-primary border-primary/30 font-bold"
+                                ? "bg-primary/10 text-primary border-primary/30"
                                 : "bg-muted/60 text-muted-foreground border-border/60"
                             )}
                           >
@@ -2415,37 +2426,8 @@ export default function PetOwnerPortalPage() {
                         )}
                       </div>
 
-                      {/* Pet profile and appointment date */}
-                      <div className="flex items-center gap-3">
-                        <div className="relative shrink-0">
-                          <PetAvatar
-                            photoUrl={nextAptPet?.photo_url}
-                            species={nextAptPet?.species}
-                            name={nextAptPetName}
-                            size="sm"
-                            className="size-11 shadow-xs ring-2 ring-primary/20 ring-offset-1 ring-offset-background"
-                          />
-                        </div>
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className="font-bold text-sm text-foreground truncate">
-                              {nextAptPetName}
-                            </h4>
-                            {(nextApt.service_type || nextApt.serviceType) && (
-                              <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-primary/10 text-primary border border-primary/20 truncate">
-                                {nextApt.service_type || nextApt.serviceType}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                            <Calendar className="size-3.5 shrink-0 text-primary" />
-                            <span>{formattedDate}</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Action buttons and friendly arrival status */}
-                      <div className="space-y-2 pt-0.5">
+                      {/* Action button */}
+                      <div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -2453,25 +2435,11 @@ export default function PetOwnerPortalPage() {
                             setSelectedAppointmentForSlip(nextApt);
                             setAppointmentSlipOpen(true);
                           }}
-                          className="w-full h-8.5 text-xs font-semibold gap-2 rounded-xl cursor-pointer bg-card hover:bg-muted border-border/80 hover:border-primary/40 shadow-2xs transition-all active:scale-[0.99]"
+                          className="w-full h-7 text-[10.5px] font-semibold gap-1.5 rounded-lg cursor-pointer bg-card hover:bg-muted border-border/80 hover:border-primary/40 shadow-2xs transition-all active:scale-[0.99]"
                         >
-                          <Printer className="size-3.5 text-primary" />
+                          <Printer className="size-3 text-primary" />
                           <span>View Appointment Slip</span>
                         </Button>
-
-                        {isAptToday ? (
-                          <div className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium select-none text-center">
-                            <CheckCircle2 className="size-3 shrink-0" />
-                            <span>Scheduled for today • Check in via clinic QR scan banner</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground font-medium select-none">
-                            <Clock className="size-3 text-primary/70 shrink-0" />
-                            <span>
-                              Arrival check-in activates {relativeLabel ? relativeLabel.toLowerCase() : `on ${formattedDate}`}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
@@ -2518,13 +2486,12 @@ export default function PetOwnerPortalPage() {
         </CardContent>
       </Card>
 
-      {/* CVO Municipal Clinic Services */}
+      {/* CVO Municipal Clinic Services & Hours */}
       <CVOClinicInfoCard
-        vaxSlots={slotConfig.defaultVaccinationSlots}
-        surgerySlots={slotConfig.defaultSpayNeuterSlots}
         isStaff={isStaff}
         currentUserRole={userRole}
-        hideQuotasAndEmergency={true}
+        showQuotas={false}
+        hideEmergency={true}
       />
 
       {/* 24/7 Animal Bite Emergency & Help Card */}

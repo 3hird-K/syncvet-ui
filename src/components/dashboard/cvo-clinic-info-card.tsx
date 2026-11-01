@@ -16,6 +16,7 @@ import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-
 import {
   getSlotConfiguration,
   getCapacityForDate,
+  useSlotConfiguration,
   type SlotConfiguration,
 } from "@/lib/cvo-slots";
 import { useUser } from "@clerk/nextjs";
@@ -33,6 +34,8 @@ interface CVOClinicInfoCardProps {
   onBookProcedureClick?: () => void;
   onRequestConsultationClick?: () => void;
   hideQuotasAndEmergency?: boolean;
+  showQuotas?: boolean;
+  hideEmergency?: boolean;
 }
 
 export function CVOClinicInfoCard({
@@ -42,9 +45,14 @@ export function CVOClinicInfoCard({
   currentUserRole: propUserRole,
   onBookProcedureClick,
   hideQuotasAndEmergency = false,
+  showQuotas,
+  hideEmergency = false,
 }: CVOClinicInfoCardProps) {
   const [slotDialogOpen, setSlotDialogOpen] = useState(false);
-  const [slotConfig, setSlotConfig] = useState<SlotConfiguration>(() => getSlotConfiguration());
+  const { slotConfig } = useSlotConfiguration();
+
+  const isQuotasVisible = showQuotas !== undefined ? showQuotas : !hideQuotasAndEmergency;
+  const isEmergencyVisible = !hideEmergency && (!hideQuotasAndEmergency || showQuotas);
 
   const queryClient = useQueryClient();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
@@ -109,7 +117,7 @@ export function CVOClinicInfoCard({
 
   // Supabase Realtime subscription: update slots live when pet owners book, cancel, or reschedule
   useEffect(() => {
-    const channelName = "cvo-quota-realtime";
+    const channelName = `cvo-clinic-card-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -130,7 +138,6 @@ export function CVOClinicInfoCard({
       .subscribe();
 
     const handleConfigOrBookingUpdate = () => {
-      setSlotConfig(getSlotConfiguration());
       queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
     };
 
@@ -202,14 +209,6 @@ export function CVOClinicInfoCard({
                 </p>
               </div>
             </div>
-
-            <Badge
-              variant="outline"
-              className="text-[10px] px-2 py-0.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 font-bold shrink-0 gap-1.5 ml-auto sm:ml-0"
-            >
-              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Walk-in Open
-            </Badge>
           </div>
         </CardHeader>
 
@@ -233,154 +232,33 @@ export function CVOClinicInfoCard({
             </div>
           </div>
 
-          {!hideQuotasAndEmergency && (
-            <>
-              {/* Free Municipal Quotas (Live Real-Time Deducted Slots) */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Daily Municipal Quotas
-                    </span>
-                    {canEdit && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSlotDialogOpen(true)}
-                        className="h-5 px-1.5 text-[10px] font-bold text-primary hover:bg-primary/10 rounded-md flex items-center gap-1 cursor-pointer transition-colors"
-                        title="Modify daily municipal procedure quotas"
-                      >
-                        <Pencil className="size-2.5" />
-                        <span>Edit Slots</span>
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      100% Free for CDO
-                    </span>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  {/* Rabies Vax */}
-                  <div
-                    onClick={canEdit ? () => setSlotDialogOpen(true) : onBookProcedureClick}
-                    className={cn(
-                      "p-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-1 relative transition-all",
-                      remainingVaxSlots === 0 && "border-amber-500/40 bg-amber-500/10",
-                      canEdit && "cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:shadow-xs group",
-                      !canEdit && onBookProcedureClick && "cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/10"
-                    )}
-                    title={canEdit ? "Click to edit Rabies Vaccination quota" : onBookProcedureClick ? "Click to schedule procedure" : undefined}
-                  >
-                    {canEdit ? (
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200">
-                          <Pencil className="size-2" /> Edit
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-2 right-2">
-                        <span className="inline-flex items-center gap-1 text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
-                          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          Live
-                        </span>
-                      </div>
-                    )}
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 block">
-                      Rabies Vax
-                    </span>
-                    <p className="text-xl font-extrabold text-foreground tracking-tight flex items-baseline gap-1">
-                      <span className={cn(remainingVaxSlots === 0 && "text-amber-600 dark:text-amber-400")}>
-                        {remainingVaxSlots}
-                      </span>
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {bookedVaxCount > 0 ? `of ${baseVaxCapacity} Slots` : "Slots"}
-                      </span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      {remainingVaxSlots === 0
-                        ? "Quota filled for today"
-                        : bookedVaxCount > 0
-                        ? `${bookedVaxCount} queued · Walk-in queue`
-                        : "Walk-in daily queue"}
-                    </p>
-                  </div>
 
-                  {/* Spay / Neuter */}
-                  <div
-                    onClick={canEdit ? () => setSlotDialogOpen(true) : onBookProcedureClick}
-                    className={cn(
-                      "p-3 rounded-xl border border-indigo-500/25 bg-indigo-500/5 space-y-1 relative transition-all",
-                      remainingSurgerySlots === 0 && "border-rose-500/40 bg-rose-500/10",
-                      canEdit && "cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/10 hover:shadow-xs group",
-                      !canEdit && onBookProcedureClick && "cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/10"
-                    )}
-                    title={canEdit ? "Click to edit Spay & Neuter quota" : onBookProcedureClick ? "Click to schedule procedure" : undefined}
-                  >
-                    {canEdit ? (
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-800 dark:text-indigo-200">
-                          <Pencil className="size-2" /> Edit
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-2 right-2">
-                        <span className="inline-flex items-center gap-1 text-[9px] font-medium text-indigo-600 dark:text-indigo-400">
-                          <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                          Live
-                        </span>
-                      </div>
-                    )}
-                    <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 block">
-                      Spay / Neuter
-                    </span>
-                    <p className="text-xl font-extrabold text-foreground tracking-tight flex items-baseline gap-1">
-                      <span className={cn(remainingSurgerySlots === 0 && "text-rose-600 dark:text-rose-400")}>
-                        {remainingSurgerySlots}
-                      </span>
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {bookedSurgeryCount > 0 ? `of ${baseSurgeryCapacity} Slots` : "Slots"}
-                      </span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      {remainingSurgerySlots === 0
-                        ? "Fully booked today"
-                        : bookedSurgeryCount > 0
-                        ? `${bookedSurgeryCount} booked today · By scheduled slot`
-                        : "By scheduled slot"}
-                    </p>
-                  </div>
-                </div>
+          {/* Rabies Bite Center Helpline */}
+          {isEmergencyVisible && (
+            <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-1.5">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Phone className="size-3.5 text-amber-600" />
+                  Bite Center & Emergency
+                </span>
+                <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-md">
+                  24/7 Hotline
+                </span>
               </div>
-
-              {/* Rabies Bite Center Helpline */}
-              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-1.5">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Phone className="size-3.5 text-amber-600" />
-                    Bite Center & Emergency
-                  </span>
-                  <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-md">
-                    24/7 Hotline
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  In case of bite exposure, immediately wash wound with soap and running water for 15 minutes, then report to CVO.
-                </p>
-                <div className="flex items-center gap-2 pt-1 font-mono font-bold text-xs text-amber-800 dark:text-amber-300">
-                  <a href="tel:0888573180" className="hover:underline hover:text-foreground transition-colors">
-                    (088) 857-3180
-                  </a>
-                  <span className="text-muted-foreground">•</span>
-                  <a href="tel:911" className="hover:underline hover:text-foreground transition-colors">
-                    CDRRMD 911
-                  </a>
-                </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                In case of bite exposure, immediately wash wound with soap and running water for 15 minutes, then report to CVO.
+              </p>
+              <div className="flex items-center gap-2 pt-1 font-mono font-bold text-xs text-amber-800 dark:text-amber-300">
+                <a href="tel:0888573180" className="hover:underline hover:text-foreground transition-colors">
+                  (088) 857-3180
+                </a>
+                <span className="text-muted-foreground">•</span>
+                <a href="tel:911" className="hover:underline hover:text-foreground transition-colors">
+                  CDRRMD 911
+                </a>
               </div>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
