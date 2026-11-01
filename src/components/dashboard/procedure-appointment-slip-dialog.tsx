@@ -205,24 +205,25 @@ export function ProcedureAppointmentSlipDialog({
         </DialogHeader>
 
         {/* Top Print Action (placed right before the dialog Close 'X' icon) */}
-        <div className="absolute top-3 right-11 sm:top-4 sm:right-13 z-50 flex items-center gap-1.5 print:hidden">
+        <div className="absolute top-3.5 right-13 sm:top-4 sm:right-14 z-50 flex items-center gap-1.5 print:hidden">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={handlePrint}
-            className="h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/80 bg-background/95 hover:bg-muted text-foreground shadow-2xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+            className="size-8 sm:h-8 sm:w-auto p-0 sm:px-3 rounded-full text-xs font-bold gap-1.5 border-border/70 bg-muted/80 sm:bg-background/95 hover:bg-muted text-foreground shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
             title="Print Appointment Pass"
+            aria-label="Print Appointment Pass"
           >
-            <Printer className="size-3.5 text-primary" />
-            <span>Print</span>
+            <Printer className="size-4 text-primary shrink-0" />
+            <span className="hidden sm:inline">Print</span>
           </Button>
         </div>
 
         {/* Printable Pass Container */}
         <div id="cvo-appointment-slip" className="space-y-4 sm:space-y-5 text-foreground print:p-0">
           {/* Header Banner */}
-          <div className="border-b border-border/80 pb-3.5 sm:pb-4 pr-16 sm:pr-24">
+          <div className="border-b border-border/80 pb-3.5 sm:pb-4 pr-20 sm:pr-28">
             <div className="flex items-start sm:items-center gap-2.5 sm:gap-3">
               <div className="size-11 sm:size-13 rounded-xl bg-white p-1 border border-border/80 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden mt-0.5 sm:mt-0">
                 <Image
@@ -236,7 +237,7 @@ export function ProcedureAppointmentSlipDialog({
               </div>
               <div className="space-y-1 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <p className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-primary print:text-black">
+                  <p className="text-[9px] xs:text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider text-primary print:text-black leading-tight">
                     Cagayan de Oro City Veterinary Office
                   </p>
                   <Badge
@@ -286,9 +287,9 @@ export function ProcedureAppointmentSlipDialog({
             <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 {serviceType === "vaccination" ? (
-                  <Syringe className="size-3.5 text-emerald-600" />
+                  <Syringe className="size-3.5 text-emerald-600 shrink-0" />
                 ) : (
-                  <Scissors className="size-3.5 text-indigo-600" />
+                  <Scissors className="size-3.5 text-indigo-600 shrink-0" />
                 )}
                 Scheduled Procedure
               </span>
@@ -298,7 +299,7 @@ export function ProcedureAppointmentSlipDialog({
 
             <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-card space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Calendar className="size-3.5 text-primary" /> Scheduled Date
+                <Calendar className="size-3.5 text-primary shrink-0" /> Scheduled Date
               </span>
               <p className="font-bold text-xs sm:text-sm text-foreground">
                 {format(new Date(appointment.date), "EEEE, MMMM d, yyyy")}
@@ -367,7 +368,7 @@ export function ProcedureAppointmentSlipDialog({
           {/* Guidelines Reminder */}
           <div className="p-3 sm:p-3.5 rounded-xl border border-border/60 bg-muted/20 space-y-1.5 text-xs">
             <span className="font-bold text-foreground flex items-center gap-1.5 text-xs">
-              <ShieldCheck className="size-3.5 text-primary" /> Key Preparation Reminders
+              <ShieldCheck className="size-3.5 text-primary shrink-0" /> Key Preparation Reminders
             </span>
             <ul className="text-[10.5px] sm:text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
               {serviceConfig.prepGuidelines.slice(0, 3).map((item, i) => (
