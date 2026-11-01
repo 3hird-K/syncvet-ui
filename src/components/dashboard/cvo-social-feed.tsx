@@ -24,6 +24,8 @@ import {
   MoreHorizontal,
   Archive,
   QrCode,
+  Maximize2,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,6 +120,18 @@ export function CVOSocialFeed({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState<CVOAnnouncement | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
+
+  // Close lightbox on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && viewingImageUrl) {
+        setViewingImageUrl(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewingImageUrl]);
 
   // Fetch real users from Supabase to match profile pictures
   const { data: staffProfiles } = useQuery({
@@ -640,13 +654,23 @@ function stripAnnouncementTags(text?: string): string {
                 {/* ── 3. Attached Poster Image ── */}
                 {imageUrl && (
                   <div className="px-3.5 sm:px-4 pb-3.5">
-                    <div className="rounded-2xl overflow-hidden border border-border/70 bg-black/[0.03] dark:bg-black/30 shadow-2xs flex items-center justify-center">
+                    <div
+                      onClick={() => setViewingImageUrl(imageUrl)}
+                      className="rounded-2xl overflow-hidden border border-border/70 bg-black/[0.03] dark:bg-black/30 shadow-2xs flex items-center justify-center cursor-pointer group relative"
+                      title="Click to maximize image"
+                    >
                       <img
                         src={imageUrl}
                         alt={item.title}
-                        className="w-full h-auto max-h-[540px] object-contain rounded-2xl mx-auto"
+                        className="w-full h-auto max-h-[540px] object-contain rounded-2xl mx-auto transition-transform duration-200 group-hover:scale-[1.008]"
                         loading="lazy"
                       />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 flex items-center justify-center pointer-events-none">
+                        <span className="opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0 bg-black/75 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-full font-medium shadow-lg flex items-center gap-1.5">
+                          <Maximize2 className="size-3.5" />
+                          Click to maximize
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -746,6 +770,47 @@ function stripAnnouncementTags(text?: string): string {
         }}
         announcement={announcementToDelete}
       />
+
+      {/* Lightbox / Maximized Announcement Image Dialog */}
+      {viewingImageUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setViewingImageUrl(null)}
+        >
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+            <a
+              href={viewingImageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer backdrop-blur-sm shadow-md"
+              title="Open full resolution in new tab"
+            >
+              <ExternalLink className="size-5" />
+            </a>
+            <button
+              type="button"
+              onClick={() => setViewingImageUrl(null)}
+              className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer backdrop-blur-sm shadow-md"
+              title="Close (Esc)"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+          <div
+            className="relative max-w-full max-h-full flex items-center justify-center cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={viewingImageUrl}
+              alt="Maximized announcement"
+              className="max-h-[90vh] max-w-[95vw] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-200"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
