@@ -667,8 +667,8 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
         </Button>
       </DialogTrigger>
       <DialogContent showCloseButton={false} className="sm:max-w-2xl lg:max-w-3xl w-[96vw] max-h-[92vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-7 bg-background rounded-2xl shadow-2xl pointer-events-auto">
-        <DialogHeader className="border-b pb-3.5">
-          <div className="flex items-center justify-between gap-3">
+        <DialogHeader className="border-b pb-3.5 pr-0 sm:pr-0">
+          <div className="flex items-center justify-between gap-3 min-w-0 w-full">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
                 <Syringe className="size-4.5" />
@@ -684,7 +684,7 @@ export function LogVaccinationDialog({ onLogged }: { onLogged?: (record: any) =>
             </div>
 
             {/* Action Buttons: Save Record icon and X close button perfectly aligned side-by-side */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <Button
                 type="submit"
                 form="log-vaccination-form"

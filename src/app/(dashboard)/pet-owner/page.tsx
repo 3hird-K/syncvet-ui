@@ -9,7 +9,7 @@ import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { useCVO } from "@/lib/cvo-context";
-import { type CVOConsultation, isConsultationLockedByVet } from "@/data/cvo-store";
+import { type CVOConsultation, type CVOFieldOperation, isConsultationLockedByVet } from "@/data/cvo-store";
 import { getPetVaccinationStatus } from "@/lib/vaccination-rules";
 import {
   PawPrint,
@@ -66,6 +66,10 @@ import {
   ImageIcon,
   Check,
   Save,
+  Search,
+  Truck,
+  CalendarDays,
+  History,
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
@@ -144,13 +148,15 @@ interface ChatMessage {
 export default function PetOwnerPortalPage() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
-  const { consultations, activeRoleView, setActiveRoleView } = useCVO();
+  const { consultations, fieldOperations = [], activeRoleView, setActiveRoleView } = useCVO();
   const { openChatWithPet, unreadCount } = useCitizenChat();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const { slotConfig } = useSlotConfiguration();
 
   const [activeTab, setActiveTab] = useState("feed");
   const [showPetCards, setShowPetCards] = useState(false);
+  const [drivesViewMode, setDrivesViewMode] = useState<"upcoming" | "history">("upcoming");
+  const [drivesSearchQuery, setDrivesSearchQuery] = useState("");
 
   // Sync activeTab with Facebook Top Bar and URL params
   useEffect(() => {
@@ -171,6 +177,23 @@ export default function PetOwnerPortalPage() {
       const customEvent = e as CustomEvent<string>;
       if (customEvent.detail) {
         setActiveTab(customEvent.detail);
+        setTimeout(() => {
+          const mainEl = document.getElementById("app-main-scroll") || document.querySelector("main");
+          if (mainEl) {
+            try {
+              mainEl.scrollTo({ top: 0, behavior: "smooth" });
+            } catch {
+              mainEl.scrollTop = 0;
+            }
+          }
+          try {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          } catch {
+            window.scrollTo(0, 0);
+          }
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+        }, 50);
       }
     };
 
@@ -182,10 +205,18 @@ export default function PetOwnerPortalPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const resetScroll = () => {
-        window.scrollTo({ top: 0, behavior: "instant" });
         const mainEl = document.getElementById("app-main-scroll") || document.querySelector("main");
         if (mainEl) {
-          mainEl.scrollTop = 0;
+          try {
+            mainEl.scrollTo({ top: 0, behavior: "smooth" });
+          } catch {
+            mainEl.scrollTop = 0;
+          }
+        }
+        try {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {
+          window.scrollTo(0, 0);
         }
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
@@ -193,7 +224,9 @@ export default function PetOwnerPortalPage() {
 
       resetScroll();
       requestAnimationFrame(resetScroll);
-      setTimeout(resetScroll, 30);
+      setTimeout(resetScroll, 50);
+      setTimeout(resetScroll, 150);
+      setTimeout(resetScroll, 300);
     }
   }, [activeTab]);
 
@@ -826,6 +859,66 @@ export default function PetOwnerPortalPage() {
     dbUser?.address ||
     "Cagayan de Oro City, Misamis Oriental";
   const ownerAvatar = dbUser?.avatar_url || user?.imageUrl;
+
+  const formatOpDate = (dateStr?: string) => {
+    if (!dateStr) return "Scheduled Date";
+    try {
+      const d = parseISO(dateStr);
+      return isValid(d) ? format(d, "MMMM d, yyyy") : dateStr;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Active/Scheduled Field Operations administered by CVO
+  const activeOrScheduledDrives = useMemo(() => {
+    return fieldOperations.filter(
+      (op) => op.status === "in-progress" || op.status === "scheduled"
+    );
+  }, [fieldOperations]);
+
+  // Concluded Field Operations (History)
+  const completedOutreachHistory = useMemo(() => {
+    return fieldOperations.filter((op) => op.status === "completed");
+  }, [fieldOperations]);
+
+  // Find if there is an active/scheduled drive in the logged-in owner's barangay
+  const myBarangayDrive = useMemo(() => {
+    if (!ownerBarangay) return null;
+    const cleanOwnerBgy = ownerBarangay.toLowerCase().replace(/^barangay\s+/i, "").replace(/^brgy\.?\s+/i, "").trim();
+    return activeOrScheduledDrives.find((op) => {
+      const cleanOpBgy = (op.barangay || "").toLowerCase().replace(/^barangay\s+/i, "").replace(/^brgy\.?\s+/i, "").trim();
+      return cleanOpBgy.includes(cleanOwnerBgy) || cleanOwnerBgy.includes(cleanOpBgy);
+    });
+  }, [activeOrScheduledDrives, ownerBarangay]);
+
+  // Filtered upcoming drives by search query
+  const filteredUpcomingDrives = useMemo(() => {
+    if (!drivesSearchQuery.trim()) return activeOrScheduledDrives;
+    const q = drivesSearchQuery.toLowerCase();
+    return activeOrScheduledDrives.filter(
+      (op) =>
+        (op.barangay || "").toLowerCase().includes(q) ||
+        (op.venue && op.venue.toLowerCase().includes(q)) ||
+        (op.type && op.type.toLowerCase().includes(q)) ||
+        (op.opId && op.opId.toLowerCase().includes(q)) ||
+        (op.lead && op.lead.toLowerCase().includes(q))
+    );
+  }, [activeOrScheduledDrives, drivesSearchQuery]);
+
+  // Filtered completed drives by search query
+  const filteredCompletedDrives = useMemo(() => {
+    if (!drivesSearchQuery.trim()) return completedOutreachHistory;
+    const q = drivesSearchQuery.toLowerCase();
+    return completedOutreachHistory.filter(
+      (op) =>
+        (op.barangay || "").toLowerCase().includes(q) ||
+        (op.venue && op.venue.toLowerCase().includes(q)) ||
+        (op.type && op.type.toLowerCase().includes(q)) ||
+        (op.opId && op.opId.toLowerCase().includes(q)) ||
+        (op.lead && op.lead.toLowerCase().includes(q))
+    );
+  }, [completedOutreachHistory, drivesSearchQuery]);
 
   // Registered pets strictly from the user's account
   const pets = useMemo(() => {
@@ -2902,93 +2995,342 @@ export default function PetOwnerPortalPage() {
 
           {/* ════ TAB 4: Barangay Community Drives & Schedules ════ */}
           <TabsContent value="drives" className="space-y-4 pt-2">
-            <div>
-              <h3 className="text-base font-bold text-foreground">
-                Barangay Outreach & Mobile Veterinary Drives
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Scheduled free mass anti-rabies vaccination, deworming, and animal registration in Cagayan de Oro
-              </p>
-            </div>
+            <div id="drives-tab-top" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
+                  <MapPin className="size-5 text-teal-600 dark:text-teal-400" />
+                  <span>Barangay Outreach & Mobile Veterinary Drives</span>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Official community field missions: free anti-rabies vaccination, deworming, spay/neuter assessments & pet registration across Cagayan de Oro
+                </p>
+              </div>
 
-            <div className="space-y-3">
-              {/* Highlight for owner's barangay */}
-              <Card className="border-emerald-500/50 bg-gradient-to-r from-emerald-500/10 via-card to-card shadow-xs">
-                <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
-                        HAPPENING IN YOUR BARANGAY
-                      </Badge>
-                      <span className="text-xs font-bold text-emerald-600">This Saturday</span>
-                    </div>
-                    <h4 className="font-extrabold text-base text-foreground">
-                      Barangay {ownerBarangay} Mass Anti-Rabies & Deworming Drive
-                    </h4>
-                    <p className="text-xs text-muted-foreground">
-                      Location: Barangay {ownerBarangay} Covered Court • 8:00 AM – 3:00 PM
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Free rabies vaccine, oral deworming, and digital QR pet passport registration. Bring pets on leash or in carriers.
-                    </p>
-                  </div>
+              {/* View Mode Toggle: Upcoming vs History */}
+              <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl border border-border/60 shrink-0 self-start sm:self-auto">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={drivesViewMode === "upcoming" ? "default" : "ghost"}
+                  onClick={() => setDrivesViewMode("upcoming")}
+                  className={cn(
+                    "h-7 text-xs font-semibold gap-1.5 rounded-lg px-2.5 cursor-pointer",
+                    drivesViewMode === "upcoming"
+                      ? "bg-teal-600 hover:bg-teal-700 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <CalendarDays className="size-3.5" />
+                  <span>Upcoming & Live</span>
+                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 bg-background/30 text-current">
+                    {activeOrScheduledDrives.length}
+                  </Badge>
+                </Button>
 
-                  <PetOwnerConsultationDialog
-                    initialPet={pets[0]}
-                    ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                    trigger={
-                      <Button className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shrink-0">
-                        Pre-register Pet for Drive
-                      </Button>
-                    }
-                  />
-                </CardContent>
-              </Card>
-
-              {/* Other Upcoming Barangay Drives in CDO */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                {[
-                  {
-                    bgy: "Carmen",
-                    date: "October 18, 2026",
-                    loc: "Carmen Plaza Covered Court",
-                    type: "Anti-Rabies Drive + Free Spay/Neuter Assessment",
-                  },
-                  {
-                    bgy: "Macabalan",
-                    date: "October 22, 2026",
-                    loc: "Macabalan Port Zone Community Center",
-                    type: "Mass Canine Rabies Vaccination & Vitamin Drive",
-                  },
-                  {
-                    bgy: "Lapasan",
-                    date: "October 25, 2026",
-                    loc: "Lapasan Barangay Gymnasium",
-                    type: "Rabies Immunization & Responsible Pet Ownership Seminar",
-                  },
-                  {
-                    bgy: "Bulua",
-                    date: "October 29, 2026",
-                    loc: "Bulua Zone 3 Hall",
-                    type: "Barangay Livestock & Companion Animal Outreach",
-                  },
-                ].map((drive, idx) => (
-                  <Card key={idx} className="border-border">
-                    <CardContent className="p-3.5 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-foreground">Brgy. {drive.bgy}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground">{drive.date}</span>
-                      </div>
-                      <p className="text-xs font-semibold text-primary">{drive.type}</p>
-                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                        <MapPin className="size-3 text-muted-foreground" />
-                        {drive.loc}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={drivesViewMode === "history" ? "default" : "ghost"}
+                  onClick={() => setDrivesViewMode("history")}
+                  className={cn(
+                    "h-7 text-xs font-semibold gap-1.5 rounded-lg px-2.5 cursor-pointer",
+                    drivesViewMode === "history"
+                      ? "bg-teal-600 hover:bg-teal-700 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <History className="size-3.5" />
+                  <span>Mission History</span>
+                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 bg-background/30 text-current">
+                    {completedOutreachHistory.length}
+                  </Badge>
+                </Button>
               </div>
             </div>
+
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search drives by barangay, venue, veterinarian, or operation ID..."
+                value={drivesSearchQuery}
+                onChange={(e) => setDrivesSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs rounded-xl bg-card border-border/80"
+              />
+              {drivesSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDrivesSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            {drivesViewMode === "upcoming" ? (
+              <div className="space-y-4">
+                {/* 1. Highlight Card for Owner's Barangay */}
+                {myBarangayDrive ? (
+                  <Card className="border-emerald-500/50 bg-gradient-to-r from-emerald-500/10 via-card to-card shadow-xs rounded-2xl overflow-hidden">
+                    <CardContent className="p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                            HAPPENING IN YOUR BARANGAY
+                          </Badge>
+                          {myBarangayDrive.status === "in-progress" ? (
+                            <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px] font-bold animate-pulse">
+                              ● LIVE IN FIELD NOW
+                            </Badge>
+                          ) : (
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                              {formatOpDate(myBarangayDrive.date)}
+                            </span>
+                          )}
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {myBarangayDrive.opId}
+                          </span>
+                        </div>
+                        <h4 className="font-extrabold text-base sm:text-lg text-foreground">
+                          Brgy. {myBarangayDrive.barangay} — {myBarangayDrive.type}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-0.5">
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="size-3.5 text-emerald-600" />
+                            {myBarangayDrive.venue || "Barangay Covered Court"}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="size-3.5 text-emerald-600" />
+                            {myBarangayDrive.timeWindow || "8:00 AM – 3:00 PM"}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Stethoscope className="size-3.5 text-emerald-600" />
+                            Attending: {myBarangayDrive.lead}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground pt-1 leading-relaxed">
+                          {myBarangayDrive.notes || "Free rabies vaccine, oral deworming, spay/neuter assessments, and digital QR pet passport registration. Bring pets safely on leashes or in secure carriers."}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0 w-full md:w-auto">
+                        <PetOwnerConsultationDialog
+                          initialPet={pets[0]}
+                          ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                          trigger={
+                            <Button className="h-8.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full md:w-auto shadow-xs">
+                              <Plus className="size-3.5 mr-1" /> Pre-register Pet for Drive
+                            </Button>
+                          }
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="p-3.5 sm:p-4 rounded-2xl border border-dashed border-border/80 bg-muted/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Building2 className="size-3.5 text-primary" />
+                        No mobile drive scheduled for Barangay {ownerBarangay || "your barangay"} this week
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        CVO visits barangays in rotational municipal schedules. You may join any active outreach below or walk in at Carmen Central Clinic.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("consultations")}
+                      className="text-xs h-7.5 shrink-0 cursor-pointer"
+                    >
+                      Book Clinic Visit
+                    </Button>
+                  </div>
+                )}
+
+                {/* 2. List of All Active & Upcoming Field Drives */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Active & Upcoming Field Deployments ({filteredUpcomingDrives.length})
+                    </h4>
+                  </div>
+
+                  {filteredUpcomingDrives.length === 0 ? (
+                    <div className="p-6 rounded-2xl border border-border/70 bg-card text-center space-y-1.5">
+                      <Truck className="size-7 text-muted-foreground/40 mx-auto" />
+                      <p className="text-xs font-semibold text-foreground">No matching field drives found</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {drivesSearchQuery ? `No outreach visits match "${drivesSearchQuery}"` : "New schedules are published weekly by CVO."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {filteredUpcomingDrives.map((drive) => {
+                        const isLive = drive.status === "in-progress";
+                        const targetSlots = drive.petsTarget || 100;
+                        const vaccinatedCount = drive.petsVaccinated || 0;
+                        const progressPct = Math.min(100, Math.round((vaccinatedCount / targetSlots) * 100));
+
+                        return (
+                          <Card key={drive.id || drive.opId} className="border-border/80 hover:border-teal-500/40 transition-all rounded-2xl shadow-2xs overflow-hidden">
+                            <CardContent className="p-3.5 sm:p-4 space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-sm text-foreground">
+                                      Brgy. {drive.barangay}
+                                    </span>
+                                    {isLive ? (
+                                      <Badge className="bg-emerald-600 text-white text-[9px] font-bold animate-pulse py-0 px-1.5">
+                                        ● LIVE
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-teal-700 dark:text-teal-300 border-teal-500/30 bg-teal-500/10 text-[9px] font-bold py-0 px-1.5">
+                                        Scheduled
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-xs font-semibold text-primary pt-0.5 line-clamp-1">
+                                    {drive.type}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] font-mono text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted shrink-0">
+                                  {formatOpDate(drive.date)}
+                                </span>
+                              </div>
+
+                              <div className="space-y-1 text-[11px] text-muted-foreground border-t border-border/50 pt-2">
+                                <p className="flex items-center gap-1.5 truncate">
+                                  <MapPin className="size-3 text-muted-foreground shrink-0" />
+                                  <span className="truncate">{drive.venue || "Barangay Covered Court"}</span>
+                                </p>
+                                <p className="flex items-center gap-1.5">
+                                  <Clock className="size-3 text-muted-foreground shrink-0" />
+                                  <span>{drive.timeWindow || "8:00 AM – 3:00 PM"}</span>
+                                </p>
+                                <p className="flex items-center gap-1.5 truncate">
+                                  <Stethoscope className="size-3 text-muted-foreground shrink-0" />
+                                  <span className="truncate">Attending: {drive.lead}</span>
+                                </p>
+                              </div>
+
+                              {/* Headcount / Progress Bar */}
+                              <div className="space-y-1 pt-1 border-t border-border/40">
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium">
+                                  <span>Target Capacity</span>
+                                  <span className="font-semibold text-foreground font-mono">
+                                    {vaccinatedCount} / {targetSlots} pets ({progressPct}%)
+                                  </span>
+                                </div>
+                                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-teal-600 dark:bg-teal-400 rounded-full transition-all"
+                                    style={{ width: `${progressPct}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Footer Action */}
+                              <div className="pt-1 flex items-center justify-between">
+                                <span className="font-mono text-[9px] text-muted-foreground">
+                                  {drive.opId}
+                                </span>
+                                <PetOwnerConsultationDialog
+                                  initialPet={pets[0]}
+                                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+                                  trigger={
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-[11px] px-2.5 font-semibold border-teal-500/30 text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 cursor-pointer"
+                                    >
+                                      Pre-register Pet
+                                    </Button>
+                                  }
+                                />
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Mission History View */
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Concluded Field Operations Ledger ({filteredCompletedDrives.length})
+                  </h4>
+                </div>
+
+                {filteredCompletedDrives.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-border/70 bg-card text-center space-y-2">
+                    <History className="size-8 text-muted-foreground/40 mx-auto" />
+                    <p className="text-xs font-semibold text-foreground">No completed outreach history recorded yet</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Concluded field missions and mass vaccination totals will appear here as veterinary teams complete operations.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {filteredCompletedDrives.map((op) => (
+                      <Card key={op.id || op.opId} className="border-border/80 bg-card/70 rounded-2xl overflow-hidden shadow-2xs">
+                        <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-[10px] font-bold text-primary px-1.5 py-0.5 rounded bg-primary/10">
+                                {op.opId}
+                              </span>
+                              <Badge variant="outline" className="text-[9px] bg-muted/60 text-muted-foreground border-border font-semibold">
+                                Completed
+                              </Badge>
+                              <span className="text-[11px] font-bold text-foreground">
+                                Brgy. {op.barangay}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                • {formatOpDate(op.date)}
+                              </span>
+                            </div>
+                            <p className="text-xs font-semibold text-foreground">
+                              {op.type}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="size-3 text-muted-foreground" />
+                                {op.venue || "Barangay Covered Court"}
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Stethoscope className="size-3 text-muted-foreground" />
+                                {op.lead}
+                              </span>
+                            </p>
+                            {op.notes && (
+                              <p className="text-[10.5px] text-muted-foreground/90 italic pt-0.5">
+                                "{op.notes}"
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="text-left sm:text-right shrink-0 bg-muted/30 p-2 sm:p-2.5 rounded-xl border border-border/50">
+                            <p className="text-[10px] text-muted-foreground font-medium">Animals Served</p>
+                            <p className="font-mono text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                              {op.petsVaccinated || op.petsTarget || 0} Pets
+                            </p>
+                            <p className="text-[9px] text-muted-foreground">Verified by CVO Field Unit</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

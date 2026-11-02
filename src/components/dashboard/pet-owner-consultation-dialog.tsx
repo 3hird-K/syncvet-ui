@@ -771,8 +771,8 @@ export function PetOwnerConsultationDialog({
       </DialogTrigger>
 
       <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="border-b pb-3 min-w-0">
-          <div className="flex items-center justify-between gap-2.5 sm:gap-3 min-w-0">
+        <DialogHeader className="border-b pb-3 min-w-0 pr-0 sm:pr-0">
+          <div className="flex items-center justify-between gap-2.5 sm:gap-3 min-w-0 w-full">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 overflow-hidden">
               <div className="size-8 sm:size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
                 <Stethoscope className="size-4 sm:size-5" />
@@ -788,7 +788,7 @@ export function PetOwnerConsultationDialog({
             </div>
 
             {/* Top Action Buttons: Quick Submit & Close */}
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <Button
                 type="submit"
                 form="pet-owner-consultation-form"

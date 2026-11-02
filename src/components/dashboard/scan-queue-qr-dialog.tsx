@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Building2,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import {
   Dialog,
@@ -25,6 +26,85 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { getTodayDateStr } from "@/lib/cvo-queue";
+
+/**
+ * Fast-path: Uses native browser BarcodeDetector API (GPU/hardware-accelerated, ~5ms)
+ */
+async function tryNativeBarcodeDetector(file: File): Promise<string | null> {
+  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+    try {
+      const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+      const bitmap = await createImageBitmap(file);
+      const barcodes = await detector.detect(bitmap);
+      if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+        return barcodes[0].rawValue;
+      }
+    } catch {
+      // Fallback to client-side resized scan
+    }
+  }
+  return null;
+}
+
+/**
+ * Downscales huge modern smartphone photos (12MP–48MP) to a quick canvas size (max 900px).
+ * This prevents single-threaded ZXing in html5-qrcode from scanning millions of pixels,
+ * dropping decode time from 30+ seconds down to <100ms.
+ */
+async function resizeImageForFastQrScan(file: File, maxDim = 900): Promise<File> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+
+        if (width <= maxDim && height <= maxDim) {
+          resolve(file);
+          return;
+        }
+
+        const scale = Math.min(maxDim / width, maxDim / height);
+        const targetW = Math.round(width * scale);
+        const targetH = Math.round(height * scale);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "medium";
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name || "qr-scan.jpg", { type: "image/jpeg" }));
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    } catch {
+      resolve(file);
+    }
+  });
+}
 
 interface ScanQueueQrDialogProps {
   trigger?: React.ReactNode;
@@ -54,6 +134,7 @@ export function ScanQueueQrDialog({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [processingFile, setProcessingFile] = useState(false);
   const [decodedResult, setDecodedResult] = useState<string | null>(null);
   const html5QrCodeRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,11 +165,11 @@ export function ScanQueueQrDialog({
       setTimeout(() => {
         setOpen(false);
         window.dispatchEvent(new CustomEvent("syncvet-outreach-scanned", { detail: decodedText }));
-      }, 600);
+      }, 300);
       return;
     }
 
-    // Automatically navigate if it's a queue check-in link or standard check-in
+    // Automatically navigate if it's a queue check-in link or standard check-in (fast 250ms feedback)
     setTimeout(() => {
       setOpen(false);
       if (decodedText.includes("/queue-checkin") || decodedText.includes("queue-checkin")) {
@@ -102,7 +183,7 @@ export function ScanQueueQrDialog({
       } else {
         router.push(`/queue-checkin?date=${todayStr}`);
       }
-    }, 900);
+    }, 250);
   };
 
   // Start Camera
@@ -179,19 +260,51 @@ export function ScanQueueQrDialog({
     }
   }, [open]);
 
-  // Handle image file upload
+  // Handle image file upload with instant hardware barcode detection + auto-resizing
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setProcessingFile(true);
+
+    // Stop active camera so CPU is 100% focused on decoding
+    if (html5QrCodeRef.current && cameraActive) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current.clear();
+      } catch {}
+      setCameraActive(false);
+    }
+
     try {
+      // 1. Fast Path: Native Browser BarcodeDetector API (5ms - 15ms)
+      const nativeResult = await tryNativeBarcodeDetector(file);
+      if (nativeResult) {
+        setProcessingFile(false);
+        handleSuccess(nativeResult);
+        return;
+      }
+
+      // 2. High-performance Fallback: Downscale 12MP/48MP phone photo to max 900px
+      // Prevents ZXing from taking 30 seconds processing millions of pixels
+      const optimizedFile = await resizeImageForFastQrScan(file, 900);
+
       const { Html5Qrcode } = await import("html5-qrcode");
       const qrScanner = new Html5Qrcode("syncvet-file-scanner-temp");
-      const result = await qrScanner.scanFile(file, true);
-      qrScanner.clear();
+      const result = await qrScanner.scanFile(optimizedFile, false);
+      try {
+        qrScanner.clear();
+      } catch {}
+
+      setProcessingFile(false);
       handleSuccess(result);
     } catch (err) {
+      setProcessingFile(false);
       toast.error("Could not find a valid QR code in that image. Please try another photo.");
+    } finally {
+      if (e.target) {
+        e.target.value = "";
+      }
     }
   };
 
@@ -287,6 +400,17 @@ export function ScanQueueQrDialog({
               </div>
             )}
 
+            {/* Processing File State */}
+            {processingFile && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/95 text-white p-4 text-center space-y-2.5 animate-in fade-in-50">
+                <Loader2 className="size-8 text-emerald-400 animate-spin" />
+                <p className="text-xs font-bold text-emerald-200">Decoding QR Code...</p>
+                <p className="text-[10.5px] text-slate-300">
+                  Verifying your photo with fast hardware recognition...
+                </p>
+              </div>
+            )}
+
             {decodedResult && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-950/90 text-white p-4 text-center space-y-2 animate-in fade-in-50">
                 <CheckCircle2 className="size-10 text-emerald-400 animate-bounce" />
@@ -330,10 +454,11 @@ export function ScanQueueQrDialog({
               <Button
                 type="button"
                 size="sm"
+                disabled={processingFile}
                 onClick={() => cameraCaptureRef.current?.click()}
-                className="h-8.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 shadow-xs cursor-pointer"
+                className="h-8.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
               >
-                <Camera className="size-3.5" />
+                {processingFile ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
                 <span>Snap with Camera</span>
               </Button>
 
@@ -341,28 +466,14 @@ export function ScanQueueQrDialog({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={processingFile}
                 onClick={() => fileInputRef.current?.click()}
-                className="h-8.5 rounded-xl border-border hover:border-emerald-500/50 text-xs font-semibold gap-1.5 cursor-pointer bg-card hover:bg-muted"
+                className="h-8.5 rounded-xl border-border hover:border-emerald-500/50 text-xs font-semibold gap-1.5 cursor-pointer bg-card hover:bg-muted disabled:opacity-50"
               >
-                <Upload className="size-3.5 text-muted-foreground" />
+                {processingFile ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5 text-muted-foreground" />}
                 <span>Upload QR Photo</span>
               </Button>
             </div>
-
-            {/* Direct Counter Check-In Option */}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setOpen(false);
-                router.push(`/queue-checkin?date=${todayStr}`);
-              }}
-              className="h-7 text-[11px] font-semibold text-muted-foreground hover:text-foreground gap-1.5 hover:bg-muted/50 cursor-pointer"
-            >
-              <CheckCircle2 className="size-3 text-emerald-600" />
-              <span>Or tap here to Check In directly at Counter</span>
-            </Button>
           </div>
         </div>
       </DialogContent>

@@ -108,14 +108,14 @@ export function OfflineFieldEntryDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent showCloseButton={false} className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-5 sm:p-6 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="border-b pb-3 space-y-1">
-          <div className="flex items-center justify-between gap-3">
+        <DialogHeader className="border-b pb-3 space-y-1 pr-0 sm:pr-0">
+          <div className="flex items-center justify-between gap-3 min-w-0 w-full">
             <div className="flex items-center gap-2 text-amber-500 font-bold min-w-0">
               <WifiOff className="size-5 shrink-0" />
               <DialogTitle className="text-base sm:text-lg font-bold truncate">Offline Field Vaccination Entry</DialogTitle>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <Button
                 type="submit"
                 form="offline-field-entry-form"

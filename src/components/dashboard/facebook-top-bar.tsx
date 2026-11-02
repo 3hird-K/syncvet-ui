@@ -153,10 +153,18 @@ export function FacebookTopBar({
 
       // Reset scroll position to top of main content container and window
       const resetScroll = () => {
-        window.scrollTo({ top: 0, behavior: "instant" });
         const mainEl = document.getElementById("app-main-scroll") || document.querySelector("main");
         if (mainEl) {
-          mainEl.scrollTop = 0;
+          try {
+            mainEl.scrollTo({ top: 0, behavior: "smooth" });
+          } catch {
+            mainEl.scrollTop = 0;
+          }
+        }
+        try {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {
+          window.scrollTo(0, 0);
         }
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
@@ -165,6 +173,8 @@ export function FacebookTopBar({
       resetScroll();
       requestAnimationFrame(resetScroll);
       setTimeout(resetScroll, 50);
+      setTimeout(resetScroll, 150);
+      setTimeout(resetScroll, 300);
     }
   };
 
