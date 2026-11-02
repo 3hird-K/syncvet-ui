@@ -30,7 +30,7 @@ export interface CVOConsultation {
   medication: string;
   dosageInstructions: string;
   followUpDate?: string;
-  status: "waiting" | "in-consultation" | "treatment" | "completed";
+  status: "scheduled" | "waiting" | "in-consultation" | "treatment" | "completed";
   veterinarianNotes?: string;
   serviceType: "Free Consultation" | "Deworming Check" | "Bite Wound Care" | "General Checkup" | "Post-Op Evaluation" | "Field Treatment/Consultation";
   // Official CDO CVO Field Treatment / Consultation Form details
@@ -38,6 +38,7 @@ export interface CVOConsultation {
   dateOfBirth?: string;
   age?: string;
   gender?: "M" | "F";
+  photoUrl?: string;
   color?: string;
   weightAssessment?: "Ideal Weight" | "Overweight" | "Underweight";
   bodyConditionScore?: number; // 1-9

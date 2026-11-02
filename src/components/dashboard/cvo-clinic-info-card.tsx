@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
+import { getDailyQueue } from "@/lib/cvo-queue";
 
 interface CVOClinicInfoCardProps {
   vaxSlots?: number;
@@ -176,18 +177,51 @@ export function CVOClinicInfoCard({
   const baseVaxCapacity = getCapacityForDate(today, "vaccination", slotConfig) ?? vaxSlots ?? 10;
   const baseSurgeryCapacity = getCapacityForDate(today, "spay-neuter", slotConfig) ?? surgerySlots ?? 5;
 
-  // Real-time deduction: count active non-cancelled booked procedures for today
-  const bookedVaxCount = todayAppointments.filter((apt) => {
-    const s = (apt.service_id || "").toLowerCase();
-    return (s === "vaccination" || s.includes("vax") || s.includes("rabies")) && apt.status !== "cancelled";
-  }).length;
+  // Real-time deduction: procedures are deducted when pet owners scan QR code (checked-in / in queue)
+  const dailyQueue = getDailyQueue(todayStr);
+  const queueCheckedInIds = new Set(
+    dailyQueue.activeTickets.map((t) => t.appointmentId).filter(Boolean)
+  );
 
-  const bookedSurgeryCount = todayAppointments.filter((apt) => {
-    const s = (apt.service_id || "").toLowerCase();
-    return (s === "spay-neuter" || s.includes("spay") || s.includes("neuter") || s.includes("kapon")) && apt.status !== "cancelled";
-  }).length;
+  const isCheckedInProcedure = (apt: any) => {
+    return (
+      apt.status === "checked-in" ||
+      apt.status === "in-consultation" ||
+      apt.status === "completed" ||
+      apt.status === "serving" ||
+      (apt.notes && apt.notes.includes("[Checked in")) ||
+      queueCheckedInIds.has(apt.id)
+    );
+  };
 
-  // Live remaining slots after pet owner deductions
+  const bookedVaxCount =
+    todayAppointments.filter((apt) => {
+      const s = (apt.service_id || "").toLowerCase();
+      return (s === "vaccination" || s.includes("vax") || s.includes("rabies")) && isCheckedInProcedure(apt);
+    }).length +
+    dailyQueue.activeTickets.filter(
+      (t) =>
+        (t.serviceId === "vaccination" ||
+          t.serviceTitle?.toLowerCase().includes("vax") ||
+          t.serviceTitle?.toLowerCase().includes("rabies")) &&
+        !todayAppointments.some((a) => a.id === t.appointmentId)
+    ).length;
+
+  const bookedSurgeryCount =
+    todayAppointments.filter((apt) => {
+      const s = (apt.service_id || "").toLowerCase();
+      return (s === "spay-neuter" || s.includes("spay") || s.includes("neuter") || s.includes("kapon")) && isCheckedInProcedure(apt);
+    }).length +
+    dailyQueue.activeTickets.filter(
+      (t) =>
+        (t.serviceId === "spay-neuter" ||
+          t.serviceTitle?.toLowerCase().includes("spay") ||
+          t.serviceTitle?.toLowerCase().includes("neuter") ||
+          t.serviceTitle?.toLowerCase().includes("kapon")) &&
+        !todayAppointments.some((a) => a.id === t.appointmentId)
+    ).length;
+
+  // Live remaining slots after pet owner deductions upon scanning QR
   const remainingVaxSlots = Math.max(0, baseVaxCapacity - bookedVaxCount);
   const remainingSurgerySlots = Math.max(0, baseSurgeryCapacity - bookedSurgeryCount);
 

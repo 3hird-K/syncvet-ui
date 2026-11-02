@@ -442,7 +442,7 @@ export function PetOwnerConsultationDialog({
         treatment: "Pending attending veterinarian",
         medication: "To be prescribed by attending veterinarian",
         dosageInstructions: "Pending examination",
-        status: "waiting",
+        status: "scheduled",
         serviceType: "Field Treatment/Consultation",
         veterinarianNotes: `Owner reported: ${chiefComplaint}`,
         noOfHeads: 1,
@@ -458,33 +458,13 @@ export function PetOwnerConsultationDialog({
         followUp: false,
       });
 
-      // Include consultation in today's clinic queue if scheduled for today (without consuming procedure slots)
-      if (scheduledDateStr === getTodayDateStr()) {
-        try {
-          checkInPetOwnerToQueue({
-            appointmentId: newRecord.encounterNo || newRecord.id,
-            ownerId: ownerName.trim(),
-            ownerName: ownerName.trim(),
-            ownerContact: ownerContact.trim(),
-            ownerBarangay,
-            petId: selectedPet ? selectedPet.id : undefined,
-            petName: effectivePetName,
-            species: effectiveSpecies,
-            breed: effectiveBreed,
-            serviceId: "consultation",
-            serviceTitle: "Clinical Consultation",
-            dateStr: scheduledDateStr,
-          });
-        } catch {}
-      }
-
       setLoading(false);
       setOpen(false);
 
       toast.success(
         `Consultation Request Submitted! Encounter #${newRecord.encounterNo}`,
         {
-          description: `Your request for ${effectivePetName} is queued at City Veterinary Office. Present this encounter number upon arrival.`,
+          description: `Your request for ${effectivePetName} is recorded. Please scan the QR code at the clinic check-in desk upon arrival to join the live queue.`,
           duration: 6000,
         }
       );

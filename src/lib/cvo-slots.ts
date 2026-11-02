@@ -294,13 +294,22 @@ export function calculateSlotStatus({
     };
   }
 
-  // Count booked appointments for this date and service (excluding cancelled)
-  const bookedCount = bookedAppointments.filter(
-    (apt) =>
-      apt.date === dateStr &&
-      apt.service_id === service &&
-      apt.status !== "cancelled"
-  ).length;
+  // Count booked appointments for this date and service (deducted upon QR check-in on the day of appointment)
+  const bookedCount = bookedAppointments.filter((apt) => {
+    if (apt.date !== dateStr || apt.service_id !== service) return false;
+    if (apt.status === "cancelled") return false;
+    if (isToday) {
+      // For today, procedure slot is deducted when pet owner scans QR code (checked in)
+      return (
+        apt.status === "checked-in" ||
+        apt.status === "in-consultation" ||
+        apt.status === "completed" ||
+        apt.status === "serving" ||
+        Boolean((apt as any).notes?.includes("[Checked in"))
+      );
+    }
+    return true;
+  }).length;
 
   const remainingSlots = Math.max(0, totalCapacity - bookedCount);
   const isAvailable = remainingSlots > 0;

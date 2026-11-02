@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+
 import {
   Dialog,
   DialogContent,
@@ -85,6 +86,8 @@ const ADMINISTRATION_ROUTES = [
   "Intramuscular (In the muscle)",
 ];
 
+const EMPTY_VETS: RegisteredVet[] = [];
+
 export function AdministerVaccinationDialog({
   consultation,
   open,
@@ -95,6 +98,7 @@ export function AdministerVaccinationDialog({
   const { user, isLoaded: isUserLoaded } = useUser();
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
+  const lastSyncedEncounterKey = useRef<string | null>(null);
 
   // Fetch current user's database role and profile from Supabase
   const { data: dbCurrentUser } = useQuery({
@@ -157,7 +161,7 @@ export function AdministerVaccinationDialog({
   }, [consultation]);
 
   // Query actual registered veterinarians and staff from database
-  const { data: dbVets = [] } = useQuery<RegisteredVet[]>({
+  const { data: dbVets = EMPTY_VETS } = useQuery<RegisteredVet[]>({
     queryKey: ["registered-administering-vets"],
     queryFn: async () => {
       try {
@@ -265,82 +269,58 @@ export function AdministerVaccinationDialog({
   const nextBoosterDate = format(addYears(parseISO(baseAdminDate), 1), "yyyy-MM-dd");
   const nextBoosterDisplay = format(addYears(parseISO(baseAdminDate), 1), "MMMM d, yyyy");
 
-  // Keep batch and vaccine state aligned with active inventory
+  // Sync state strictly when dialog opens or when a different consultation encounter is selected
   useEffect(() => {
-    if (activeVaccineBatches.length > 0) {
-      if (!batchNo || !activeVaccineBatches.some((b: any) => b.batchNumber === batchNo)) {
-        setSelectedVaccineBatch(activeVaccineBatches[0].batchNumber);
-        setBatchNo(activeVaccineBatches[0].batchNumber);
-        setExpiryDate(activeVaccineBatches[0].expirationDate);
+    if (!open || !consultation) {
+      if (!open) {
+        lastSyncedEncounterKey.current = null;
       }
+      return;
+    }
+
+    const currentKey = `${consultation.id || consultation.encounterNo || "enc"}-${consultation.date || ""}`;
+    if (lastSyncedEncounterKey.current === currentKey) {
+      return;
+    }
+    lastSyncedEncounterKey.current = currentKey;
+
+    const randomTag = `CDO-${new Date().getFullYear()}-R${Math.floor(1000 + Math.random() * 9000)}`;
+    setTagNumber(randomTag);
+    if (consultation.vitals?.weightKg && consultation.vitals.weightKg > 0) {
+      setWeightKg(String(consultation.vitals.weightKg));
+    }
+    if (consultation.vitals?.temperatureC && consultation.vitals.temperatureC > 0) {
+      setTemperatureC(String(consultation.vitals.temperatureC));
+    }
+
+    if (activeVaccineBatches.length > 0) {
+      setSelectedVaccineBatch(activeVaccineBatches[0].batchNumber);
+      setBatchNo(activeVaccineBatches[0].batchNumber);
+      setExpiryDate(activeVaccineBatches[0].expirationDate);
     } else {
       setSelectedVaccineBatch("");
       setBatchNo("");
       setExpiryDate("");
     }
-  }, [activeVaccineBatches, batchNo]);
 
-  // If Veterinarian: automatically locked to the logged-in user ("you").
-  // If Admin: only select if already assigned to a recognized vet (Helen, vet, admin account), else leave empty.
-  useEffect(() => {
     if (!isAdmin && isVet && currentUserName) {
       setAttendingVet(currentUserName);
-    } else if (isAdmin) {
-      if (
-        consultation?.vetName &&
-        consultation.vetName !== "Attending CVO Vet" &&
-        !consultation.vetName.toLowerCase().includes("queue assignment") &&
-        !consultation.vetName.toLowerCase().includes("elena santos") &&
-        (consultation.vetName.toLowerCase().includes("helen") ||
-          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
-      ) {
-        setAttendingVet(consultation.vetName);
-      } else {
-        setAttendingVet("");
-      }
+    } else if (
+      consultation.vetName &&
+      consultation.vetName !== "Attending CVO Vet" &&
+      !consultation.vetName.toLowerCase().includes("queue assignment") &&
+      !consultation.vetName.toLowerCase().includes("elena santos")
+    ) {
+      setAttendingVet(consultation.vetName);
     } else if (currentUserName) {
       setAttendingVet(currentUserName);
+    } else if (isAdmin) {
+      setAttendingVet(HELEN_VET.name);
+    } else {
+      setAttendingVet("");
     }
-  }, [isAdmin, isVet, currentUserName, consultation, allAvailableVets]);
+  }, [open, consultation?.id, consultation?.encounterNo, isAdmin, isVet, currentUserName, activeVaccineBatches]);
 
-  // Sync state whenever consultation changes
-  useEffect(() => {
-    if (consultation) {
-      const randomTag = `CDO-${new Date().getFullYear()}-R${Math.floor(1000 + Math.random() * 9000)}`;
-      setTagNumber(randomTag);
-      if (consultation.vitals?.weightKg && consultation.vitals.weightKg > 0) {
-        setWeightKg(String(consultation.vitals.weightKg));
-      }
-      if (consultation.vitals?.temperatureC && consultation.vitals.temperatureC > 0) {
-        setTemperatureC(String(consultation.vitals.temperatureC));
-      }
-      if (!isAdmin && isVet && currentUserName) {
-        setAttendingVet(currentUserName);
-      } else if (
-        consultation.vetName &&
-        consultation.vetName !== "Attending CVO Vet" &&
-        !consultation.vetName.toLowerCase().includes("queue assignment") &&
-        !consultation.vetName.toLowerCase().includes("elena santos") &&
-        (consultation.vetName.toLowerCase().includes("helen") ||
-          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
-      ) {
-        setAttendingVet(consultation.vetName);
-      } else if (isAdmin) {
-        setAttendingVet("");
-      }
-    }
-  }, [consultation, isAdmin, isVet, currentUserName, allAvailableVets]);
-
-  // Reset/enforce whenever dialog opens
-  useEffect(() => {
-    if (open) {
-      if (!isAdmin && isVet && currentUserName) {
-        setAttendingVet(currentUserName);
-      } else if (isAdmin && (!attendingVet || attendingVet.toLowerCase().includes("elena santos"))) {
-        setAttendingVet(HELEN_VET.name);
-      }
-    }
-  }, [open, isAdmin, isVet, currentUserName, attendingVet]);
 
   const handleVaccineChange = (val: string) => {
     setSelectedVaccineBatch(val);

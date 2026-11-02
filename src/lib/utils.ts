@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { parseISO, isValid, startOfDay, endOfDay, addDays, isBefore, isAfter } from "date-fns";
+import { parseISO, isValid, startOfDay, endOfDay, addDays, isBefore, isAfter, format } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -100,7 +100,32 @@ export function getNextAvailableClinicDate(): Date {
 }
 
 /**
- * Checks if a clinical consultation or encounter schedule has elapsed past its date
+ * Checks if the daily clinic queue has automatically closed for the date.
+ * Clinical transactions operate 8:00 AM – 5:00 PM, and the queue automatically closes at 6:00 PM (18:00).
+ * Past dates are always closed.
+ */
+export function isClinicQueueClosed(targetDate?: string | Date | null): boolean {
+  const now = new Date();
+  if (!targetDate) {
+    return now.getHours() >= 18;
+  }
+
+  const cleanDate = typeof targetDate === "string"
+    ? (targetDate.includes("T") ? targetDate.split("T")[0] : targetDate.trim())
+    : format(targetDate, "yyyy-MM-dd");
+
+  const todayStr = format(now, "yyyy-MM-dd");
+
+  if (cleanDate < todayStr) return true; // Past dates are closed
+  if (cleanDate > todayStr) return false; // Future dates are not closed yet
+
+  // If today, closes at 6:00 PM (18:00)
+  return now.getHours() >= 18;
+}
+
+/**
+ * Checks if a clinical consultation or encounter schedule has elapsed past its date,
+ * or if scheduled for today and past the 6:00 PM (18:00) queue closing cut-off,
  * without being completed or cancelled (matching the Admin Queue Overdue status).
  */
 export function isConsultationOverdue(dateStr?: string | null, status?: string | null): boolean {
@@ -110,8 +135,22 @@ export function isConsultationOverdue(dateStr?: string | null, status?: string |
     const cleanDate = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.trim();
     const parsed = parseISO(cleanDate);
     if (!isValid(parsed)) return false;
-    const todayStart = startOfDay(new Date());
-    return isBefore(startOfDay(parsed), todayStart);
+
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const targetStart = startOfDay(parsed);
+
+    // 1. If scheduled before today, it is overdue
+    if (isBefore(targetStart, todayStart)) {
+      return true;
+    }
+
+    // 2. If scheduled for today, it becomes overdue after 6:00 PM (18:00)
+    if (targetStart.getTime() === todayStart.getTime()) {
+      return now.getHours() >= 18;
+    }
+
+    return false;
   } catch {
     return false;
   }

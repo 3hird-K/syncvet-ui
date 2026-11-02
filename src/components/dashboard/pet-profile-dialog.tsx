@@ -270,7 +270,22 @@ export function PetProfileDialog({
 
   // Sync currentPet when pet prop changes
   useEffect(() => {
-    setCurrentPet(pet);
+    setCurrentPet((prev) => {
+      if (!pet && !prev) return null;
+      if (
+        pet &&
+        prev &&
+        pet.id === prev.id &&
+        pet.createdAt === prev.createdAt &&
+        pet.name === prev.name &&
+        pet.breed === prev.breed &&
+        pet.weightKg === prev.weightKg &&
+        pet.photo_url === prev.photo_url
+      ) {
+        return prev;
+      }
+      return pet;
+    });
     if (pet) {
       setEditPetName(pet.name || "");
       setEditPetBreed(pet.breed || "");
@@ -2910,61 +2925,72 @@ export function PetProfileDialog({
       </Dialog>
 
       {/* ── Official CVO Consultation Sheet Dialog ── */}
-      <OfficialConsultationSheetDialog
-        open={consultationSheetOpen}
-        onOpenChange={setConsultationSheetOpen}
-        consultation={selectedConsultationForSheet}
-      />
+      {consultationSheetOpen && (
+        <OfficialConsultationSheetDialog
+          open={consultationSheetOpen}
+          onOpenChange={setConsultationSheetOpen}
+          consultation={selectedConsultationForSheet}
+        />
+      )}
 
       {/* ── Internal Clinical Action Dialogs (Vaccine, Surgery, Exam) ── */}
-      <AdministerVaccinationDialog
-        consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("vaccination") : null))}
-        open={internalVaxOpen}
-        onOpenChange={setInternalVaxOpen}
-        onCompleted={() => {
-          setInternalVaxOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["selected-pet-profile-vaccinations"] });
-          queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
-          toast.success(`Vaccine recorded successfully for ${currentPet?.name || "patient"}!`);
-        }}
-      />
+      {internalVaxOpen && (
+        <AdministerVaccinationDialog
+          consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("vaccination") : null))}
+          open={internalVaxOpen}
+          onOpenChange={setInternalVaxOpen}
+          onCompleted={() => {
+            setInternalVaxOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["selected-pet-profile-vaccinations"] });
+            queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+            toast.success(`Vaccine recorded successfully for ${currentPet?.name || "patient"}!`);
+          }}
+        />
+      )}
 
-      <CompleteSurgeryDialog
-        consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("spay-neuter") : null))}
-        open={internalSurgeryOpen}
-        onOpenChange={setInternalSurgeryOpen}
-        onCompleted={() => {
-          setInternalSurgeryOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["selected-pet-profile-appointments"] });
-          queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
-          toast.success(`Kapon surgery recorded successfully for ${currentPet?.name || "patient"}!`);
-        }}
-      />
+      {internalSurgeryOpen && (
+        <CompleteSurgeryDialog
+          consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("spay-neuter") : null))}
+          open={internalSurgeryOpen}
+          onOpenChange={setInternalSurgeryOpen}
+          onCompleted={() => {
+            setInternalSurgeryOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["selected-pet-profile-appointments"] });
+            queryClient.invalidateQueries({ queryKey: ["pets_registry"] });
+            toast.success(`Kapon surgery recorded successfully for ${currentPet?.name || "patient"}!`);
+          }}
+        />
+      )}
 
-      <ClinicalExaminationDialog
-        consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("consultation") : null))}
-        open={internalExamOpen}
-        onOpenChange={setInternalExamOpen}
-        onSaved={() => {
-          setInternalExamOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["consultations"] });
-          toast.success(`Clinical examination findings saved for ${currentPet?.name || "patient"}!`);
-        }}
-      />
+      {internalExamOpen && (
+        <ClinicalExaminationDialog
+          consultation={selectedEncounterForAction || (encounter ? encounter : (currentPet ? buildQueueEncounterForService("consultation") : null))}
+          open={internalExamOpen}
+          onOpenChange={setInternalExamOpen}
+          onSaved={() => {
+            setInternalExamOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["consultations"] });
+            toast.success(`Clinical examination findings saved for ${currentPet?.name || "patient"}!`);
+          }}
+        />
+      )}
 
       {/* ── Official Delete Pet Dialog ── */}
-      <DeletePetDialog
-        pet={currentPet}
-        open={deletePetDialogOpen}
-        onOpenChange={setDeletePetDialogOpen}
-        onDeleted={() => {
-          setDeletePetDialogOpen(false);
-          onOpenChange(false);
-          if (onDeletePet && currentPet) {
-            onDeletePet(currentPet);
-          }
-        }}
-      />
+      {deletePetDialogOpen && (
+        <DeletePetDialog
+          pet={currentPet}
+          open={deletePetDialogOpen}
+          onOpenChange={setDeletePetDialogOpen}
+          onDeleted={() => {
+            setDeletePetDialogOpen(false);
+            onOpenChange(false);
+            if (onDeletePet && currentPet) {
+              onDeletePet(currentPet);
+            }
+          }}
+        />
+      )}
+
     </>
   );
 }

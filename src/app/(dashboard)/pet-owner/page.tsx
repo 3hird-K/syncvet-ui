@@ -367,6 +367,35 @@ export default function PetOwnerPortalPage() {
   const [appointmentSlipOpen, setAppointmentSlipOpen] = useState(false);
   const [appointmentFilter, setAppointmentFilter] = useState<"all" | "upcoming" | "missed" | "completed">("all");
 
+  // Medical history filters (vaccinations, consultations, spay/neuter)
+  const [medicalHistoryFilter, setMedicalHistoryFilter] = useState<"all" | "vaccination" | "consultation" | "spay-neuter">("all");
+  const [medicalHistoryPetFilter, setMedicalHistoryPetFilter] = useState<string>("all");
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
+  const toggleExpandHistory = (id: string) => {
+    setExpandedHistoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const [expandedTransactionIds, setExpandedTransactionIds] = useState<Set<string>>(new Set());
+  const toggleExpandTransaction = (id: string) => {
+    setExpandedTransactionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const [isConsultationValid, setIsConsultationValid] = useState(false);
   const [isProcedureValid, setIsProcedureValid] = useState(false);
 
@@ -636,16 +665,8 @@ export default function PetOwnerPortalPage() {
       const validList = list.map((item: any) => {
         let effectiveStatus = item.status || "confirmed";
         try {
-          if (item.date) {
-            const parsed = parseISO(item.date);
-            if (
-              isValid(parsed) &&
-              isBefore(startOfDay(parsed), todayStart) &&
-              effectiveStatus !== "completed" &&
-              effectiveStatus !== "cancelled"
-            ) {
-              effectiveStatus = "missed";
-            }
+          if (item.date && isConsultationOverdue(item.date, effectiveStatus)) {
+            effectiveStatus = "missed";
           }
         } catch {}
 
@@ -913,12 +934,378 @@ export default function PetOwnerPortalPage() {
     });
   }, [ownerConsultations]);
 
-  // Keep today's consultations synced into the queue so pet owner has a live queue ticket
-  useEffect(() => {
-    if (todayConsultations.length > 0) {
-      syncConsultationsToQueue(todayConsultations);
+  // Fetch vaccination records for owner's pets from vaccination_records table
+  const { data: ownerVaccinationRecords = [], isLoading: loadingVaccinations } = useQuery({
+    queryKey: ["owner-vaccination-records", user?.id, dbUser?.id, pets.map((p) => p.id).join(",")],
+    queryFn: async () => {
+      const ownerId = dbUser?.id || user?.id;
+      if (!ownerId && pets.length === 0) return [];
+      try {
+        const petIds = pets.map((p) => p.id).filter(Boolean);
+        const { data, error } = await supabase
+          .from("vaccination_records")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, address)")
+          .order("administered_date", { ascending: false });
+
+        if (error || !data) return [];
+
+        return data.filter((r: any) => {
+          if (ownerId && (r.owner_id === ownerId || r.users?.id === ownerId)) return true;
+          if (petIds.length > 0 && petIds.includes(r.pet_id)) return true;
+          if (pets.some((p) => p.name && r.pet_name && p.name.toLowerCase() === r.pet_name.toLowerCase())) return true;
+          return false;
+        });
+      } catch {
+        return [];
+      }
+    },
+    enabled: isLoaded && (!!user?.id || !!dbUser?.id || pets.length > 0),
+  });
+
+  // Unified medical history: Vaccinations, Consultations, and Spay/Neuter
+  const allMedicalHistory = useMemo(() => {
+    const list: Array<{
+      id: string;
+      type: "vaccination" | "consultation" | "spay-neuter";
+      encounterNo: string;
+      petName: string;
+      petId?: string;
+      species: string;
+      breed: string;
+      date: string;
+      time: string;
+      status: string;
+      serviceType: string;
+      chiefComplaint: string;
+      diagnosis?: string;
+      treatment?: string;
+      medication?: string;
+      vetName: string;
+      photoUrl?: string;
+      rawConsultation?: CVOConsultation;
+      rawAppointment?: any;
+      rawData?: any;
+      isVerifiedProfile?: boolean;
+    }> = [];
+
+    const seenKeys = new Set<string>();
+
+    // 1. Clinical Consultations
+    ownerConsultations.forEach((c) => {
+      const key = `consultation-${c.id}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        const cPet = pets.find(
+          (p) =>
+            (c.petId && p.id === c.petId) ||
+            (c.petName && p.name.toLowerCase() === c.petName.toLowerCase())
+        );
+        list.push({
+          id: c.id,
+          type: "consultation",
+          encounterNo: c.encounterNo,
+          petName: c.petName,
+          petId: c.petId || cPet?.id,
+          species: cPet?.species || c.species,
+          breed: cPet?.breed || c.breed || "Aspin (Mixed)",
+          date: c.date,
+          time: c.time,
+          status: c.status,
+          serviceType: c.serviceType || "Clinical Consultation / Field Treatment",
+          chiefComplaint: c.chiefComplaint,
+          diagnosis: c.diagnosis,
+          treatment: c.treatment,
+          medication: c.medication,
+          vetName: c.vetName,
+          photoUrl: cPet?.photo_url,
+          rawConsultation: c,
+        });
+      }
+    });
+
+    // 2. Official Vaccination Records from database
+    ownerVaccinationRecords.forEach((v: any) => {
+      const key = `vaccination-${v.id}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        const vPet = pets.find(
+          (p) =>
+            (v.pet_id && p.id === v.pet_id) ||
+            (v.pet_name && p.name.toLowerCase() === v.pet_name.toLowerCase())
+        );
+        const rawDate = v.administered_date || v.date_administered || v.created_at || format(new Date(), "yyyy-MM-dd");
+        const dateStr = rawDate.includes("T") ? rawDate.split("T")[0] : rawDate;
+        list.push({
+          id: v.record_no || v.id,
+          type: "vaccination",
+          encounterNo: v.record_no || `VAX-${(v.id || "").slice(0, 8).toUpperCase()}`,
+          petName: v.pets?.name || vPet?.name || v.pet_name || "Pet",
+          petId: v.pet_id || vPet?.id,
+          species: v.pets?.species || vPet?.species || v.species || "Canine",
+          breed: v.pets?.breed || vPet?.breed || v.breed || "Aspin (Mixed)",
+          date: dateStr,
+          time: v.time_administered || "Clinic Hours",
+          status: v.status || "completed",
+          serviceType: v.vaccine_name || "Anti-Rabies Inactivated Vaccine",
+          chiefComplaint: v.notes || "Annual Rabies Immunization",
+          diagnosis: "Official Municipal Rabies Immunization Completed",
+          treatment: `Administered ${v.vaccine_name || "Anti-Rabies Vaccine"}${v.batch_number ? ` • Batch #${v.batch_number}` : ""}${v.next_due_date ? ` • Next Due: ${v.next_due_date}` : ""}`,
+          vetName: v.veterinarian || v.attending_vet || "Attending CVO Veterinarian",
+          photoUrl: vPet?.photo_url || v.pets?.photo_url,
+          rawData: v,
+        });
+      }
+    });
+
+    // 3. Spay & Neuter and completed vaccination appointments from ownerAppointments
+    ownerAppointments.forEach((apt: any) => {
+      const isSpayNeuter = apt.service_id === "spay-neuter";
+      const isVax = apt.service_id === "vaccination";
+
+      if (isSpayNeuter) {
+        const key = `spay-neuter-${apt.id}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          const aptPet = pets.find(
+            (p) =>
+              (apt.pet_id && p.id === apt.pet_id) ||
+              (apt.pet_name && p.name.toLowerCase() === apt.pet_name.toLowerCase())
+          ) || apt.pets;
+          const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
+          const rawDate = apt.date ? (apt.date.includes("T") ? apt.date.split("T")[0] : apt.date) : format(new Date(), "yyyy-MM-dd");
+          list.push({
+            id: apt.id,
+            type: "spay-neuter",
+            encounterNo: apt.id.startsWith("CVO") ? apt.id : `KAPON-${apt.id.slice(0, 8).toUpperCase()}`,
+            petName: displayPetName,
+            petId: apt.pet_id || aptPet?.id,
+            species: aptPet?.species || apt.pets?.species || "Canine",
+            breed: aptPet?.breed || apt.pets?.breed || "Mixed",
+            date: rawDate,
+            time: apt.time_slot || "08:00 AM - 05:00 PM",
+            status: apt.status,
+            serviceType: "Spay & Neuter (Kapon) Surgical Procedure",
+            chiefComplaint: apt.notes || "Surgical sterilization quota transaction",
+            diagnosis: apt.status === "completed" ? "Successfully Sterilized (Spayed / Neutered)" : "Scheduled for Kapon / Surgical Sterilization",
+            treatment: apt.status === "completed" ? "Surgical sterilization complete with Rabies shot & post-op care" : "Scheduled at CVO Carmen Central Clinic",
+            vetName: "CVO Operating Surgeon & Clinical Team",
+            photoUrl: aptPet?.photo_url || apt.pets?.photo_url,
+            rawAppointment: apt,
+          });
+        }
+      } else if (isVax && apt.status === "completed") {
+        const key = `vax-apt-${apt.id}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          const aptPet = pets.find(
+            (p) =>
+              (apt.pet_id && p.id === apt.pet_id) ||
+              (apt.pet_name && p.name.toLowerCase() === apt.pet_name.toLowerCase())
+          ) || apt.pets;
+          const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
+          const rawDate = apt.date ? (apt.date.includes("T") ? apt.date.split("T")[0] : apt.date) : format(new Date(), "yyyy-MM-dd");
+          list.push({
+            id: apt.id,
+            type: "vaccination",
+            encounterNo: `VAX-${apt.id.slice(0, 8).toUpperCase()}`,
+            petName: displayPetName,
+            petId: apt.pet_id || aptPet?.id,
+            species: aptPet?.species || apt.pets?.species || "Canine",
+            breed: aptPet?.breed || apt.pets?.breed || "Mixed",
+            date: rawDate,
+            time: apt.time_slot || "08:00 AM - 05:00 PM",
+            status: "completed",
+            serviceType: "Anti-Rabies Inactivated Vaccine",
+            chiefComplaint: apt.notes || "Completed Vaccination Appointment",
+            diagnosis: "Vaccinated - Rabies Protection Active",
+            treatment: "Official CVO Clinic Administration with Certificate",
+            vetName: "Attending CVO Clinic Veterinarian",
+            photoUrl: aptPet?.photo_url || apt.pets?.photo_url,
+            rawAppointment: apt,
+          });
+        }
+      }
+    });
+
+    // 4. Fallback verified profile records for registered pets without explicit entry
+    pets.forEach((pet) => {
+      if (pet.is_spayed_neutered || pet.isSpayedNeutered) {
+        const hasSpayRecord = list.some((item) => item.type === "spay-neuter" && (item.petId === pet.id || item.petName.toLowerCase() === pet.name.toLowerCase()));
+        if (!hasSpayRecord) {
+          list.push({
+            id: `verified-kapon-${pet.id}`,
+            type: "spay-neuter",
+            encounterNo: `KAPON-REG-${pet.id.slice(0, 6).toUpperCase()}`,
+            petName: pet.name,
+            petId: pet.id,
+            species: pet.species,
+            breed: pet.breed,
+            date: format(new Date(), "yyyy-MM-dd"),
+            time: "Permanent",
+            status: "completed",
+            serviceType: "Spay & Neuter (Kapon) - Verified Record",
+            chiefComplaint: "Registered as Spayed / Neutered in SyncVet CVO Database",
+            diagnosis: "Sterilized Companion Pet (No Repro Capacity)",
+            treatment: "Verified permanent sterilization recorded in official municipal registry",
+            vetName: "CVO Licensed Veterinarian",
+            photoUrl: pet.photo_url,
+            isVerifiedProfile: true,
+          });
+        }
+      }
+
+      if (pet.rabiesVaccinated || pet.isVaccinated) {
+        const hasVaxRecord = list.some((item) => item.type === "vaccination" && (item.petId === pet.id || item.petName.toLowerCase() === pet.name.toLowerCase()));
+        if (!hasVaxRecord) {
+          list.push({
+            id: `verified-vax-${pet.id}`,
+            type: "vaccination",
+            encounterNo: `VAX-REG-${pet.id.slice(0, 6).toUpperCase()}`,
+            petName: pet.name,
+            petId: pet.id,
+            species: pet.species,
+            breed: pet.breed,
+            date: pet.lastVaccinationDate || "2026-05-10",
+            time: "Annual",
+            status: "completed",
+            serviceType: "Anti-Rabies Inactivated Vaccine (Verified)",
+            chiefComplaint: "Registered with active Rabies Immunization on Pet Passport",
+            diagnosis: "Protected against Rabies",
+            treatment: pet.nextVaccinationDate ? `Annual Booster Due on ${pet.nextVaccinationDate}` : "Rabies Immunization Active",
+            vetName: "City Veterinary Office",
+            photoUrl: pet.photo_url,
+            isVerifiedProfile: true,
+          });
+        }
+      }
+    });
+
+    // Sort newest date first
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [ownerConsultations, ownerVaccinationRecords, ownerAppointments, pets]);
+
+  // Filtered medical history list based on category and pet selection
+  const filteredMedicalHistory = useMemo(() => {
+    return allMedicalHistory.filter((item) => {
+      if (medicalHistoryFilter !== "all" && item.type !== medicalHistoryFilter) {
+        return false;
+      }
+      if (medicalHistoryPetFilter !== "all") {
+        const matchesPetId = item.petId && item.petId === medicalHistoryPetFilter;
+        const matchesPetName = item.petName && item.petName.toLowerCase() === medicalHistoryPetFilter.toLowerCase();
+        if (!matchesPetId && !matchesPetName) return false;
+      }
+      return true;
+    });
+  }, [allMedicalHistory, medicalHistoryFilter, medicalHistoryPetFilter]);
+
+  // Category counts for quick filter buttons
+  const medicalHistoryCounts = useMemo(() => {
+    return {
+      all: allMedicalHistory.length,
+      vaccination: allMedicalHistory.filter((i) => i.type === "vaccination").length,
+      consultation: allMedicalHistory.filter((i) => i.type === "consultation").length,
+      spayNeuter: allMedicalHistory.filter((i) => i.type === "spay-neuter").length,
+    };
+  }, [allMedicalHistory]);
+
+  // Unified Scheduled Transactions for Our Pets: All scheduled appointments + in-queue clinic consultations
+  const allScheduledTransactions = useMemo(() => {
+    const list: Array<{
+      id: string;
+      kind: "appointment" | "consultation-queue";
+      serviceId: string;
+      serviceLabel: string;
+      petName: string;
+      petId?: string;
+      species?: string;
+      breed?: string;
+      photoUrl?: string;
+      date: string;
+      timeSlot: string;
+      location: string;
+      status: string;
+      notes?: string;
+      isMissed: boolean;
+      rawAppointment?: any;
+      rawConsultation?: any;
+    }> = [];
+
+    // 1. Appointments (Vaccinations, Spay/Neuter, etc.)
+    ownerAppointments.forEach((apt: any) => {
+      const aptPet = pets.find(
+        (p) =>
+          (apt.pet_id && p.id === apt.pet_id) ||
+          (apt.pet_name && p.name.toLowerCase() === apt.pet_name.toLowerCase())
+      ) || apt.pets;
+      const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
+      const isSpayNeuter = apt.service_id === "spay-neuter";
+      list.push({
+        id: apt.id,
+        kind: "appointment",
+        serviceId: apt.service_id || "vaccination",
+        serviceLabel: isSpayNeuter ? "Spay & Neuter Booking" : "Rabies Vaccination Booking",
+        petName: displayPetName,
+        petId: apt.pet_id || aptPet?.id,
+        species: aptPet?.species || apt.pets?.species,
+        breed: aptPet?.breed || apt.pets?.breed,
+        photoUrl: aptPet?.photo_url || apt.pets?.photo_url,
+        date: apt.date || format(new Date(), "yyyy-MM-dd"),
+        timeSlot: apt.time_slot || "08:00 AM - 05:00 PM",
+        location: apt.location || "City Veterinary Office - Carmen Central Clinic",
+        status: apt.status || "confirmed",
+        notes: apt.notes || "",
+        isMissed: apt.status === "missed",
+        rawAppointment: apt,
+      });
+    });
+
+    // 2. Waiting or active consultation queue entries
+    ownerConsultations.forEach((c) => {
+      const isOverdue = isConsultationOverdue(c.date, c.status);
+      const isWaiting = c.status === "waiting" || c.status === "in-consultation";
+      if (isWaiting || isOverdue) {
+        const cPet = pets.find(
+          (p) =>
+            (c.petId && p.id === c.petId) ||
+            (c.petName && p.name.toLowerCase() === c.petName.toLowerCase())
+        );
+        list.push({
+          id: c.id,
+          kind: "consultation-queue",
+          serviceId: "consultation",
+          serviceLabel: "Clinical Consultation Queue",
+          petName: c.petName,
+          petId: c.petId || cPet?.id,
+          species: cPet?.species || c.species,
+          breed: cPet?.breed || c.breed,
+          photoUrl: cPet?.photo_url,
+          date: c.date,
+          timeSlot: c.time || "Clinic Hours",
+          location: "City Veterinary Office - Carmen Central Clinic",
+          status: isOverdue ? "overdue" : c.status,
+          notes: c.chiefComplaint,
+          isMissed: isOverdue,
+          rawConsultation: c,
+        });
+      }
+    });
+
+    // Sort by date newest first
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [ownerAppointments, ownerConsultations, pets]);
+
+  const displayedScheduledTransactions = useMemo(() => {
+    let list = allScheduledTransactions;
+    if (appointmentFilter === "upcoming") {
+      list = allScheduledTransactions.filter((a) => a.status === "confirmed" || a.status === "waiting" || a.status === "in-consultation");
+    } else if (appointmentFilter === "missed") {
+      list = allScheduledTransactions.filter((a) => a.isMissed || a.status === "missed" || a.status === "overdue");
+    } else if (appointmentFilter === "completed") {
+      list = allScheduledTransactions.filter((a) => a.status === "completed");
     }
-  }, [todayConsultations]);
+    return list;
+  }, [allScheduledTransactions, appointmentFilter]);
 
   // Primary pet for dynamic greetings and initial selections
   const primaryPetName = pets.length > 0 ? pets[0].name : "your pet";
@@ -1518,7 +1905,13 @@ export default function PetOwnerPortalPage() {
 
         {/* ── Mobile Upcoming Care Quick Banner (< md only) ── */}
         {(() => {
-          const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
+          const activeAppointments = ownerAppointments.filter(
+            (a: any) =>
+              a.status !== "cancelled" &&
+              a.status !== "completed" &&
+              a.status !== "missed" &&
+              !isConsultationOverdue(a.appointment_date || a.date, a.status)
+          );
           const nextApt = activeAppointments[0];
           const waitingConsultation = ownerConsultations.find(
             (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
@@ -1582,463 +1975,745 @@ export default function PetOwnerPortalPage() {
         />
       </TabsContent>
 
-      {/* ════ TAB 1: Consultations & Official CVO Forms ════ */}
+      {/* ════ TAB 1: All Vaccinations, Consultations & Spay/Neuter History ════ */}
       <TabsContent value="consultations" className="space-y-4 m-0">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-foreground">
-                  Clinical Consultations & Field Treatments
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  View diagnosed medical encounters and access the official signed Cagayan de Oro consultation paper
-                </p>
-              </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-foreground">
+              All Vaccinations, Consultations & Spay/Neuter History
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Complete medical encounters, administered vaccinations, and surgical history across all your pets
+            </p>
+          </div>
 
-              <PetOwnerConsultationDialog
-                pets={pets}
-                initialPet={pets[0]}
-                ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                trigger={
-                  <Button
-                    size="sm"
-                    className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
-                  >
-                    <Plus className="size-3.5" />
-                    <span>New Consultation Request</span>
-                  </Button>
-                }
-              />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <PetOwnerConsultationDialog
+              pets={pets}
+              initialPet={pets[0]}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <Button
+                  size="icon"
+                  className="size-8 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
+                  title="New Consultation"
+                  aria-label="New Consultation"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              }
+            />
+            <ScheduleProcedureDialog
+              initialService="vaccination"
+              pets={pets}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="size-8 rounded-xl border-border hover:bg-muted shadow-xs cursor-pointer"
+                  title="Schedule Procedure"
+                  aria-label="Schedule Procedure"
+                >
+                  <Calendar className="size-4 text-primary" />
+                </Button>
+              }
+            />
+          </div>
+        </div>
+
+        {/* Category Filter Dropdown (All History) */}
+        <div className="flex items-center justify-between gap-2.5 pt-1">
+          <Select
+            value={medicalHistoryFilter}
+            onValueChange={(val) => setMedicalHistoryFilter(val as any)}
+          >
+            <SelectTrigger className="h-8 text-xs w-44 bg-card border-border/80 rounded-xl font-semibold shadow-2xs cursor-pointer">
+              <SelectValue placeholder="All History" />
+            </SelectTrigger>
+            <SelectContent className="text-xs">
+              <SelectItem value="all">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-3.5 text-muted-foreground" />
+                  <span>All History</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="vaccination">
+                <div className="flex items-center gap-2">
+                  <Syringe className="size-3.5 text-emerald-600" />
+                  <span>Vaccinations</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="consultation">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="size-3.5 text-blue-600" />
+                  <span>Consultations</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="spay-neuter">
+                <div className="flex items-center gap-2">
+                  <Scissors className="size-3.5 text-indigo-600" />
+                  <span>Spay & Neuter</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* List of Unified Medical History */}
+        {filteredMedicalHistory.length === 0 ? (
+          <Card className="p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
+            <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
+              {medicalHistoryFilter === "vaccination" ? (
+                <Syringe className="size-6" />
+              ) : medicalHistoryFilter === "spay-neuter" ? (
+                <Scissors className="size-6" />
+              ) : (
+                <FileText className="size-6" />
+              )}
             </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-sm text-foreground">
+                No {medicalHistoryFilter === "all" ? "Medical Records" : medicalHistoryFilter === "vaccination" ? "Vaccination Records" : medicalHistoryFilter === "consultation" ? "Consultations" : "Spay & Neuter Records"} Found
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                {medicalHistoryFilter === "all"
+                  ? "You have not recorded any clinical consultations, vaccinations, or spay/neuter history for your pets yet."
+                  : `No records match the current filter "${medicalHistoryFilter}". Try selecting "All History" or book a new appointment.`}
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {filteredMedicalHistory.map((item) => {
+              const isConsultation = item.type === "consultation";
+              const isVaccination = item.type === "vaccination";
+              const isSpayNeuter = item.type === "spay-neuter";
+              const isCompleted = item.status === "completed";
+              const isOverdue = isConsultation && isConsultationOverdue(item.date, item.status);
+              const isWaiting = item.status === "waiting" && !isOverdue;
 
-            {/* List of Consultations or Default Empty View */}
-            {ownerConsultations.length === 0 ? (
-              <Card className="p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
-                <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
-                  <Stethoscope className="size-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-bold text-sm text-foreground">No Consultations or Encounters Found</h3>
-                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                    You have not submitted any consultation requests yet. Request clinical care or an encounter for your pet with the City Veterinary Office.
-                  </p>
-                </div>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {ownerConsultations.map((c) => {
-                  const isCompleted = c.status === "completed";
-                  const isOverdue = isConsultationOverdue(c.date, c.status);
-                  const isWaiting = c.status === "waiting" && !isOverdue;
-                  const cPet = pets.find((p) => (c.petId && p.id === c.petId) || (c.petName && p.name.toLowerCase() === c.petName.toLowerCase()));
+              const isExpanded = expandedHistoryIds.has(item.id);
 
-                  return (
-                    <Card
-                      key={c.id}
-                      className="border-border hover:border-primary/40 transition-all shadow-xs"
-                    >
-                      <CardContent className="p-4 sm:p-5">
-                        <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
-                          <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                            <div className="shrink-0 pt-0.5">
-                              <PetAvatar
-                                photoUrl={cPet?.photo_url}
-                                species={cPet?.species || c.species}
-                                name={c.petName}
-                                size="md"
-                                className="size-14 sm:size-16 shadow-xs"
-                              />
-                            </div>
+              return (
+                <Card
+                  key={item.id}
+                  className={cn(
+                    "border transition-all shadow-2xs rounded-2xl overflow-hidden hover:border-primary/40",
+                    isVaccination
+                      ? "hover:border-emerald-500/40"
+                      : isSpayNeuter
+                      ? "hover:border-indigo-500/40"
+                      : "hover:border-blue-500/40"
+                  )}
+                >
+                  <CardContent className="p-3.5 sm:p-4 space-y-0">
+                    {/* ── Compact Minimal Summary Row ── */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <PetAvatar
+                          photoUrl={item.photoUrl}
+                          species={item.species}
+                          name={item.petName}
+                          size="sm"
+                          className="size-10 sm:size-11 shrink-0 shadow-xs ring-1 ring-primary/20"
+                        />
 
-                            <div className="space-y-2 flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-xs font-extrabold text-foreground bg-muted px-2 py-0.5 rounded border border-border/80">
-                                  Encounter #{c.encounterNo}
-                                </span>
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] font-bold pointer-events-none select-none shadow-none gap-1 ${
-                                    isCompleted
-                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700"
-                                      : isOverdue
-                                      ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-700"
-                                      : isWaiting
-                                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700"
-                                      : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-700"
-                                  }`}
-                                >
-                                  {isOverdue ? (
-                                    <>
-                                      <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
-                                      OVERDUE
-                                    </>
-                                  ) : c.status === "in-consultation" ? (
-                                    <>
-                                      <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                      IN CONSULTATION
-                                    </>
-                                  ) : isWaiting ? (
-                                    <>
-                                      <Clock className="size-2.5 text-amber-600" />
-                                      WAITING
-                                    </>
-                                  ) : isCompleted ? (
-                                    <>
-                                      <CheckCircle2 className="size-2.5 text-emerald-600" />
-                                      COMPLETED
-                                    </>
-                                  ) : (
-                                    c.status.replace(/-/g, " ").toUpperCase()
-                                  )}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Calendar className="size-3" />
-                                  {c.date} • {c.time}
-                                </span>
-                              </div>
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-sm text-foreground truncate">
+                              {item.petName}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-normal">
+                              • {item.species} {item.breed ? `(${item.breed})` : ""}
+                            </span>
+                            <span className="font-mono text-[9px] font-bold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/60">
+                              #{item.encounterNo}
+                            </span>
 
-                              <div className="space-y-1 min-w-0">
-                                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                  <h4 className="font-bold text-sm text-foreground">
-                                    {c.petName} ({c.species} - {c.breed || "Aspin"})
-                                  </h4>
-                                  <span className="text-xs text-muted-foreground">•</span>
-                                  <span className="text-xs font-semibold text-primary">
-                                    {c.serviceType}
-                                  </span>
-                                </div>
+                            {/* Category Badge */}
+                            {isVaccination ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Syringe className="size-2.5 text-emerald-600" />
+                                VACCINATION
+                              </Badge>
+                            ) : isSpayNeuter ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Scissors className="size-2.5 text-indigo-600" />
+                                SPAY & NEUTER
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Stethoscope className="size-2.5 text-blue-600" />
+                                CONSULTATION
+                              </Badge>
+                            )}
 
-                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                  <strong className="text-foreground">Chief Complaint / Reason:</strong> {c.chiefComplaint}
-                                </p>
-
-                                {c.diagnosis && (
-                                  <div className="text-xs text-foreground bg-slate-50 dark:bg-muted/30 p-2.5 rounded-lg border border-border/60 space-y-1">
-                                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                      <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                                        Official Diagnosis: {c.diagnosis}
-                                      </span>
-                                      <span className="text-[10px] text-muted-foreground font-serif italic">
-                                        Attending Vet: {c.vetName}
-                                      </span>
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground">
-                                      <strong>Treatment & Rx:</strong> {c.treatment}
-                                      {c.medication && ` • ${c.medication}`}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                            {/* Status Badge */}
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[9px] font-bold pointer-events-none select-none shadow-none gap-1 px-1.5 py-0",
+                                isCompleted
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  : isOverdue
+                                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                                  : isWaiting
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                              )}
+                            >
+                              {isOverdue ? (
+                                <>
+                                  <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
+                                  OVERDUE
+                                </>
+                              ) : item.status === "in-consultation" ? (
+                                <>
+                                  <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                  IN CONSULTATION
+                                </>
+                              ) : isWaiting ? (
+                                <>
+                                  <Clock className="size-2.5 text-amber-600" />
+                                  WAITING
+                                </>
+                              ) : isCompleted ? (
+                                <>
+                                  <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                  COMPLETED
+                                </>
+                              ) : (
+                                item.status.replace(/-/g, " ").toUpperCase()
+                              )}
+                            </Badge>
                           </div>
 
-                          {/* Actions: View CVO Paper, Edit, Delete, Print */}
-                          <div className="flex flex-wrap sm:flex-nowrap xl:flex-col items-stretch sm:items-center xl:items-end gap-2 shrink-0 pt-2 xl:pt-0 border-t xl:border-t-0 border-border/40">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedConsultation(c);
-                                setSheetOpen(true);
-                              }}
-                              className="h-9 gap-1.5 text-xs font-bold border-black/30 bg-card hover:bg-muted cursor-pointer shadow-xs w-full sm:w-auto"
-                            >
-                              <FileText className="size-3.5 text-primary" />
-                              <span>View Official CVO Paper</span>
-                            </Button>
-
-                            <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between xl:justify-end">
-                              {!isConsultationLockedByVet(c) ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setConsultationToDelete(c);
-                                    setDeleteConsultationOpen(true);
-                                  }}
-                                  className="h-8 px-2.5 gap-1.5 text-[11px] font-medium text-destructive hover:bg-destructive/10 border-destructive/20 cursor-pointer"
-                                  title="Cancel or delete unreviewed consultation request"
-                                >
-                                  <Trash2 className="size-3.5 text-destructive" />
-                                  <span>Delete</span>
-                                </Button>
-                              ) : (
-                                <div
-                                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold select-none"
-                                  title="Official medical consultation record reviewed and recorded by attending veterinarian. Cannot be deleted."
-                                >
-                                  <Lock className="size-3 shrink-0" />
-                                  <span>Official Record</span>
-                                </div>
-                              )}
-
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedConsultation(c);
-                                  setSheetOpen(true);
-                                  setTimeout(() => window.print(), 300);
-                                }}
-                                className="h-8 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
-                                title="Print Record"
-                              >
-                                <Printer className="size-3" />
-                                <span className="sr-only sm:not-sr-only">Print</span>
-                              </Button>
-                            </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                            <span className={cn(
+                              "font-semibold truncate max-w-[220px] sm:max-w-[340px]",
+                              isVaccination
+                                ? "text-emerald-700 dark:text-emerald-400"
+                                : isSpayNeuter
+                                ? "text-indigo-700 dark:text-indigo-400"
+                                : "text-primary"
+                            )}>
+                              {item.serviceType}
+                            </span>
+                            <span className="text-muted-foreground/40">•</span>
+                            <span className="text-[11px] text-muted-foreground font-mono shrink-0 flex items-center gap-1">
+                              <Calendar className="size-3" />
+                              {item.date} {item.time && `• ${item.time}`}
+                            </span>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
+                      </div>
 
-          {/* ════ TAB 2: Spay & Neuter & Vaccination Appointments ════ */}
-          <TabsContent value="procedures" className="space-y-3 pt-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-foreground">
-                  Appointments & Procedures
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Scheduled clinic appointments (Monday to Friday)
-                </p>
-              </div>
+                      {/* Right: View Details Button */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleExpandHistory(item.id)}
+                          className="h-8 px-2.5 text-xs font-semibold gap-1.5 rounded-xl border-border/80 hover:bg-muted shrink-0 cursor-pointer shadow-2xs"
+                        >
+                          <span>{isExpanded ? "Hide Details" : "View Details"}</span>
+                          <ChevronDown
+                            className={cn(
+                              "size-3.5 text-muted-foreground transition-transform duration-200",
+                              isExpanded && "rotate-180"
+                            )}
+                          />
+                        </Button>
+                      </div>
+                    </div>
 
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <Select
-                  value={appointmentFilter}
-                  onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
-                    setAppointmentFilter(val)
-                  }
-                >
-                  <SelectTrigger className="h-8 w-38 text-xs bg-muted/20 border-border/70 rounded-lg cursor-pointer">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent className="text-xs rounded-lg">
-                    <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
-                      All
-                    </SelectItem>
-                    <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
-                      Upcoming
-                    </SelectItem>
-                    <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
-                      Missed / No-Show
-                    </SelectItem>
-                    <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
-                      Completed
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                    {/* ── Collapsible Full Details Section ── */}
+                    {isExpanded && (
+                      <div className="pt-3 mt-3 border-t border-border/50 space-y-3 text-xs animate-in fade-in-50 duration-200">
+                        {item.chiefComplaint && (
+                          <div className="space-y-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                              {isVaccination ? "Record Details:" : isSpayNeuter ? "Surgical Notes:" : "Chief Complaint / Reason:"}
+                            </span>
+                            <p className="text-xs text-foreground bg-muted/30 p-2.5 rounded-xl border border-border/40 leading-relaxed">
+                              {item.chiefComplaint}
+                            </p>
+                          </div>
+                        )}
 
-                <ScheduleProcedureDialog
-                  initialService="vaccination"
-                  pets={pets}
-                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                  trigger={
-                    <Button
-                      size="sm"
-                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
-                    >
-                      <Plus className="size-3.5" />
-                      <span>Book Appointment</span>
-                    </Button>
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Unattended Appointment Callout Banner */}
-            {missedAppointmentsCount > 0 && (
-              <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in-0">
-                <div className="flex items-start gap-2.5">
-                  <div className="size-8 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/30">
-                    <CalendarClock className="size-4" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
-                      {missedAppointmentsCount === 1
-                        ? "Unattended Schedule Notice: 1 appointment was missed"
-                        : `Unattended Schedule Notice: ${missedAppointmentsCount} appointments were missed`}
-                    </p>
-                    <p className="text-muted-foreground text-xs leading-relaxed">
-                      Appointments not attended on their scheduled date are flagged. Please reschedule your pet&apos;s procedure to secure a fresh municipal veterinary clinic slot.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
-                  <Button
-                    size="sm"
-                    variant={appointmentFilter === "missed" ? "default" : "outline"}
-                    onClick={() => setAppointmentFilter("missed")}
-                    className="h-8 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white border-transparent cursor-pointer"
-                  >
-                    View Missed
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* List of Appointments or Empty View */}
-            {loadingAppointments ? (
-              <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
-                <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <span className="text-xs">Loading municipal appointments...</span>
-              </div>
-            ) : ownerAppointments.length === 0 ? (
-              <Card className="p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
-                <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
-                  <Calendar className="size-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-bold text-sm text-foreground">No Procedure Appointments Scheduled</h3>
-                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                    You have not booked any Spay & Neuter or Vaccination slots yet. Reserve your pet&apos;s appointment early to guarantee your daily quota slot.
-                  </p>
-                </div>
-              </Card>
-            ) : displayedAppointments.length === 0 ? (
-              <Card className="p-6 text-center border-dashed border border-border/70 bg-muted/10 space-y-2 rounded-xl">
-                <p className="text-xs font-semibold text-foreground">No appointments under &quot;{appointmentFilter}&quot;</p>
-                <p className="text-[11px] text-muted-foreground">Select another filter above or book a new appointment.</p>
-              </Card>
-            ) : (
-              <div className="space-y-2.5">
-                {displayedAppointments.map((apt: any) => {
-                  const isSpayNeuter = apt.service_id === "spay-neuter";
-                  const aptPet = pets.find((p) => (apt.pet_id && p.id === apt.pet_id) || (apt.pet_name && p.name.toLowerCase() === apt.pet_name.toLowerCase())) || apt.pets;
-                  const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
-                  const isMissed = apt.status === "missed";
-
-                  return (
-                    <Card
-                      key={apt.id}
-                      className={cn(
-                        "border transition-all duration-200 rounded-xl shadow-2xs hover:shadow-xs overflow-hidden",
-                        apt.status === "cancelled"
-                          ? "opacity-60 bg-muted/20 border-border/50"
-                          : isMissed
-                          ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/5 hover:border-amber-500/60"
-                          : isSpayNeuter
-                          ? "border-indigo-500/20 bg-card hover:border-indigo-500/40"
-                          : "border-emerald-500/20 bg-card hover:border-emerald-500/40"
-                      )}
-                    >
-                      <CardContent className="p-3.5 sm:p-4 space-y-2.5">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                          {/* Left: Pet Avatar & Details */}
-                          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
-                            <div className="shrink-0">
-                              <PetAvatar
-                                photoUrl={aptPet?.photo_url || apt.pets?.photo_url}
-                                species={aptPet?.species || apt.pets?.species}
-                                name={displayPetName}
-                                size="md"
-                                className="size-14 sm:size-16 shadow-xs"
-                              />
-                            </div>
-
-                            <div className="space-y-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-sm text-foreground">
-                                  {displayPetName}
+                        {(item.diagnosis || item.treatment) && (
+                          <div className={cn(
+                            "text-xs p-3 rounded-xl border space-y-1.5",
+                            isVaccination
+                              ? "bg-emerald-500/5 border-emerald-500/20 text-foreground"
+                              : isSpayNeuter
+                              ? "bg-indigo-500/5 border-indigo-500/20 text-foreground"
+                              : "bg-slate-50 dark:bg-muted/30 border-border/60 text-foreground"
+                          )}>
+                            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                              <span className={cn(
+                                "font-bold",
+                                isVaccination
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : isSpayNeuter
+                                  ? "text-indigo-700 dark:text-indigo-400"
+                                  : "text-blue-700 dark:text-blue-400"
+                              )}>
+                                {isVaccination ? "Immunization Status: " : isSpayNeuter ? "Procedure Status: " : "Official Diagnosis: "}
+                                {item.diagnosis || "Recorded"}
+                              </span>
+                              {item.vetName && (
+                                <span className="text-[10px] text-muted-foreground font-serif italic">
+                                  Attending: {item.vetName}
                                 </span>
-                                {aptPet && (
-                                  <span className="text-xs text-muted-foreground hidden md:inline">
-                                    ({aptPet.species} • {aptPet.breed})
-                                  </span>
-                                )}
-                                <Badge
-                                  variant="secondary"
-                                  className={cn(
-                                    "text-[10px] font-semibold px-2 py-0 h-4.5",
-                                    isSpayNeuter
-                                      ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20"
-                                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
-                                  )}
-                                >
-                                  {isSpayNeuter ? "Spay & Neuter" : "Rabies Vaccination"}
-                                </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-[10px] font-semibold capitalize px-1.5 py-0 h-4.5",
-                                    apt.status === "confirmed"
-                                      ? "border-emerald-500/40 text-emerald-600 bg-emerald-500/5"
-                                      : apt.status === "completed"
-                                      ? "border-blue-500/40 text-blue-600 bg-blue-500/5"
-                                      : apt.status === "cancelled"
-                                      ? "border-destructive/40 text-destructive bg-destructive/5"
-                                      : apt.status === "missed"
-                                      ? "border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/15 font-bold"
-                                      : "border-amber-500/40 text-amber-600 bg-amber-500/5"
-                                  )}
-                                >
-                                  {apt.status === "missed" ? "Unattended (Missed)" : apt.status}
-                                </Badge>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1 font-medium text-foreground">
-                                  <Calendar className="size-3 text-primary" />
-                                  {format(new Date(apt.date), "EEEE, MMMM d, yyyy")}
-                                </span>
-                                <span className="text-border">•</span>
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="size-3 text-muted-foreground" />
-                                  {apt.location ? apt.location.replace("City Veterinary Office - ", "CVO ") : "CVO Carmen Central Clinic"}
-                                </span>
-                                <span className="text-border">•</span>
-                                <span className="font-mono text-[11px] text-muted-foreground">
-                                  #{apt.id.slice(0, 8).toUpperCase()}
-                                </span>
-                              </div>
-
-                              {isMissed && (
-                                <div className="mt-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
-                                  <div className="flex items-center gap-1.5 font-medium">
-                                    <AlertTriangle className="size-3.5 text-amber-600 shrink-0" />
-                                    <span>Schedule unattended on {format(new Date(apt.date), "MMMM d")}. Please click Reschedule.</span>
-                                  </div>
-                                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300 shrink-0 bg-amber-500/20 px-1.5 py-0.5 rounded">
-                                    Reschedule Required
-                                  </span>
-                                </div>
                               )}
                             </div>
+                            {item.treatment && (
+                              <p className="text-[11px] text-muted-foreground">
+                                <strong>{isVaccination ? "Administration & Batch:" : isSpayNeuter ? "Surgical Treatment:" : "Treatment & Rx:"}</strong> {item.treatment}
+                                {item.medication && ` • ${item.medication}`}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Action buttons inside full details */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/40">
+                          <div className="flex items-center gap-2">
+                            {item.rawConsultation ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedConsultation(item.rawConsultation!);
+                                  setSheetOpen(true);
+                                }}
+                                className="h-8 gap-1.5 text-xs font-semibold border-border bg-card hover:bg-muted cursor-pointer shadow-xs rounded-xl"
+                              >
+                                <FileText className="size-3.5 text-primary" />
+                                <span>View Official CVO Paper</span>
+                              </Button>
+                            ) : item.rawAppointment ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAppointmentForSlip(item.rawAppointment);
+                                  setAppointmentSlipOpen(true);
+                                }}
+                                className="h-8 gap-1.5 text-xs font-semibold border-border bg-card hover:bg-muted cursor-pointer shadow-xs rounded-xl"
+                              >
+                                <QrCode className="size-3.5 text-primary" />
+                                <span>Appointment Slip</span>
+                              </Button>
+                            ) : (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold select-none"
+                                title="Official municipal registry record"
+                              >
+                                <ShieldCheck className="size-3.5 shrink-0" />
+                                <span>Official CVO Record</span>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Right: Actions */}
-                          <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40 justify-end">
-                            {isMissed ? (
+                          <div className="flex items-center gap-1.5">
+                            {item.rawConsultation && !isConsultationLockedByVet(item.rawConsultation) ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setConsultationToDelete(item.rawConsultation!);
+                                  setDeleteConsultationOpen(true);
+                                }}
+                                className="h-8 px-2.5 gap-1.5 text-[11px] font-medium text-destructive hover:bg-destructive/10 border-destructive/20 cursor-pointer rounded-xl"
+                                title="Cancel or delete unreviewed consultation request"
+                              >
+                                <Trash2 className="size-3.5 text-destructive" />
+                                <span>Delete</span>
+                              </Button>
+                            ) : null}
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (item.rawConsultation) {
+                                  setSelectedConsultation(item.rawConsultation);
+                                  setSheetOpen(true);
+                                  setTimeout(() => window.print(), 300);
+                                } else if (item.rawAppointment) {
+                                  setSelectedAppointmentForSlip(item.rawAppointment);
+                                  setAppointmentSlipOpen(true);
+                                  setTimeout(() => window.print(), 300);
+                                } else {
+                                  window.print();
+                                }
+                              }}
+                              className="h-8 px-2.5 gap-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer rounded-xl"
+                              title="Print Record"
+                            >
+                              <Printer className="size-3.5" />
+                              <span className="sr-only sm:not-sr-only">Print</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </TabsContent>
+
+      {/* ════ TAB 2: Scheduled Transactions for Our Pets ════ */}
+      <TabsContent value="procedures" className="space-y-3 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-foreground">
+              Scheduled Transactions for Our Pets
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              All scheduled transactions, upcoming procedures, and clinic appointments for your registered pets
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Select
+              value={appointmentFilter}
+              onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
+                setAppointmentFilter(val)
+              }
+            >
+              <SelectTrigger className="h-8 w-44 text-xs bg-muted/20 border-border/70 rounded-lg cursor-pointer">
+                <SelectValue placeholder="All Transactions" />
+              </SelectTrigger>
+              <SelectContent className="text-xs rounded-lg">
+                <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
+                  All Transactions
+                </SelectItem>
+                <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
+                  Upcoming / Queue
+                </SelectItem>
+                <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
+                  Missed / Overdue
+                </SelectItem>
+                <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
+                  Completed Transactions
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Unattended Schedule Notice Banner */}
+        {missedAppointmentsCount > 0 && (
+          <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in-0">
+            <div className="flex items-start gap-2.5">
+              <div className="size-8 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/30">
+                <CalendarClock className="size-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+                  {missedAppointmentsCount === 1
+                    ? "Unattended Schedule Notice: 1 appointment was missed"
+                    : `Unattended Schedule Notice: ${missedAppointmentsCount} appointments were missed`}
+                </p>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Appointments not attended on their scheduled date are flagged. Please reschedule your pet&apos;s procedure to secure a fresh municipal veterinary clinic slot.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
+              <Button
+                size="sm"
+                variant={appointmentFilter === "missed" ? "default" : "outline"}
+                onClick={() => setAppointmentFilter("missed")}
+                className="h-8 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white border-transparent cursor-pointer"
+              >
+                View Missed
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* List of Scheduled Transactions or Empty View */}
+        {loadingAppointments ? (
+          <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
+            <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <span className="text-xs">Loading scheduled transactions...</span>
+          </div>
+        ) : allScheduledTransactions.length === 0 ? (
+          <Card className="p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
+            <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
+              <Calendar className="size-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-sm text-foreground">No Scheduled Transactions Found</h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                You do not have any active appointments or scheduled transactions for your pets. Book a procedure or request a consultation to get started.
+              </p>
+            </div>
+          </Card>
+        ) : displayedScheduledTransactions.length === 0 ? (
+          <Card className="p-6 text-center border-dashed border border-border/70 bg-muted/10 space-y-2 rounded-xl">
+            <p className="text-xs font-semibold text-foreground">No scheduled transactions under &quot;{appointmentFilter}&quot;</p>
+            <p className="text-[11px] text-muted-foreground">Select another filter above or book a new appointment.</p>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {displayedScheduledTransactions.map((tx) => {
+              const isSpayNeuter = tx.serviceId === "spay-neuter";
+              const isConsultationQueue = tx.kind === "consultation-queue";
+              const isVaccination = !isSpayNeuter && !isConsultationQueue;
+              const isCompleted = tx.status === "completed";
+              const isOverdue = tx.isMissed || tx.status === "missed" || tx.status === "overdue";
+              const isWaiting = tx.status === "waiting";
+              const isCheckedIn = tx.status === "checked-in";
+              const isCancelled = tx.status === "cancelled";
+
+              const isExpanded = expandedTransactionIds.has(tx.id);
+
+              return (
+                <Card
+                  key={`${tx.kind}-${tx.id}`}
+                  className={cn(
+                    "border transition-all shadow-2xs rounded-2xl overflow-hidden hover:border-primary/40",
+                    isVaccination
+                      ? "hover:border-emerald-500/40"
+                      : isSpayNeuter
+                      ? "hover:border-indigo-500/40"
+                      : "hover:border-blue-500/40"
+                  )}
+                >
+                  <CardContent className="p-3.5 sm:p-4 space-y-0">
+                    {/* ── Compact Minimal Summary Row (Matches Image 3) ── */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <PetAvatar
+                          photoUrl={tx.photoUrl}
+                          species={tx.species}
+                          name={tx.petName}
+                          size="sm"
+                          className="size-10 sm:size-11 shrink-0 shadow-xs ring-1 ring-primary/20"
+                        />
+
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-sm text-foreground truncate">
+                              {tx.petName}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-normal">
+                              • {tx.species} {tx.breed ? `(${tx.breed})` : ""}
+                            </span>
+                            <span className="font-mono text-[9px] font-bold text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/60">
+                              #{tx.id.slice(0, 8).toUpperCase()}
+                            </span>
+
+                            {/* Category Badge */}
+                            {isVaccination ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Syringe className="size-2.5 text-emerald-600" />
+                                VACCINATION
+                              </Badge>
+                            ) : isSpayNeuter ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Scissors className="size-2.5 text-indigo-600" />
+                                SPAY & NEUTER
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] font-bold bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 gap-1 px-1.5 py-0"
+                              >
+                                <Stethoscope className="size-2.5 text-blue-600" />
+                                CONSULTATION
+                              </Badge>
+                            )}
+
+                            {/* Status Badge */}
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[9px] font-bold pointer-events-none select-none shadow-none gap-1 px-1.5 py-0",
+                                isCompleted
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  : isOverdue
+                                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                                  : isCheckedIn
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  : isWaiting
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                  : isCancelled
+                                  ? "bg-destructive/10 text-destructive border-destructive/30"
+                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                              )}
+                            >
+                              {isOverdue ? (
+                                <>
+                                  <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
+                                  OVERDUE
+                                </>
+                              ) : isCheckedIn ? (
+                                <>
+                                  <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                  CHECKED-IN
+                                </>
+                              ) : isWaiting ? (
+                                <>
+                                  <Clock className="size-2.5 text-amber-600" />
+                                  WAITING
+                                </>
+                              ) : isCompleted ? (
+                                <>
+                                  <CheckCircle2 className="size-2.5 text-emerald-600" />
+                                  COMPLETED
+                                </>
+                              ) : isCancelled ? (
+                                "CANCELLED"
+                              ) : (
+                                tx.status.replace(/-/g, " ").toUpperCase()
+                              )}
+                            </Badge>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                            <span
+                              className={cn(
+                                "font-semibold truncate max-w-[220px] sm:max-w-[340px]",
+                                isVaccination
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : isSpayNeuter
+                                  ? "text-indigo-700 dark:text-indigo-400"
+                                  : "text-primary"
+                              )}
+                            >
+                              {tx.serviceLabel}
+                            </span>
+                            <span className="text-muted-foreground/40">•</span>
+                            <span className="text-[11px] text-muted-foreground font-mono shrink-0 flex items-center gap-1">
+                              <Calendar className="size-3" />
+                              {tx.date} {tx.timeSlot && `• ${tx.timeSlot}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: View Details Button */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleExpandTransaction(tx.id)}
+                          className="h-8 px-2.5 text-xs font-semibold gap-1.5 rounded-xl border-border/80 hover:bg-muted shrink-0 cursor-pointer shadow-2xs"
+                        >
+                          <span>{isExpanded ? "Hide Details" : "View Details"}</span>
+                          <ChevronDown
+                            className={cn(
+                              "size-3.5 text-muted-foreground transition-transform duration-200",
+                              isExpanded && "rotate-180"
+                            )}
+                          />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* ── Collapsible Full Details Section ── */}
+                    {isExpanded && (
+                      <div className="pt-3 mt-3 border-t border-border/50 space-y-3 text-xs animate-in fade-in-50 duration-200">
+                        {/* Overdue / Unattended alert if missed */}
+                        {tx.isMissed && (
+                          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <AlertTriangle className="size-3.5 text-amber-600 shrink-0" />
+                              <span>Schedule unattended on {tx.date}. Please reschedule.</span>
+                            </div>
+                            <span className="font-bold text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-300 shrink-0 bg-amber-500/20 px-1.5 py-0.5 rounded">
+                              Reschedule Required
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="p-2.5 rounded-xl bg-muted/30 border border-border/40 space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                              <MapPin className="size-3 text-primary" />
+                              Clinic Location
+                            </span>
+                            <p className="text-xs text-foreground font-medium">
+                              {tx.location ? tx.location.replace("City Veterinary Office - ", "CVO ") : "CVO Carmen Central Clinic"}
+                            </p>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-muted/30 border border-border/40 space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                              <Clock className="size-3 text-primary" />
+                              Scheduled Time & Slot
+                            </span>
+                            <p className="text-xs text-foreground font-medium">
+                              {tx.date} • {tx.timeSlot}
+                            </p>
+                          </div>
+                        </div>
+
+                        {tx.notes && (
+                          <div className="p-2.5 rounded-xl bg-muted/30 border border-border/40 space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                              Notes / Details:
+                            </span>
+                            <p className="text-xs text-foreground leading-relaxed">
+                              {tx.notes}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Action buttons with icons */}
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/40">
+                          {tx.rawAppointment ? (
+                            tx.isMissed ? (
                               <>
                                 <ScheduleProcedureDialog
-                                  initialService={apt.service_id === "spay-neuter" ? "spay-neuter" : "vaccination"}
-                                  initialPet={aptPet || (apt.pet_id ? { id: apt.pet_id, name: displayPetName } : undefined)}
+                                  initialService={tx.serviceId === "spay-neuter" ? "spay-neuter" : "vaccination"}
+                                  initialPet={pets.find((p) => p.id === tx.petId) || (tx.petId ? { id: tx.petId, name: tx.petName } : undefined)}
                                   pets={pets}
-                                  rescheduleAppointmentId={apt.id}
+                                  rescheduleAppointmentId={tx.id}
                                   ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
                                   trigger={
                                     <Button
                                       size="sm"
-                                      className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs cursor-pointer"
+                                      className="size-8 p-0 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs cursor-pointer"
+                                      title="Reschedule Appointment"
                                     >
-                                      <CalendarClock className="size-3.5" />
-                                      <span>Reschedule</span>
+                                      <CalendarClock className="size-4" />
                                     </Button>
                                   }
                                 />
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleCancelAppointment(apt.id)}
-                                  className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
+                                  onClick={() => handleCancelAppointment(tx.id)}
+                                  className="size-8 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                                   title="Dismiss missed appointment"
                                 >
-                                  Dismiss
+                                  <Trash2 className="size-4" />
                                 </Button>
                               </>
                             ) : (
@@ -2047,48 +2722,64 @@ export default function PetOwnerPortalPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => {
-                                    setSelectedAppointmentForSlip(apt);
+                                    setSelectedAppointmentForSlip(tx.rawAppointment);
                                     setAppointmentSlipOpen(true);
                                   }}
-                                  className="h-8 px-3 gap-1.5 text-xs font-semibold rounded-lg border-border hover:bg-muted cursor-pointer shadow-2xs"
+                                  className="size-8 p-0 rounded-lg border-border/80 hover:bg-muted cursor-pointer shadow-2xs"
+                                  title="Appointment Pass / QR"
                                 >
-                                  <QrCode className="size-3.5 text-primary" />
-                                  <span>Appointment Pass</span>
+                                  <QrCode className="size-4 text-primary" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAppointmentForSlip(tx.rawAppointment);
+                                    setAppointmentSlipOpen(true);
+                                  }}
+                                  className="size-8 p-0 rounded-lg border-border/80 hover:bg-muted cursor-pointer shadow-2xs"
+                                  title="Official Certificate / Record Slip"
+                                >
+                                  <FileText className="size-4 text-primary" />
                                 </Button>
 
-                                {apt.status !== "cancelled" && apt.status !== "completed" && (
+                                {tx.status !== "cancelled" && tx.status !== "completed" && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleCancelAppointment(apt.id)}
-                                    className="h-8 px-2.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-lg transition-colors"
-                                    title="Cancel appointment and release slot"
+                                    onClick={() => handleCancelAppointment(tx.id)}
+                                    className="size-8 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                                    title="Cancel appointment"
                                   >
-                                    Cancel
+                                    <Trash2 className="size-4" />
                                   </Button>
                                 )}
                               </>
-                            )}
-                          </div>
+                            )
+                          ) : tx.rawConsultation ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedConsultation(tx.rawConsultation);
+                                setSheetOpen(true);
+                              }}
+                              className="size-8 p-0 rounded-lg border-border/80 hover:bg-muted cursor-pointer shadow-2xs"
+                              title="Queue Sheet"
+                            >
+                              <FileText className="size-4 text-primary" />
+                            </Button>
+                          ) : null}
                         </div>
-
-                        {/* Missed schedule explanation banner */}
-                        {isMissed && (
-                          <div className="flex items-start sm:items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
-                            <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-0" />
-                            <div className="flex-1">
-                              <span className="font-semibold">Schedule Unattended:</span> This appointment on{" "}
-                              <strong>{format(new Date(apt.date), "MMMM d, yyyy")}</strong> was missed. Click <strong>Reschedule</strong> above to pick a new municipal clinic date.
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </TabsContent>
 
 
           {/* ════ TAB 4: Animal Bite Protocol & Emergency ABTC Guidance ════ */}
@@ -2321,17 +3012,34 @@ export default function PetOwnerPortalPage() {
                 </p>
               </div>
             </div>
-            {ownerAppointments.filter((a: any) => a.status !== "cancelled").length > 0 && (
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-bold">
-                {ownerAppointments.filter((a: any) => a.status !== "cancelled").length} Active
-              </Badge>
-            )}
+            {(() => {
+              const activeCount = ownerAppointments.filter(
+                (a: any) =>
+                  a.status !== "cancelled" &&
+                  a.status !== "completed" &&
+                  a.status !== "missed" &&
+                  !isConsultationOverdue(a.appointment_date || a.date, a.status)
+              ).length + (ownerConsultations.some((c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)) ? 1 : 0);
+
+              if (activeCount === 0) return null;
+              return (
+                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 font-bold">
+                  {activeCount} Active
+                </Badge>
+              );
+            })()}
           </div>
         </CardHeader>
 
         <CardContent className="p-4 space-y-3 text-xs">
           {(() => {
-            const activeAppointments = ownerAppointments.filter((a: any) => a.status !== "cancelled");
+            const activeAppointments = ownerAppointments.filter(
+              (a: any) =>
+                a.status !== "cancelled" &&
+                a.status !== "completed" &&
+                a.status !== "missed" &&
+                !isConsultationOverdue(a.appointment_date || a.date, a.status)
+            );
             const nextApt = activeAppointments[0];
             const waitingConsultation = ownerConsultations.find(
               (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
@@ -2557,10 +3265,18 @@ export default function PetOwnerPortalPage() {
               ? pet.microchip
               : `CDO-${isCat ? "FEL" : "CAN"}-${pet.id.replace(/\D/g, "").slice(-4) || pet.id.slice(0, 5).toUpperCase()}`;
 
-            const petUpcomingAppointments = ownerAppointments.filter((a: any) =>
-              (a.pet_id && a.pet_id.toLowerCase() === pet.id.toLowerCase()) ||
-              (a.pet_name && a.pet_name.toLowerCase() === pet.name.toLowerCase())
-            );
+            const petUpcomingAppointments = ownerAppointments.filter((a: any) => {
+              const matches =
+                (a.pet_id && a.pet_id.toLowerCase() === pet.id.toLowerCase()) ||
+                (a.pet_name && a.pet_name.toLowerCase() === pet.name.toLowerCase());
+              if (!matches) return false;
+              return (
+                a.status !== "cancelled" &&
+                a.status !== "completed" &&
+                a.status !== "missed" &&
+                !isConsultationOverdue(a.appointment_date || a.date, a.status)
+              );
+            });
 
             const petActiveConsultations = ownerConsultations.filter((c: any) => {
               const matches = (c.petId && c.petId.toLowerCase() === pet.id.toLowerCase()) ||

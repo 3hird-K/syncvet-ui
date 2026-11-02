@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,8 @@ const SURGERY_PROTOCOLS = [
   { id: "feline_scrotal_castration", name: "Feline Closed Scrotal Castration (Neuter)", gender: "Male" },
 ];
 
+const EMPTY_VETS: RegisteredVet[] = [];
+
 export function CompleteSurgeryDialog({
   consultation,
   open,
@@ -74,6 +77,7 @@ export function CompleteSurgeryDialog({
   const { user, isLoaded: isUserLoaded } = useUser();
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
+  const lastSyncedEncounterKey = useRef<string | null>(null);
 
   // Fetch current user's database role and profile from Supabase
   const { data: dbCurrentUser } = useQuery({
@@ -111,7 +115,7 @@ export function CompleteSurgeryDialog({
   const currentUserAvatar = dbCurrentUser?.avatar_url || (isUserLoaded && user?.imageUrl ? user.imageUrl : undefined);
 
   // Query actual registered veterinarians and staff from database
-  const { data: dbVets = [] } = useQuery<RegisteredVet[]>({
+  const { data: dbVets = EMPTY_VETS } = useQuery<RegisteredVet[]>({
     queryKey: ["registered-administering-vets"],
     queryFn: async () => {
       try {
@@ -214,30 +218,50 @@ export function CompleteSurgeryDialog({
     return allAvailableVets.find((v) => v.name === targetName || v.name === operatingSurgeon) || null;
   }, [allAvailableVets, operatingSurgeon, currentUserName, isAdmin, isVet]);
 
-  // Lock to logged-in Veterinarian if user is a Veterinarian; otherwise use assigned if recognized, else leave unassigned
+  // Sync state strictly when dialog opens or when a different consultation encounter is selected
   useEffect(() => {
+    if (!open || !consultation) {
+      if (!open) {
+        lastSyncedEncounterKey.current = null;
+      }
+      return;
+    }
+
+    const currentKey = `${consultation.id || consultation.encounterNo || "enc"}-${consultation.date || ""}`;
+    if (lastSyncedEncounterKey.current === currentKey) {
+      return;
+    }
+    lastSyncedEncounterKey.current = currentKey;
+
+    if (consultation.vitals?.weightKg && consultation.vitals.weightKg > 0) {
+      setWeightKg(String(consultation.vitals.weightKg));
+    }
+    if (consultation.vitals?.temperatureC && consultation.vitals.temperatureC > 0) {
+      setTemperatureC(String(consultation.vitals.temperatureC));
+    }
+    // Infer female vs male if mentioned or default to female spay
+    const breedOrName = (consultation.breed + " " + consultation.petName).toLowerCase();
+    if (breedOrName.includes("male") || breedOrName.includes("boy")) {
+      setProcedureType(SURGERY_PROTOCOLS[1].name);
+    } else {
+      setProcedureType(SURGERY_PROTOCOLS[0].name);
+    }
+
     if (!isAdmin && isVet && currentUserName) {
       setOperatingSurgeon(currentUserName);
-    } else if (consultation?.vetName) {
-      const lower = consultation.vetName.toLowerCase().trim();
-      const isRecognized =
-        lower.includes("helen") ||
-        (currentUserName && (lower === currentUserName.toLowerCase() || lower.includes(currentUserName.toLowerCase()))) ||
-        allAvailableVets.some((v) => v.name.toLowerCase() === lower || lower.includes(v.name.toLowerCase()));
-      if (
-        isRecognized &&
-        !lower.includes("attending cvo") &&
-        !lower.includes("queue assignment") &&
-        !lower.includes("elena santos")
-      ) {
-        setOperatingSurgeon(consultation.vetName);
-      } else {
-        setOperatingSurgeon("");
-      }
+    } else if (
+      consultation.vetName &&
+      !consultation.vetName.toLowerCase().includes("attending cvo") &&
+      !consultation.vetName.toLowerCase().includes("queue assignment") &&
+      !consultation.vetName.toLowerCase().includes("elena santos")
+    ) {
+      setOperatingSurgeon(consultation.vetName);
+    } else if (currentUserName) {
+      setOperatingSurgeon(currentUserName);
     } else {
       setOperatingSurgeon("");
     }
-  }, [isAdmin, isVet, currentUserName, consultation, allAvailableVets]);
+  }, [open, consultation?.id, consultation?.encounterNo, isAdmin, isVet, currentUserName]);
 
   // Follow-up Suture Check: 7 to 10 days later
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>(() => {
@@ -255,23 +279,6 @@ export function CompleteSurgeryDialog({
     }
   }, [followUpDate]);
 
-  useEffect(() => {
-    if (consultation) {
-      if (consultation.vitals?.weightKg && consultation.vitals.weightKg > 0) {
-        setWeightKg(String(consultation.vitals.weightKg));
-      }
-      if (consultation.vitals?.temperatureC && consultation.vitals.temperatureC > 0) {
-        setTemperatureC(String(consultation.vitals.temperatureC));
-      }
-      // Infer female vs male if mentioned or default to female spay
-      const breedOrName = (consultation.breed + " " + consultation.petName).toLowerCase();
-      if (breedOrName.includes("male") || breedOrName.includes("boy")) {
-        setProcedureType(SURGERY_PROTOCOLS[1].name);
-      } else {
-        setProcedureType(SURGERY_PROTOCOLS[0].name);
-      }
-    }
-  }, [consultation]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -34,6 +34,7 @@ import {
   Shield,
   CircleUser,
   QrCode,
+  FileText,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -240,11 +241,11 @@ export function FacebookTopBar({
               className="cursor-pointer gap-2.5 py-2 rounded-xl"
             >
               <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                <Stethoscope className="size-4" />
+                <FileText className="size-4" />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-xs text-foreground">Clinical Consultations</p>
-                <p className="text-[10px] text-muted-foreground">Request clinical care for companion pet</p>
+                <p className="font-semibold text-xs text-foreground">Vaccinations, Consultations & Spay/Neuter</p>
+                <p className="text-[10px] text-muted-foreground">All vaccinations, consultations, and spay/neuter history</p>
               </div>
             </DropdownMenuItem>
 
@@ -256,8 +257,8 @@ export function FacebookTopBar({
                 <Calendar className="size-4" />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-xs text-foreground">Book Procedure Quota</p>
-                <p className="text-[10px] text-muted-foreground">Free Spay/Neuter & Rabies slots</p>
+                <p className="font-semibold text-xs text-foreground">Scheduled Transactions</p>
+                <p className="text-[10px] text-muted-foreground">All scheduled transactions for our pets</p>
               </div>
             </DropdownMenuItem>
 

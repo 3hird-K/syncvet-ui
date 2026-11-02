@@ -33,6 +33,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   checkInPetOwnerToQueue,
   getPetOwnerQueueStatus,
@@ -43,6 +44,7 @@ import {
 function QueueCheckinContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { user, isLoaded, isSignedIn } = useUser();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
@@ -71,9 +73,18 @@ function QueueCheckinContent() {
       const ownerId = user.id;
       const ownerEmail = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
       const ownerName = user.fullName || user.firstName || "Pet Owner";
+      const ownerPhone = (user.unsafeMetadata?.phoneNumber as string) || "";
+      const ownerBarangay = (user.unsafeMetadata?.barangay as string) || "Cagayan de Oro City";
 
       // 1. First, check if pet owner is already checked into today's queue
-      const existingStatus = getPetOwnerQueueStatus(ownerId, todayStr);
+      const existingStatus = getPetOwnerQueueStatus(
+        {
+          ownerId,
+          userName: ownerName,
+          userEmail: ownerEmail,
+        },
+        todayStr
+      );
       if (existingStatus.myTicket) {
         setTicket(existingStatus.myTicket);
         setIsExistingTicket(true);
@@ -81,15 +92,15 @@ function QueueCheckinContent() {
         return;
       }
 
-      // 2. Query today's confirmed appointments for this pet owner
-      const matchingAppointments: any[] = [];
+      // 2. Query today's confirmed appointments & scheduled consultations for this pet owner
+      const matchingItems: any[] = [];
       const seen = new Set<string>();
 
-      // Query Supabase appointments table
+      // A. Query Supabase appointments table
       try {
         const { data, error } = await supabase
           .from("appointments")
-          .select("*")
+          .select("*, users:owner_id(full_name, phone_number, address), pets:pet_id(id, name, species, breed, photo_url, avatar_url)")
           .eq("date", todayStr)
           .neq("status", "cancelled");
 
@@ -97,11 +108,24 @@ function QueueCheckinContent() {
           data.forEach((apt) => {
             const matchesOwner =
               apt.owner_id === ownerId ||
-              (apt.notes && apt.notes.toLowerCase().includes(ownerEmail));
+              (apt.notes && apt.notes.toLowerCase().includes(ownerEmail)) ||
+              (apt.users?.full_name && apt.users.full_name.toLowerCase().includes(ownerName.toLowerCase()));
 
             if (matchesOwner && !seen.has(apt.id)) {
               seen.add(apt.id);
-              matchingAppointments.push(apt);
+              const petData = Array.isArray(apt.pets) ? apt.pets[0] : apt.pets;
+              matchingItems.push({
+                type: "appointment",
+                id: apt.id,
+                pet_id: apt.pet_id || petData?.id,
+                pet_name: petData?.name || apt.pet_name || "Pet",
+                species: petData?.species || apt.species || "Dog",
+                breed: petData?.breed || apt.breed || "",
+                petPhotoUrl: petData?.photo_url || petData?.avatar_url || apt.photo_url,
+                service_id: apt.service_id || "vaccination",
+                notes: apt.notes,
+                date: apt.date,
+              });
             }
           });
         }
@@ -109,7 +133,7 @@ function QueueCheckinContent() {
         console.warn("Notice: Querying Supabase appointments for queue check-in:", err);
       }
 
-      // Fallback: check local storage cached appointments
+      // B. Fallback: check local storage cached appointments
       try {
         const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
         if (Array.isArray(local)) {
@@ -121,59 +145,193 @@ function QueueCheckinContent() {
               (l.owner_id === ownerId || (l.notes && l.notes.toLowerCase().includes(ownerEmail)))
             ) {
               seen.add(l.id);
-              matchingAppointments.push(l);
+              matchingItems.push({
+                type: "appointment",
+                id: l.id,
+                pet_id: l.pet_id,
+                pet_name: l.pet_name || "Pet",
+                species: l.species || "Dog",
+                breed: l.breed || "",
+                petPhotoUrl: l.petPhotoUrl || l.photoUrl,
+                service_id: l.service_id || "vaccination",
+                notes: l.notes,
+                date: l.date,
+              });
             }
           });
         }
       } catch {}
 
-      setEligibleAppointments(matchingAppointments);
+      // C. Query consultations for today (Supabase consultations table)
+      try {
+        const { data: consults } = await supabase
+          .from("consultations")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url, avatar_url), users:owner_id(id, full_name, phone_number, address)")
+          .eq("date", todayStr)
+          .neq("status", "completed")
+          .neq("status", "cancelled");
+
+        if (consults && Array.isArray(consults)) {
+          consults.forEach((c) => {
+            const matchesOwner =
+              c.owner_id === ownerId ||
+              (c.owner_name && (c.owner_name.toLowerCase().includes(ownerName.toLowerCase()) || ownerName.toLowerCase().includes(c.owner_name.toLowerCase()))) ||
+              (ownerPhone && c.owner_contact === ownerPhone);
+
+            const encounterId = c.encounter_no || c.id;
+            if (matchesOwner && !seen.has(encounterId)) {
+              seen.add(encounterId);
+              const petData = Array.isArray(c.pets) ? c.pets[0] : c.pets;
+              matchingItems.push({
+                type: "consultation",
+                id: encounterId,
+                encounterNo: c.encounter_no,
+                pet_id: c.pet_id || petData?.id,
+                pet_name: petData?.name || c.pet_name || "Pet",
+                species: petData?.species || c.species || "Dog",
+                breed: petData?.breed || c.breed || "",
+                petPhotoUrl: petData?.photo_url || petData?.avatar_url || c.photo_url,
+                service_id: "consultation",
+                service_title: c.service_type || "Clinical Consultation",
+                notes: c.chief_complaint,
+                date: c.date,
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("Notice: Querying Supabase consultations for queue check-in:", err);
+      }
+
+      // D. Fallback: check local storage cached consultations (cvo_consultations_v2)
+      try {
+        const localConsults = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
+        if (Array.isArray(localConsults)) {
+          localConsults.forEach((c: any) => {
+            const cDate = c.date || "";
+            const isToday = cDate === todayStr || cDate.startsWith(todayStr);
+            const matchesOwner =
+              c.ownerId === ownerId ||
+              (c.ownerName && (c.ownerName.toLowerCase().includes(ownerName.toLowerCase()) || ownerName.toLowerCase().includes(c.ownerName.toLowerCase()))) ||
+              (ownerPhone && c.ownerContact === ownerPhone);
+
+            const encounterId = c.encounterNo || c.id;
+            if (isToday && c.status !== "completed" && c.status !== "cancelled" && matchesOwner && !seen.has(encounterId)) {
+              seen.add(encounterId);
+              matchingItems.push({
+                type: "consultation",
+                id: encounterId,
+                encounterNo: c.encounterNo,
+                pet_id: c.petId,
+                pet_name: c.petName || "Pet",
+                species: c.species || "Dog",
+                breed: c.breed || "",
+                petPhotoUrl: c.photoUrl,
+                service_id: "consultation",
+                service_title: c.serviceType || "Clinical Consultation",
+                notes: c.chiefComplaint,
+                date: cDate,
+              });
+            }
+          });
+        }
+      } catch {}
+
+      setEligibleAppointments(matchingItems);
 
       // Check validation condition:
-      if (matchingAppointments.length === 0) {
+      if (matchingItems.length === 0) {
         setEligibilityError(
-          "No confirmed appointment found for today. Only pet owners with a pre-scheduled procedure or consultation for today can join the automated queue via QR."
+          "No confirmed appointment or consultation found for today. Only pet owners with a pre-scheduled procedure or consultation for today can join the automated queue via QR."
         );
         setLoading(false);
         return;
       }
 
-      // Automatically check in the first appointment
-      const primaryApt = matchingAppointments[0];
+      // Automatically check in the first eligible appointment or consultation
+      const primaryItem = matchingItems[0];
       const serviceTitle =
-        primaryApt.service_id === "spay-neuter"
+        primaryItem.service_id === "spay-neuter"
           ? "Low-Cost / Free Spay & Neuter Surgery"
-          : primaryApt.service_id === "vaccination"
+          : primaryItem.service_id === "vaccination"
           ? "Rabies & Core Preventive Vaccination"
           : "Clinical Consultation";
 
       const checkInResult = checkInPetOwnerToQueue({
-        appointmentId: primaryApt.id,
+        appointmentId: primaryItem.id,
+        encounterNo: primaryItem.encounterNo,
+        notes: primaryItem.notes,
         ownerId,
         ownerName,
-        ownerContact: user.unsafeMetadata?.phoneNumber as string,
-        ownerBarangay: (user.unsafeMetadata?.barangay as string) || "Cagayan de Oro City",
-        petId: primaryApt.pet_id,
-        petName: primaryApt.pet_name || "Pet",
-        species: primaryApt.species || "Dog",
-        breed: primaryApt.breed,
-        serviceId: primaryApt.service_id || "vaccination",
+        ownerContact: ownerPhone,
+        ownerBarangay,
+        petId: primaryItem.pet_id,
+        petName: primaryItem.pet_name || "Pet",
+        species: primaryItem.species || "Dog",
+        breed: primaryItem.breed,
+        petPhotoUrl: primaryItem.petPhotoUrl,
+        serviceId: primaryItem.service_id || "vaccination",
         serviceTitle,
         dateStr: todayStr,
+        checkedInVia: "qr",
       });
 
-      // Update appointment status to checked-in in Supabase
-      try {
-        await supabase
-          .from("appointments")
-          .update({
-            status: "checked-in",
-            notes: primaryApt.notes
-              ? `${primaryApt.notes} | [Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`
-              : `[Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`,
-          })
-          .eq("id", primaryApt.id);
-      } catch {}
+      // Update status in database and localStorage upon scanning QR code
+      if (primaryItem.type === "appointment") {
+        try {
+          await supabase
+            .from("appointments")
+            .update({
+              status: "checked-in",
+              notes: primaryItem.notes
+                ? `${primaryItem.notes} | [Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`
+                : `[Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`,
+            })
+            .eq("id", primaryItem.id);
+        } catch {}
+
+        try {
+          const localList = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          const updatedLocal = localList.map((item: any) =>
+            item.id === primaryItem.id
+              ? {
+                  ...item,
+                  status: "checked-in",
+                  notes: item.notes
+                    ? `${item.notes} | [Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`
+                    : `[Checked in: Ticket ${checkInResult.ticket.ticketNumber}]`,
+                }
+              : item
+          );
+          localStorage.setItem("syncvet_local_appointments", JSON.stringify(updatedLocal));
+        } catch {}
+      } else {
+        // Consultation check-in
+        try {
+          await supabase
+            .from("consultations")
+            .update({ status: "waiting" })
+            .or(`id.eq.${primaryItem.id},encounter_no.eq.${primaryItem.id}`);
+        } catch {}
+
+        try {
+          const localConsults = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
+          const updatedConsults = localConsults.map((c: any) =>
+            c.id === primaryItem.id || c.encounterNo === primaryItem.id
+              ? { ...c, status: "waiting" }
+              : c
+          );
+          localStorage.setItem("cvo_consultations_v2", JSON.stringify(updatedConsults));
+        } catch {}
+      }
+
+      // Invalidate queries so that live queues and slot deductions update immediately
+      queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
+      queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+      queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+      window.dispatchEvent(new Event("syncvet-appointment-updated"));
+      window.dispatchEvent(new Event("syncvet-queue-updated"));
 
       setTicket(checkInResult.ticket);
       setIsExistingTicket(checkInResult.isExisting);
@@ -181,7 +339,7 @@ function QueueCheckinContent() {
     };
 
     checkEligibilityAndEnroll();
-  }, [isLoaded, isSignedIn, user, todayStr, supabase]);
+  }, [isLoaded, isSignedIn, user, todayStr, supabase, queryClient]);
 
   // Loading State
   if (!isLoaded || loading) {

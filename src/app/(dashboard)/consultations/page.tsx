@@ -78,7 +78,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, isTodayDate } from "@/lib/utils";
+import { cn, isTodayDate, isConsultationOverdue } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
@@ -214,18 +214,9 @@ function ConsultationsContent() {
     (user?.unsafeMetadata as any)?.accountType === "pet_owner" ||
     user?.primaryEmailAddress?.emailAddress === "itcgeek03@gmail.com";
 
-  // Check if an encounter schedule has passed without completion
+  // Check if an encounter schedule has passed without completion (or past 6:00 PM cutoff today)
   const isItemOverdue = (dateStr?: string, status?: string) => {
-    if (!dateStr) return false;
-    if (status === "completed" || status === "cancelled") return false;
-    try {
-      const parsed = parseISO(dateStr);
-      if (!isValid(parsed)) return false;
-      const todayStart = startOfDay(new Date());
-      return isBefore(startOfDay(parsed), todayStart);
-    } catch {
-      return false;
-    }
+    return isConsultationOverdue(dateStr, status);
   };
 
   // 24-Hour Clinical Finalization Rule:
@@ -1489,32 +1480,40 @@ function ConsultationsContent() {
         }}
       />
 
-      <OfficialConsultationSheetDialog
-        consultation={selectedConsultation}
-        open={officialFormOpen}
-        onOpenChange={setOfficialFormOpen}
-      />
+      {officialFormOpen && (
+        <OfficialConsultationSheetDialog
+          consultation={selectedConsultation}
+          open={officialFormOpen}
+          onOpenChange={setOfficialFormOpen}
+        />
+      )}
 
-      <ClinicalExaminationDialog
-        consultation={selectedConsultation}
-        open={examDialogOpen}
-        onOpenChange={setExamDialogOpen}
-        onSaved={(updated) => setSelectedConsultation({ ...updated, category: "consultation", isOverdue: isItemOverdue(updated.date, updated.status) })}
-      />
+      {examDialogOpen && (
+        <ClinicalExaminationDialog
+          consultation={selectedConsultation}
+          open={examDialogOpen}
+          onOpenChange={setExamDialogOpen}
+          onSaved={(updated) => setSelectedConsultation({ ...updated, category: "consultation", isOverdue: isItemOverdue(updated.date, updated.status) })}
+        />
+      )}
 
-      <AdministerVaccinationDialog
-        consultation={selectedConsultation}
-        open={vaxDialogOpen}
-        onOpenChange={setVaxDialogOpen}
-        onCompleted={(updated) => setSelectedConsultation(updated)}
-      />
+      {vaxDialogOpen && (
+        <AdministerVaccinationDialog
+          consultation={selectedConsultation}
+          open={vaxDialogOpen}
+          onOpenChange={setVaxDialogOpen}
+          onCompleted={(updated) => setSelectedConsultation(updated)}
+        />
+      )}
 
-      <CompleteSurgeryDialog
-        consultation={selectedConsultation}
-        open={surgeryDialogOpen}
-        onOpenChange={setSurgeryDialogOpen}
-        onCompleted={(updated) => setSelectedConsultation(updated)}
-      />
+      {surgeryDialogOpen && (
+        <CompleteSurgeryDialog
+          consultation={selectedConsultation}
+          open={surgeryDialogOpen}
+          onOpenChange={setSurgeryDialogOpen}
+          onCompleted={(updated) => setSelectedConsultation(updated)}
+        />
+      )}
 
       <ExportTableDialog
         open={exportDialogOpen}

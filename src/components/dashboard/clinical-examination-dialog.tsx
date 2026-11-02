@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,8 @@ interface ClinicalExaminationDialogProps {
   onSaved?: (updated: CVOConsultation) => void;
 }
 
+const EMPTY_VETS: RegisteredVet[] = [];
+
 export function ClinicalExaminationDialog({
   consultation,
   open,
@@ -85,6 +88,7 @@ export function ClinicalExaminationDialog({
   const { updateConsultation, activeRoleView } = useCVO();
   const { user, isLoaded: isUserLoaded } = useUser();
   const [loading, setLoading] = useState(false);
+  const lastSyncedEncounterKey = useRef<string | null>(null);
 
   // Fetch current user's database role and profile from Supabase
   const { data: dbCurrentUser } = useQuery({
@@ -121,7 +125,7 @@ export function ClinicalExaminationDialog({
   const currentUserAvatar = dbCurrentUser?.avatar_url || (isUserLoaded && user?.imageUrl ? user.imageUrl : undefined);
 
   // Query actual registered veterinarians and staff from database
-  const { data: dbVets = [] } = useQuery<RegisteredVet[]>({
+  const { data: dbVets = EMPTY_VETS } = useQuery<RegisteredVet[]>({
     queryKey: ["registered-administering-vets"],
     queryFn: async () => {
       try {
@@ -257,9 +261,20 @@ export function ClinicalExaminationDialog({
     );
   }, [allAvailableVets, attendingVet, isAdmin, isVet, currentUserName, currentUserAvatar, user]);
 
-  // Sync state whenever consultation changes
+  // Sync state strictly when dialog opens or when a different consultation encounter is selected
   useEffect(() => {
-    if (!consultation) return;
+    if (!open || !consultation) {
+      if (!open) {
+        lastSyncedEncounterKey.current = null;
+      }
+      return;
+    }
+
+    const currentKey = `${consultation.id || consultation.encounterNo || "enc"}-${consultation.date || ""}`;
+    if (lastSyncedEncounterKey.current === currentKey) {
+      return;
+    }
+    lastSyncedEncounterKey.current = currentKey;
 
     setWeightKg(consultation.vitals?.weightKg?.toString() || "10");
     setTemperatureC(consultation.vitals?.temperatureC?.toString() || "38.5");
@@ -332,9 +347,7 @@ export function ClinicalExaminationDialog({
         consultation.vetName &&
         !consultation.vetName.includes("Queue Assignment") &&
         !consultation.vetName.includes("Attending CVO Vet") &&
-        !consultation.vetName.toLowerCase().includes("elena santos") &&
-        (consultation.vetName.toLowerCase().includes("helen") ||
-          allAvailableVets.some((v) => v.name.toLowerCase() === consultation.vetName?.toLowerCase()))
+        !consultation.vetName.toLowerCase().includes("elena santos")
       ) {
         setAttendingVet(consultation.vetName);
       } else {
@@ -343,16 +356,8 @@ export function ClinicalExaminationDialog({
     } else if (currentUserName) {
       setAttendingVet(currentUserName);
     }
-  }, [consultation, user, isAdmin, isVet, currentUserName, allAvailableVets]);
+  }, [open, consultation?.id, consultation?.encounterNo, isAdmin, isVet, currentUserName]);
 
-  // Enforce role assignment whenever dialog opens
-  useEffect(() => {
-    if (open) {
-      if (!isAdmin && isVet && currentUserName) {
-        setAttendingVet(currentUserName);
-      }
-    }
-  }, [open, isAdmin, isVet, currentUserName]);
 
   const toggleSign = (category: string, sign: string) => {
     setObservedSigns((prev) => {

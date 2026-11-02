@@ -2,6 +2,7 @@
 
 import { format, parseISO, isValid } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { isClinicQueueClosed } from "@/lib/utils";
 
 export interface QueueTicket {
   id: string; // e.g. "q_ticket_1793265000"
@@ -17,17 +18,19 @@ export interface QueueTicket {
   ownerBarangay?: string;
   petId?: string;
   petName: string;
+  petPhotoUrl?: string;
   species: "Dog" | "Cat" | string;
   breed?: string;
   serviceId: "vaccination" | "spay-neuter" | "consultation" | string;
   serviceTitle: string;
-  status: "waiting" | "in-consultation" | "completed" | "skipped";
+  status: "waiting" | "in-consultation" | "completed" | "skipped" | "overdue";
   servingVet?: string;
   consultationRoom?: string;
   calledAt?: string;
   completedAt?: string;
   notes?: string;
   encounterNo?: string;
+  checkedInVia?: "qr" | "manual";
 }
 
 export interface DailyQueueState {
@@ -37,6 +40,8 @@ export interface DailyQueueState {
   servingVet?: string;
   servingRoom?: string;
   lastCalledAt?: string;
+  isClosed?: boolean;
+  closedReason?: string;
 }
 
 const STORAGE_PREFIX = "syncvet_clinic_queue_";
@@ -46,11 +51,17 @@ export function getTodayDateStr(): string {
 }
 
 export function getDailyQueue(dateStr: string = getTodayDateStr()): DailyQueueState {
+  const isClosed = isClinicQueueClosed(dateStr);
+
   if (typeof window === "undefined") {
     return {
       date: dateStr,
       activeTickets: [],
       nowServingTicketNumber: null,
+      isClosed,
+      closedReason: isClosed
+        ? "Clinic transactions (8:00 AM – 5:00 PM) automatically closed at 6:00 PM. Unattended queue tickets marked as overdue."
+        : undefined,
     };
   }
 
@@ -59,7 +70,45 @@ export function getDailyQueue(dateStr: string = getTodayDateStr()): DailyQueueSt
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.activeTickets)) {
-        return parsed;
+        // Clean out legacy auto-injected tickets that were never scanned/checked-in via QR
+        let validTickets = parsed.activeTickets.filter((t: QueueTicket) => {
+          if (t.id && t.id.startsWith("ticket_consultation_") && !t.checkedInVia) {
+            return false;
+          }
+          return true;
+        });
+
+        let changed = false;
+
+        // Automatically mark unattended tickets as "overdue" if queue has closed at 6:00 PM
+        if (isClosed) {
+          validTickets = validTickets.map((t: QueueTicket) => {
+            if (t.status === "waiting" || t.status === "in-consultation") {
+              changed = true;
+              return { ...t, status: "overdue" as const };
+            }
+            return t;
+          });
+        }
+
+        const effectiveNowServing = isClosed ? null : parsed.nowServingTicketNumber;
+        if (parsed.nowServingTicketNumber && isClosed) changed = true;
+
+        const resultState: DailyQueueState = {
+          ...parsed,
+          activeTickets: validTickets,
+          nowServingTicketNumber: effectiveNowServing,
+          isClosed,
+          closedReason: isClosed
+            ? "Clinic transactions (8:00 AM – 5:00 PM) automatically closed at 6:00 PM. Unattended queue tickets marked as overdue."
+            : undefined,
+        };
+
+        if (changed || validTickets.length !== parsed.activeTickets.length) {
+          localStorage.setItem(`${STORAGE_PREFIX}${dateStr}`, JSON.stringify(resultState));
+        }
+
+        return resultState;
       }
     }
   } catch (err) {
@@ -70,6 +119,10 @@ export function getDailyQueue(dateStr: string = getTodayDateStr()): DailyQueueSt
     date: dateStr,
     activeTickets: [],
     nowServingTicketNumber: null,
+    isClosed,
+    closedReason: isClosed
+      ? "Clinic transactions (8:00 AM – 5:00 PM) automatically closed at 6:00 PM. Unattended queue tickets marked as overdue."
+      : undefined,
   };
 }
 
@@ -106,7 +159,7 @@ export async function syncQueueFromSupabase(
     const supabase = getPublicSupabaseClient();
     const { data: appointments, error } = await supabase
       .from("appointments")
-      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (id, name, species, breed)")
+      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (id, name, species, breed, photo_url, avatar_url)")
       .eq("date", dateStr)
       .in("status", ["checked-in", "in-consultation", "serving"]);
 
@@ -138,6 +191,7 @@ export async function syncQueueFromSupabase(
         const ownerBarangay = ownerUser?.address || "Carmen, CDO";
         const species = petData?.species || apt.species || "Dog";
         const breed = petData?.breed || apt.breed || "";
+        const petPhotoUrl = petData?.photo_url || petData?.avatar_url || apt.photo_url || apt.pet_photo_url;
 
         const ticketStatus: QueueTicket["status"] =
           apt.status === "in-consultation" || apt.status === "serving"
@@ -145,10 +199,11 @@ export async function syncQueueFromSupabase(
             : "waiting";
 
         if (existingIdx >= 0) {
-          if (tickets[existingIdx].status !== ticketStatus) {
+          if (tickets[existingIdx].status !== ticketStatus || (!tickets[existingIdx].petPhotoUrl && petPhotoUrl)) {
             tickets[existingIdx] = {
               ...tickets[existingIdx],
               status: ticketStatus,
+              petPhotoUrl: petPhotoUrl || tickets[existingIdx].petPhotoUrl,
             };
             updated = true;
           }
@@ -170,6 +225,7 @@ export async function syncQueueFromSupabase(
             ownerBarangay,
             petId: apt.pet_id,
             petName: petData?.name || apt.pet_name || "Pet",
+            petPhotoUrl,
             species,
             breed,
             serviceId: apt.service_id || "consultation",
@@ -256,51 +312,31 @@ export function syncConsultationsToQueue(
         };
         updated = true;
       }
-    } else {
-      const seq = tickets.length + 1;
-      const assignedNum = `Q-${String(seq).padStart(3, "0")}`;
-      const now = new Date();
-      tickets.push({
-        id: `ticket_consultation_${encounterId}`,
-        ticketNumber: assignedNum,
-        queueSequence: seq,
-        appointmentId: encounterId,
-        encounterNo: c.encounterNo,
-        notes: c.chiefComplaint || (c.symptoms && c.symptoms.length > 0 ? c.symptoms.join(", ") : undefined),
-        date: dateStr,
-        checkInTime: c.time || format(now, "h:mm a"),
-        checkedInAt: c.createdAt || now.toISOString(),
-        ownerId: c.ownerId || c.owner_id || c.ownerName,
-        ownerName: c.ownerName || "Pet Owner",
-        ownerContact: c.ownerContact,
-        ownerBarangay: c.ownerBarangay || "Cagayan de Oro City",
-        petId: c.petId,
-        petName: c.petName || "Pet",
-        species: c.species || "Dog",
-        breed: c.breed || "",
-        serviceId: "consultation",
-        serviceTitle: "Clinical Consultation",
-        status: ticketStatus,
-        servingVet:
-          ticketStatus === "in-consultation"
-            ? c.attendingVet || "Dr. Helen Ann P. Tacandong, DVM"
-            : undefined,
-        consultationRoom:
-          ticketStatus === "in-consultation" ? "Consultation Desk 1" : undefined,
-      });
-      updated = true;
     }
+    // Note: Do NOT auto-push un-checked-in consultations into the queue.
+    // Patients only appear in the live clinic queue once they scan the QR code at reception!
   });
 
-  if (updated || tickets.length !== current.activeTickets.length) {
-    // If any ticket is actively in consultation, set nowServingTicketNumber to it
-    const activeInConsultation = tickets.find((t) => t.status === "in-consultation");
+  // Automatically mark any unattended tickets as overdue if queue is closed after 6:00 PM
+  if (current.isClosed) {
+    tickets.forEach((t, i) => {
+      if (t.status === "waiting" || t.status === "in-consultation") {
+        tickets[i] = { ...t, status: "overdue" };
+        updated = true;
+      }
+    });
+  }
+
+  if (updated) {
+    // If queue is closed, no ticket is being served
+    const activeInConsultation = current.isClosed ? undefined : tickets.find((t) => t.status === "in-consultation");
     const newState: DailyQueueState = {
       ...current,
       activeTickets: tickets,
-      nowServingTicketNumber: activeInConsultation ? activeInConsultation.ticketNumber : current.nowServingTicketNumber,
-      servingVet: activeInConsultation ? activeInConsultation.servingVet || "Dr. Helen Ann P. Tacandong, DVM" : current.servingVet,
-      servingRoom: activeInConsultation ? activeInConsultation.consultationRoom || "Consultation Desk 1" : current.servingRoom,
+      nowServingTicketNumber: current.isClosed ? null : (activeInConsultation ? activeInConsultation.ticketNumber : current.nowServingTicketNumber),
+      servingVet: current.isClosed ? undefined : (activeInConsultation ? activeInConsultation.servingVet || "Dr. Helen Ann P. Tacandong, DVM" : current.servingVet),
+      servingRoom: current.isClosed ? undefined : (activeInConsultation ? activeInConsultation.consultationRoom || "Consultation Desk 1" : current.servingRoom),
+      isClosed: current.isClosed,
     };
     saveDailyQueue(newState);
     return newState;
@@ -314,36 +350,76 @@ export function syncConsultationsToQueue(
  */
 export function checkInPetOwnerToQueue({
   appointmentId,
+  encounterNo,
+  notes,
   ownerId,
   ownerName,
   ownerContact,
   ownerBarangay,
   petId,
   petName,
+  petPhotoUrl,
   species = "Dog",
   breed = "",
   serviceId = "vaccination",
   serviceTitle = "Anti-Rabies Vaccination",
   dateStr = getTodayDateStr(),
+  checkedInVia = "qr",
 }: {
   appointmentId: string;
+  encounterNo?: string;
+  notes?: string;
   ownerId: string;
   ownerName: string;
   ownerContact?: string;
   ownerBarangay?: string;
   petId?: string;
   petName: string;
+  petPhotoUrl?: string;
   species?: string;
   breed?: string;
   serviceId?: string;
   serviceTitle?: string;
   dateStr?: string;
+  checkedInVia?: "qr" | "manual";
 }): { ticket: QueueTicket; isExisting: boolean; state: DailyQueueState } {
   const current = getDailyQueue(dateStr);
 
+  // If queue is closed (past 6:00 PM cut-off), do not allow new active queue tickets
+  if (current.isClosed) {
+    const closedTicket: QueueTicket = {
+      id: `ticket_closed_${Date.now()}`,
+      ticketNumber: "CLOSED",
+      queueSequence: 0,
+      appointmentId,
+      encounterNo,
+      notes,
+      date: dateStr,
+      checkInTime: format(new Date(), "h:mm a"),
+      checkedInAt: new Date().toISOString(),
+      ownerId,
+      ownerName,
+      ownerContact,
+      ownerBarangay,
+      petId,
+      petName,
+      petPhotoUrl,
+      species,
+      breed,
+      serviceId,
+      serviceTitle,
+      status: "overdue",
+      checkedInVia,
+    };
+    return { ticket: closedTicket, isExisting: false, state: current };
+  }
+
   // Check if this appointment is already checked in
   const existing = current.activeTickets.find(
-    (t) => t.appointmentId === appointmentId || (t.ownerId === ownerId && t.petName === petName && t.status !== "completed")
+    (t) =>
+      t.appointmentId === appointmentId ||
+      (encounterNo && t.encounterNo === encounterNo) ||
+      (t.ownerId === ownerId && t.petName.toLowerCase().trim() === petName.toLowerCase().trim() && t.status !== "completed")
   );
 
   if (existing) {
@@ -361,6 +437,8 @@ export function checkInPetOwnerToQueue({
     ticketNumber,
     queueSequence: nextSeq,
     appointmentId,
+    encounterNo,
+    notes,
     date: dateStr,
     checkInTime: timeStr,
     checkedInAt: now.toISOString(),
@@ -370,11 +448,13 @@ export function checkInPetOwnerToQueue({
     ownerBarangay,
     petId,
     petName,
+    petPhotoUrl,
     species,
     breed,
     serviceId,
     serviceTitle,
     status: "waiting",
+    checkedInVia,
   };
 
   const updatedState: DailyQueueState = {
@@ -396,6 +476,9 @@ export function callQueueTicket(
   dateStr: string = getTodayDateStr()
 ): DailyQueueState {
   const current = getDailyQueue(dateStr);
+  if (current.isClosed) {
+    return current;
+  }
   const now = new Date().toISOString();
 
   let targetAppointmentId: string | null = null;
@@ -595,8 +678,11 @@ export function getPetOwnerQueueStatus(
   isMyTurn: boolean;
   isInConsultation: boolean;
   totalWaiting: number;
+  isQueueClosed: boolean;
+  isOverdue: boolean;
 } {
   const queue = getDailyQueue(dateStr);
+  const isQueueClosed = !!queue.isClosed;
 
   const ownerId = typeof lookup === "string" ? lookup : lookup.ownerId || "";
   const userName = typeof lookup === "string" ? "" : lookup.userName || "";
@@ -626,9 +712,11 @@ export function getPetOwnerQueueStatus(
   const myTicket =
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "in-consultation") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "waiting") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "overdue") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status !== "completed") ||
     null;
 
+  const isOverdue = !!myTicket && myTicket.status === "overdue";
   const nowServing =
     queue.activeTickets.find((t) => t.ticketNumber === queue.nowServingTicketNumber) || null;
 
@@ -636,7 +724,7 @@ export function getPetOwnerQueueStatus(
   let isMyTurn = false;
   let isInConsultation = false;
 
-  if (myTicket) {
+  if (myTicket && !isQueueClosed && !isOverdue) {
     if (myTicket.status === "in-consultation") {
       isInConsultation = true;
       isMyTurn = true;
@@ -654,7 +742,7 @@ export function getPetOwnerQueueStatus(
     }
   }
 
-  const totalWaiting = queue.activeTickets.filter((t) => t.status === "waiting").length;
+  const totalWaiting = isQueueClosed ? 0 : queue.activeTickets.filter((t) => t.status === "waiting").length;
 
   return {
     myTicket,
@@ -663,5 +751,7 @@ export function getPetOwnerQueueStatus(
     isMyTurn,
     isInConsultation,
     totalWaiting,
+    isQueueClosed,
+    isOverdue,
   };
 }

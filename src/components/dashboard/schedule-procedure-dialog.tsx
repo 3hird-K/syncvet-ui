@@ -1376,34 +1376,6 @@ export function ScheduleProcedureDialog({
               className="text-xs placeholder:text-[10px] sm:placeholder:text-[10.5px] leading-relaxed rounded-lg p-2 bg-background min-h-[52px] resize-none w-full"
             />
           </div>
-
-          {/* ── Mobile & Desktop Primary Submit Button ── */}
-          {!embedded && (
-            <div className="pt-2 sticky bottom-0 bg-background/95 backdrop-blur-xs pb-1 sm:static sm:bg-transparent">
-              <Button
-                type="submit"
-                disabled={!isFormValid || submitting}
-                className={cn(
-                  "w-full h-10 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2",
-                  !isFormValid || submitting
-                    ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
-                    : "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                )}
-              >
-                {submitting ? (
-                  <>
-                    <CalendarClock className="size-4 animate-spin" />
-                    <span>Booking Appointment...</span>
-                  </>
-                ) : (
-                  <>
-                    <Calendar className="size-4" />
-                    <span>Confirm & Book {serviceConfig.shortTitle} Slot</span>
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
         </form>
   );
 
@@ -1425,7 +1397,7 @@ export function ScheduleProcedureDialog({
       </DialogTrigger>
 
       <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
-        {/* Top Action Buttons: Quick Submit (Desktop only) & Close */}
+        {/* Top Action Buttons: Quick Submit & Close */}
         <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
           <Button
             type="submit"
@@ -1434,7 +1406,7 @@ export function ScheduleProcedureDialog({
             size="icon"
             disabled={!isFormValid || submitting}
             className={cn(
-              "hidden sm:inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+              "inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
               !isFormValid || submitting
                 ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
                 : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"

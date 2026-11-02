@@ -415,18 +415,57 @@ export function PetOwnerQueueTracker({
   // ═════════════════════════════════════════════════════════════════════
   // STATE 1: Scheduled appointment today, NOT YET CHECKED IN
   // ═════════════════════════════════════════════════════════════════════
-  if (!isCheckedIn && hasAppointmentToday) {
-    const primaryApt = todayAppointments[0];
-    const petName = primaryApt.pet_name || primaryApt.petName || "Pet";
+  if (!isCheckedIn && (hasAppointmentToday || hasConsultationToday)) {
+    const primaryItem = todayAppointments[0] || todayConsultations[0];
+    const petName =
+      primaryItem?.pet_name ||
+      primaryItem?.petName ||
+      "Pet";
     const serviceTitle =
-      primaryApt.service_title ||
-      primaryApt.service_type ||
-      primaryApt.serviceType ||
-      (primaryApt.service_id === "spay-neuter"
+      primaryItem?.service_title ||
+      primaryItem?.service_type ||
+      primaryItem?.serviceType ||
+      (primaryItem?.service_id === "spay-neuter"
         ? "Spay / Neuter Surgery"
-        : primaryApt.service_id === "vaccination"
+        : primaryItem?.service_id === "vaccination"
         ? "Anti-Rabies Vaccination"
         : "Clinical Consultation");
+
+    if (queueInfo.isQueueClosed) {
+      return (
+        <div className="rounded-2xl border border-rose-500/25 bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-9 sm:size-10 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/25 shadow-xs">
+              <Clock className="size-4.5 sm:size-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-foreground text-xs sm:text-sm">
+                  Today&apos;s Clinic Visit: {petName}
+                </span>
+                <span className="text-[10px] text-rose-700 dark:text-rose-300 font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/25">
+                  Schedule Overdue
+                </span>
+                {serviceTitle && (
+                  <span className="text-[10px] text-muted-foreground font-medium hidden md:inline-block">
+                    • {serviceTitle}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Clinic transactions closed at 6:00 PM (operating hours: 8:00 AM – 5:00 PM). Unattended visit marked as overdue.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-xl border border-rose-500/20">
+              Closed for Today
+            </span>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
@@ -474,15 +513,18 @@ export function PetOwnerQueueTracker({
   // ═════════════════════════════════════════════════════════════════════
   // STATE 2: ACTIVE QUEUE TICKET (MINIMALIST REDESIGN)
   // ═════════════════════════════════════════════════════════════════════
-  const { myTicket, nowServing, ticketsAhead, isMyTurn, isInConsultation } = queueInfo;
-  const isNextInLine = !isCalled && ticketsAhead === 0;
+  const { myTicket, nowServing, ticketsAhead, isMyTurn, isInConsultation, isQueueClosed, isOverdue } = queueInfo;
+  const isTicketOverdue = isOverdue || (isQueueClosed && myTicket?.status === "overdue");
+  const isNextInLine = !isCalled && !isTicketOverdue && ticketsAhead === 0;
 
   return (
     <div className="relative group transition-all duration-300">
       <div
         className={cn(
           "rounded-2xl border transition-all duration-300 overflow-hidden shadow-2xs",
-          isCalled
+          isTicketOverdue
+            ? "border-rose-500/30 bg-rose-500/5"
+            : isCalled
             ? "border-primary/40 bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent shadow-sm ring-1 ring-primary/25"
             : isNextInLine
             ? "border-emerald-500/30 bg-emerald-500/5"
@@ -490,7 +532,7 @@ export function PetOwnerQueueTracker({
         )}
       >
         {/* ── Integrated Calling Notice Banner ── */}
-        {isCalled && (
+        {isCalled && !isTicketOverdue && (
           <div className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 border-b border-primary/20 bg-primary/10 flex items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Premium Primary Squircle Icon */}
@@ -541,7 +583,9 @@ export function PetOwnerQueueTracker({
             <div
               className={cn(
                 "font-mono font-bold rounded-xl border shrink-0 flex flex-col items-center justify-center px-3 py-1.5 self-stretch min-w-[72px]",
-                isCalled
+                isTicketOverdue
+                  ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                  : isCalled
                   ? "bg-primary/15 text-primary border-primary/35"
                   : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
               )}
@@ -564,7 +608,9 @@ export function PetOwnerQueueTracker({
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                Checked in at {myTicket?.checkInTime} · Carmen Main Clinic
+                {isTicketOverdue
+                  ? "Cut-off reached at 6:00 PM · Carmen Main Clinic"
+                  : `Checked in at ${myTicket?.checkInTime} · Carmen Main Clinic`}
               </p>
             </div>
           </div>
@@ -572,7 +618,21 @@ export function PetOwnerQueueTracker({
           {/* Right: Live Queue Status & Controls */}
           <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
             <div className="flex items-center gap-2">
-              {isCalled ? (
+              {isTicketOverdue ? (
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-rose-600 dark:text-rose-400 text-xs">
+                      Queue Closed (Overdue)
+                    </span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                      Overdue
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground block">
+                    Transactions closed at 6:00 PM (8:00 AM – 5:00 PM)
+                  </span>
+                </div>
+              ) : isCalled ? (
                 <div className="text-left">
                   <div className="flex items-center gap-1.5">
                     <span className="font-black text-primary text-xs sm:text-sm">
