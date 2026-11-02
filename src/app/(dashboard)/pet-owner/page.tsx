@@ -69,7 +69,7 @@ import {
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
-import { cn, isConsultationOverdue } from "@/lib/utils";
+import { cn, isConsultationOverdue, formatClinicScheduleSlot } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessengerIcon } from "@/components/icons/messenger-icon";
@@ -1082,7 +1082,7 @@ export default function PetOwnerPortalPage() {
             species: aptPet?.species || apt.pets?.species || "Canine",
             breed: aptPet?.breed || apt.pets?.breed || "Mixed",
             date: rawDate,
-            time: apt.time_slot || "08:00 AM - 05:00 PM",
+            time: formatClinicScheduleSlot(apt.time_slot),
             status: apt.status,
             serviceType: "Spay & Neuter (Kapon) Surgical Procedure",
             chiefComplaint: apt.notes || "Surgical sterilization quota transaction",
@@ -1113,7 +1113,7 @@ export default function PetOwnerPortalPage() {
             species: aptPet?.species || apt.pets?.species || "Canine",
             breed: aptPet?.breed || apt.pets?.breed || "Mixed",
             date: rawDate,
-            time: apt.time_slot || "08:00 AM - 05:00 PM",
+            time: formatClinicScheduleSlot(apt.time_slot),
             status: "completed",
             serviceType: "Anti-Rabies Inactivated Vaccine",
             chiefComplaint: apt.notes || "Completed Vaccination Appointment",
@@ -1251,7 +1251,7 @@ export default function PetOwnerPortalPage() {
         breed: aptPet?.breed || apt.pets?.breed,
         photoUrl: aptPet?.photo_url || apt.pets?.photo_url,
         date: apt.date || format(new Date(), "yyyy-MM-dd"),
-        timeSlot: apt.time_slot || "08:00 AM - 05:00 PM",
+        timeSlot: formatClinicScheduleSlot(apt.time_slot),
         location: apt.location || "City Veterinary Office - Carmen Central Clinic",
         status: apt.status || "confirmed",
         notes: apt.notes || "",
@@ -1281,7 +1281,7 @@ export default function PetOwnerPortalPage() {
           breed: cPet?.breed || c.breed,
           photoUrl: cPet?.photo_url,
           date: c.date,
-          timeSlot: c.time || "Clinic Hours",
+          timeSlot: c.time || formatClinicScheduleSlot(null),
           location: "City Veterinary Office - Carmen Central Clinic",
           status: isOverdue ? "overdue" : c.status,
           notes: c.chiefComplaint,
@@ -2611,7 +2611,7 @@ export default function PetOwnerPortalPage() {
                             <span className="text-muted-foreground/40">•</span>
                             <span className="text-[11px] text-muted-foreground font-mono shrink-0 flex items-center gap-1">
                               <Calendar className="size-3" />
-                              {tx.date} {tx.timeSlot && `• ${tx.timeSlot}`}
+                              {tx.date} {tx.timeSlot && `• ${formatClinicScheduleSlot(tx.timeSlot)}`}
                             </span>
                           </div>
                         </div>
@@ -2669,7 +2669,7 @@ export default function PetOwnerPortalPage() {
                               Scheduled Time & Slot
                             </span>
                             <p className="text-xs text-foreground font-medium">
-                              {tx.date} • {tx.timeSlot}
+                              {tx.date} • {formatClinicScheduleSlot(tx.timeSlot)}
                             </p>
                           </div>
                         </div>

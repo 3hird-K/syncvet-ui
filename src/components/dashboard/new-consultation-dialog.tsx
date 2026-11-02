@@ -19,6 +19,7 @@ import {
   X,
   AlertCircle,
   Lock,
+  Search,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
@@ -129,6 +130,8 @@ export function NewConsultationDialog() {
   const [ownerName, setOwnerName] = useState("");
   const [ownerContact, setOwnerContact] = useState("");
   const [ownerBarangay, setOwnerBarangay] = useState<string>("Carmen");
+  const [ownerSearch, setOwnerSearch] = useState("");
+  const [petSearch, setPetSearch] = useState("");
   const [vetName, setVetName] = useState("Dr. Helen Ann P. Tacandong, DVM");
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
@@ -241,6 +244,18 @@ export function NewConsultationDialog() {
     return list;
   }, [dbUsers, dbPets, consultations]);
 
+  // Filtered pet owners based on search query
+  const filteredOwners = useMemo(() => {
+    if (!ownerSearch.trim()) return allOwners;
+    const q = ownerSearch.toLowerCase().trim();
+    return allOwners.filter(
+      (o) =>
+        o.name.toLowerCase().includes(q) ||
+        (o.contact && o.contact.toLowerCase().includes(q)) ||
+        (o.barangay && o.barangay.toLowerCase().includes(q))
+    );
+  }, [allOwners, ownerSearch]);
+
   // Filter available pets for the selected owner
   const availablePetsForSelectedOwner = useMemo(() => {
     if (!selectedOwnerId) return [];
@@ -293,6 +308,18 @@ export function NewConsultationDialog() {
 
     return pets;
   }, [selectedOwnerId, allOwners, dbPets, consultations]);
+
+  // Filtered pets based on pet search query
+  const filteredPets = useMemo(() => {
+    if (!petSearch.trim()) return availablePetsForSelectedOwner;
+    const q = petSearch.toLowerCase().trim();
+    return availablePetsForSelectedOwner.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.species && p.species.toLowerCase().includes(q)) ||
+        (p.breed && p.breed.toLowerCase().includes(q))
+    );
+  }, [availablePetsForSelectedOwner, petSearch]);
 
   // Fetch previous transactions & appointments from Supabase for this owner
   const { data: dbTransactions = [] } = useQuery({
@@ -432,6 +459,8 @@ export function NewConsultationDialog() {
   const handleOwnerSelect = (ownerId: string) => {
     setSelectedOwnerId(ownerId);
     setShowManualDetails(false);
+    setOwnerSearch("");
+    setPetSearch("");
     const owner = allOwners.find((o) => o.id === ownerId);
     if (owner) {
       setOwnerName(owner.name);
@@ -457,6 +486,7 @@ export function NewConsultationDialog() {
 
   const handlePetSelect = (petId: string) => {
     setSelectedPetId(petId);
+    setPetSearch("");
     const pet = availablePetsForSelectedOwner.find((p) => p.id === petId);
     if (pet) {
       setPetName(pet.name);
@@ -980,7 +1010,13 @@ export function NewConsultationDialog() {
                     <Label className="text-[11px] font-bold text-foreground flex items-center gap-1">
                       <User className="size-3 text-primary" /> Select Registered Pet Owner
                     </Label>
-                    <Select value={selectedOwnerId} onValueChange={handleOwnerSelect}>
+                    <Select
+                      value={selectedOwnerId}
+                      onValueChange={handleOwnerSelect}
+                      onOpenChange={(isOpen) => {
+                        if (!isOpen) setOwnerSearch("");
+                      }}
+                    >
                       <SelectTrigger className="h-9 text-xs rounded-xl bg-background border-border/80 w-full min-w-0">
                         <div className="flex items-center gap-2 min-w-0 truncate">
                           {selectedOwner ? (
@@ -1001,28 +1037,60 @@ export function NewConsultationDialog() {
                           )}
                         </div>
                       </SelectTrigger>
-                      <SelectContent className="max-h-60 z-[95] max-w-[90vw]">
-                        {allOwners.map((o) => (
-                          <SelectItem key={o.id} value={o.id} className="text-xs cursor-pointer py-1.5">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <Avatar className="size-6.5 shrink-0 border border-border/80">
-                                {o.avatarUrl ? <AvatarImage src={o.avatarUrl} alt={o.name} /> : null}
-                                <AvatarFallback className="bg-primary/10 text-primary font-bold text-[10px]">
-                                  {o.name.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex flex-col text-left min-w-0 truncate">
-                                <span className="font-semibold text-foreground text-xs leading-tight truncate">
-                                  {o.name}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground leading-tight truncate">
-                                  {o.barangay}
-                                  {o.contact ? ` • ${o.contact}` : o.petsCount > 0 ? ` • ${o.petsCount} pet${o.petsCount > 1 ? "s" : ""}` : " • Verified"}
-                                </span>
+                      <SelectContent className="max-h-64 z-[95] max-w-[90vw]">
+                        <div className="p-2 border-b sticky top-0 bg-popover z-10">
+                          <div className="relative flex items-center">
+                            <Search className="size-3.5 absolute left-2.5 text-muted-foreground pointer-events-none" />
+                            <Input
+                              placeholder="Search pet owner by name, contact, barangay..."
+                              value={ownerSearch}
+                              onChange={(e) => setOwnerSearch(e.target.value)}
+                              className="h-8 text-xs pl-8 pr-7 bg-muted/30 focus-visible:ring-1"
+                              onClick={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            />
+                            {ownerSearch && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOwnerSearch("");
+                                }}
+                                className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {filteredOwners.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-muted-foreground">
+                            No registered pet owners match "{ownerSearch}"
+                          </div>
+                        ) : (
+                          filteredOwners.map((o) => (
+                            <SelectItem key={o.id} value={o.id} className="text-xs cursor-pointer py-1.5">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <Avatar className="size-6.5 shrink-0 border border-border/80">
+                                  {o.avatarUrl ? <AvatarImage src={o.avatarUrl} alt={o.name} /> : null}
+                                  <AvatarFallback className="bg-primary/10 text-primary font-bold text-[10px]">
+                                    {o.name.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex flex-col text-left min-w-0 truncate">
+                                  <span className="font-semibold text-foreground text-xs leading-tight truncate">
+                                    {o.name}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground leading-tight truncate">
+                                    {o.barangay}
+                                    {o.contact ? ` • ${o.contact}` : o.petsCount > 0 ? ` • ${o.petsCount} pet${o.petsCount > 1 ? "s" : ""}` : " • Verified"}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </SelectItem>
-                        ))}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1033,7 +1101,13 @@ export function NewConsultationDialog() {
                       <PawPrint className="size-3 text-primary" /> Select Patient / Pet
                     </Label>
                     {selectedOwnerId ? (
-                      <Select value={selectedPetId} onValueChange={handlePetSelect}>
+                      <Select
+                        value={selectedPetId}
+                        onValueChange={handlePetSelect}
+                        onOpenChange={(isOpen) => {
+                          if (!isOpen) setPetSearch("");
+                        }}
+                      >
                         <SelectTrigger className="h-9 text-xs rounded-xl bg-background border-border/80 w-full min-w-0">
                           <div className="flex items-center gap-2 min-w-0 truncate">
                             {selectedPet ? (
@@ -1057,26 +1131,62 @@ export function NewConsultationDialog() {
                             )}
                           </div>
                         </SelectTrigger>
-                        <SelectContent className="max-h-60 z-[95] max-w-[90vw]">
-                          {availablePetsForSelectedOwner.map((p) => (
-                            <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <PetAvatar
-                                  photoUrl={p.photo_url}
-                                  species={p.species}
-                                  name={p.name}
-                                  size="xs"
-                                  className="size-6 shrink-0"
+                        <SelectContent className="max-h-64 z-[95] max-w-[90vw]">
+                          {availablePetsForSelectedOwner.length > 4 && (
+                            <div className="p-2 border-b sticky top-0 bg-popover z-10">
+                              <div className="relative flex items-center">
+                                <Search className="size-3.5 absolute left-2.5 text-muted-foreground pointer-events-none" />
+                                <Input
+                                  placeholder="Search pet by name, species, breed..."
+                                  value={petSearch}
+                                  onChange={(e) => setPetSearch(e.target.value)}
+                                  className="h-8 text-xs pl-8 pr-7 bg-muted/30 focus-visible:ring-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
                                 />
-                                <div className="flex flex-col text-left min-w-0 truncate">
-                                  <span className="font-semibold text-foreground text-xs leading-tight truncate">{p.name}</span>
-                                  <span className="text-[11px] text-muted-foreground leading-tight truncate">
-                                    {p.species} • {p.breed}{p.weightKg ? ` • ${p.weightKg}kg` : ""}
-                                  </span>
-                                </div>
+                                {petSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPetSearch("");
+                                    }}
+                                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                )}
                               </div>
-                            </SelectItem>
-                          ))}
+                            </div>
+                          )}
+                          {filteredPets.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-muted-foreground">
+                              {availablePetsForSelectedOwner.length === 0
+                                ? "No registered pets found for this owner"
+                                : `No pets match "${petSearch}"`}
+                            </div>
+                          ) : (
+                            filteredPets.map((p) => (
+                              <SelectItem key={p.id} value={p.id} className="text-xs cursor-pointer py-1.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <PetAvatar
+                                    photoUrl={p.photo_url}
+                                    species={p.species}
+                                    name={p.name}
+                                    size="xs"
+                                    className="size-6 shrink-0"
+                                  />
+                                  <div className="flex flex-col text-left min-w-0 truncate">
+                                    <span className="font-semibold text-foreground text-xs leading-tight truncate">{p.name}</span>
+                                    <span className="text-[11px] text-muted-foreground leading-tight truncate">
+                                      {p.species} • {p.breed}{p.weightKg ? ` • ${p.weightKg}kg` : ""}
+                                    </span>
+                                  </div>
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                     ) : (

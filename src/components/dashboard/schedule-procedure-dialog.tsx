@@ -1397,72 +1397,74 @@ export function ScheduleProcedureDialog({
       </DialogTrigger>
 
       <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
-        {/* Top Action Buttons: Quick Submit & Close */}
-        <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5">
-          <Button
-            type="submit"
-            form="schedule-procedure-form"
-            variant="ghost"
-            size="icon"
-            disabled={!isFormValid || submitting}
-            className={cn(
-              "inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
-              !isFormValid || submitting
-                ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
-                : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
-            )}
-            title={
-              !isFormValid
-                ? isAlreadyScheduled
-                  ? "Appointment already scheduled"
-                  : isSameDayConflict
-                  ? "Same-day conflict"
-                  : "Select an available date and confirm pre-op checklist"
-                : `Confirm ${serviceConfig.shortTitle} Slot`
-            }
-          >
-            {submitting ? (
-              <CalendarClock className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
-            <span className="sr-only">Confirm {serviceConfig.shortTitle} Slot</span>
-          </Button>
-
-          <DialogClose asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-              title="Close"
-            >
-              <X className="size-4" />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogClose>
-        </div>
-
-        <DialogHeader className="border-b pb-3 pr-10 sm:pr-24 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="size-8 sm:size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
-              {service === "vaccination" ? (
-                <Syringe className="size-4 sm:size-5" />
-              ) : (
-                <Scissors className="size-4 sm:size-5" />
-              )}
+        <DialogHeader className="border-b pb-3 min-w-0">
+          <div className="flex items-center justify-between gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 overflow-hidden">
+              <div className="size-8 sm:size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0">
+                {service === "vaccination" ? (
+                  <Syringe className="size-4 sm:size-5" />
+                ) : (
+                  <Scissors className="size-4 sm:size-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate block">
+                  {rescheduleAppointmentId
+                    ? "Reschedule Procedure"
+                    : "CVO Procedure Scheduler"}
+                </DialogTitle>
+                <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate block">
+                  {rescheduleAppointmentId
+                    ? `Select a new clinic date for ${currentPet?.name || "your pet"}`
+                    : "Book official municipal appointments with live daily capacity limits"}
+                </DialogDescription>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate">
-                {rescheduleAppointmentId
-                  ? "Reschedule Procedure"
-                  : "CVO Procedure Scheduler"}
-              </DialogTitle>
-              <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
-                {rescheduleAppointmentId
-                  ? `Select a new clinic date for ${currentPet?.name || "your pet"}`
-                  : "Book official municipal appointments with live daily capacity limits"}
-              </DialogDescription>
+
+            {/* Top Action Buttons: Quick Submit & Close */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="submit"
+                form="schedule-procedure-form"
+                variant="ghost"
+                size="icon"
+                disabled={!isFormValid || submitting}
+                className={cn(
+                  "inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                  !isFormValid || submitting
+                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                )}
+                title={
+                  !isFormValid
+                    ? isAlreadyScheduled
+                      ? "Appointment already scheduled"
+                      : isSameDayConflict
+                      ? "Same-day conflict"
+                      : "Select an available date and confirm pre-op checklist"
+                    : `Confirm ${serviceConfig.shortTitle} Slot`
+                }
+              >
+                {submitting ? (
+                  <CalendarClock className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                <span className="sr-only">Confirm {serviceConfig.shortTitle} Slot</span>
+              </Button>
+
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                  title="Close"
+                >
+                  <X className="size-4" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </DialogClose>
             </div>
           </div>
         </DialogHeader>

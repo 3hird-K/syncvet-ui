@@ -55,7 +55,7 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { cn, getTodayDateString, isTodayDate } from "@/lib/utils";
+import { cn, getTodayDateString, isTodayDate, formatClinicScheduleSlot } from "@/lib/utils";
 import { toast } from "sonner";
 import { PetAvatar } from "@/components/dashboard/pet-avatar";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
@@ -589,7 +589,7 @@ export function PetProfileDialog({
           : "Clinical Consultation & Examination",
       category,
       date: matchingAppt?.date || encounter?.date || getTodayDateString(),
-      time: matchingAppt?.time_slot || encounter?.time || "08:00 AM - 05:00 PM",
+      time: formatClinicScheduleSlot(matchingAppt?.time_slot || encounter?.time),
       status: (matchingAppt?.status as any) || (encounter?.status as any) || "waiting",
       chiefComplaint:
         category === "vaccination"
@@ -787,7 +787,7 @@ export function PetProfileDialog({
           type: "procedure",
           title: apt.service_id || "Veterinary Procedure",
           date: dateStr,
-          time: apt.time_slot,
+          time: formatClinicScheduleSlot(apt.time_slot),
           status: "completed",
           notes: apt.notes,
           raw: apt,
@@ -814,7 +814,7 @@ export function PetProfileDialog({
           type: "appointment",
           title: apt.service_id || "Veterinary Procedure",
           date: dateStr,
-          time: apt.time_slot,
+          time: formatClinicScheduleSlot(apt.time_slot),
           status: apt.status || "scheduled",
           notes: apt.notes,
           raw: apt,

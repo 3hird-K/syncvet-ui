@@ -100,6 +100,29 @@ export function getNextAvailableClinicDate(): Date {
 }
 
 /**
+ * Formats appointment or procedure time slots into the standard CVO clinical schedule:
+ * "8:00 AM - 5:00 PM" (8:00 AM – 5:00 PM operating hours).
+ * Normalizes legacy slot entries like "morning", "afternoon", "all-day", or "standard".
+ */
+export function formatClinicScheduleSlot(slot?: string | null): string {
+  if (!slot) return "8:00 AM - 5:00 PM";
+  const lower = slot.toLowerCase().trim();
+  if (
+    lower === "morning" ||
+    lower === "afternoon" ||
+    lower === "all-day" ||
+    lower === "standard" ||
+    lower === "regular" ||
+    lower === "clinic hours" ||
+    lower.includes("morn") ||
+    lower.includes("after")
+  ) {
+    return "8:00 AM - 5:00 PM";
+  }
+  return slot;
+}
+
+/**
  * Checks if the daily clinic queue has automatically closed for the date.
  * Clinical transactions operate 8:00 AM – 5:00 PM, and the queue automatically closes at 6:00 PM (18:00).
  * Past dates are always closed.
