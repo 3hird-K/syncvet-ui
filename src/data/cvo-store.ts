@@ -365,19 +365,28 @@ export const cvoBarangays = [
  */
 export function isConsultationLockedByVet(c: Partial<CVOConsultation> | null | undefined): boolean {
   if (!c) return false;
-  if (c.status && c.status !== "waiting") return true;
-  if (c.diagnosis && c.diagnosis.trim().length > 0) return true;
-  if (c.treatment && c.treatment.trim().length > 0) return true;
-  if (c.medication && c.medication.trim().length > 0) return true;
-  if (c.veterinarianNotes && c.veterinarianNotes.trim().length > 0) return true;
-  if (
-    c.vetName &&
-    c.vetName.trim().length > 0 &&
-    !c.vetName.toLowerCase().includes("pending") &&
-    !c.vetName.toLowerCase().includes("unassigned")
-  ) {
-    return true;
+  // If completed, always locked
+  if (c.status === "completed") return true;
+
+  // Waiting, scheduled, or unconfirmed consultations are NEVER locked
+  if (c.status === "waiting" || c.status === "scheduled" || (c as any).isUnofficial) {
+    return false;
   }
+
+  // Check diagnosis and treatment placeholders
+  const diag = (c.diagnosis || "").toLowerCase();
+  const isPendingDiag = !diag || diag.includes("pending") || diag.includes("routine");
+  const treat = (c.treatment || "").toLowerCase();
+  const isPendingTreat = !treat || treat.includes("pending") || treat.includes("none");
+  const med = (c.medication || "").toLowerCase();
+  const isPendingMed = !med || med.includes("none") || med.includes("pending");
+
+  if (isPendingDiag && isPendingTreat && isPendingMed) return false;
+
+  if (!isPendingTreat && c.treatment && c.treatment.trim().length > 0) return true;
+  if (!isPendingMed && c.medication && c.medication.trim().length > 0) return true;
+  if (!isPendingDiag && c.diagnosis && c.diagnosis.trim().length > 0) return true;
+
   return false;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import {
   type CVOConsultation,
@@ -15,6 +15,7 @@ import {
   isConsultationLockedByVet,
 } from "@/data/cvo-store";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { getFieldOpGracePeriod } from "@/lib/utils";
@@ -123,7 +124,9 @@ function mapDbConsultationToCVO(row: any): CVOConsultation {
     medication: row.medication || "",
     dosageInstructions: row.dosage_instructions || "",
     followUpDate: row.follow_up_date || undefined,
-    status: row.status,
+    status: (formMeta.isUnofficial || formMeta.status === "scheduled") && (!rawNotes || (!rawNotes.includes("[Checked-in Queue Ticket") && !rawNotes.includes("Ticket Q-")))
+      ? "scheduled"
+      : row.status,
     veterinarianNotes: rawNotes || undefined,
     serviceType: row.service_type || "Field Treatment/Consultation",
     noOfHeads: formMeta.noOfHeads ?? row.no_of_heads ?? 1,
@@ -301,9 +304,26 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, email, address)")
           .order("date", { ascending: false });
 
-        if (error) return initialConsultations;
-        const mapped = (data || []).map(mapDbConsultationToCVO);
-        return mapped.length > 0 ? mapped : initialConsultations;
+        let list: CVOConsultation[] = [];
+        if (!error && data) {
+          list = data.map(mapDbConsultationToCVO);
+        }
+
+        // Merge local consultations cache for instant offline persistence
+        try {
+          if (typeof window !== "undefined") {
+            const local = JSON.parse(localStorage.getItem("syncvet_local_consultations") || "[]");
+            if (Array.isArray(local)) {
+              local.forEach((loc: any) => {
+                if (!list.some((existing) => existing.encounterNo === loc.encounterNo || existing.id === loc.id)) {
+                  list.unshift(loc);
+                }
+              });
+            }
+          }
+        } catch {}
+
+        return list.length > 0 ? list : initialConsultations;
       } catch {
         return initialConsultations;
       }
@@ -581,6 +601,10 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
 
     // Serialize CVO form metadata so full clinical systems and services are preserved
     const formMeta: Record<string, any> = {};
+    if (c.status === "scheduled") {
+      formMeta.isUnofficial = true;
+      formMeta.status = "scheduled";
+    }
     if (c.noOfHeads) formMeta.noOfHeads = c.noOfHeads;
     if (c.dateOfBirth) formMeta.dateOfBirth = c.dateOfBirth;
     if (c.age) formMeta.age = c.age;
@@ -598,12 +622,25 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
       encodedNotes = `${encodedNotes} __CVO_FORM_META__:${JSON.stringify(formMeta)}`;
     }
 
+    // Cache immediately in localStorage so it persists even on page refresh
+    try {
+      if (typeof window !== "undefined") {
+        const localList = JSON.parse(localStorage.getItem("syncvet_local_consultations") || "[]");
+        localList.unshift(newConsultation);
+        localStorage.setItem("syncvet_local_consultations", JSON.stringify(localList.slice(0, 50)));
+      }
+    } catch {}
+
     // Sync to Supabase
     void (async () => {
       try {
-        await supabase.from("consultations").insert({
+        const isUuid = Boolean(c.petId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.petId));
+        // Supabase database check constraint allows 'waiting' | 'in-consultation' | 'treatment' | 'completed'
+        const dbStatus = c.status === "scheduled" ? "waiting" : (c.status as any);
+
+        const { data: inserted, error: insertError } = await supabase.from("consultations").insert({
           encounter_no: encounterNo,
-          pet_id: c.petId || null,
+          pet_id: isUuid ? c.petId : null,
           owner_id: c.ownerId || null,
           pet_name: c.petName,
           species: c.species,
@@ -620,15 +657,23 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           temperature_c: c.vitals.temperatureC,
           heart_rate_bpm: c.vitals.heartRateBpm || null,
           mucous_membrane: c.vitals.mucousMembrane || null,
-          diagnosis: c.diagnosis,
-          treatment: c.treatment,
+          diagnosis: c.diagnosis || "Pending Clinical Examination",
+          treatment: c.treatment || "Pending attending veterinarian",
           medication: c.medication || null,
           dosage_instructions: c.dosageInstructions || null,
           follow_up_date: c.followUpDate || null,
-          status: c.status,
+          status: dbStatus,
           service_type: c.serviceType,
           veterinarian_notes: encodedNotes || null,
-        });
+        }).select().maybeSingle();
+
+        if (insertError) {
+          console.error("Supabase consultation insert error:", insertError);
+        } else if (inserted?.id) {
+          queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
+            old.map((item) => (item.encounterNo === encounterNo ? { ...item, id: inserted.id } : item))
+          );
+        }
       } catch (err) {
         console.warn("Supabase consultation insert notice", err);
       }
@@ -715,44 +760,149 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     })();
   };
 
-  const deleteConsultation = async (id: string): Promise<boolean> => {
-    // Check if the consultation is locked by vet response/modifications
-    const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
-    if (existing && isConsultationLockedByVet(existing)) {
-      toast.error("Cannot Delete Official Record", {
-        description: "Official consultations that have been reviewed, diagnosed, or attended by a veterinarian cannot be deleted.",
-      });
-      return false;
-    }
+  const deleteConsultationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
+      const targetId = existing?.id || id;
+      const targetEncounterNo = existing?.encounterNo || id;
 
-    // Optimistic TanStack Query update
-    queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
-      old.filter((c) => c.id !== id && c.encounterNo !== id)
-    );
-
-    try {
-      const { error } = await supabase
-        .from("consultations")
-        .delete()
-        .or(`id.eq.${id},encounter_no.eq.${id}`);
-
-      if (error) {
-        console.warn("Supabase consultation delete error:", error.message);
-        return false;
+      // 1. Delete from Supabase safely avoiding Postgres UUID cast issues
+      try {
+        const isTargetUuid = Boolean(targetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId));
+        if (isTargetUuid) {
+          await supabase.from("consultations").delete().eq("id", targetId);
+        }
+        if (targetEncounterNo) {
+          await supabase.from("consultations").delete().eq("encounter_no", targetEncounterNo);
+        }
+      } catch (err: any) {
+        console.warn("Supabase consultation delete warning:", err?.message);
       }
+
+      // 2. Clean up local storage cache
+      try {
+        const local = JSON.parse(localStorage.getItem("syncvet_local_consultations") || "[]");
+        const filtered = local.filter((c: any) => 
+          c.id !== id && 
+          c.encounterNo !== id && 
+          c.encounter_no !== id &&
+          c.id !== targetId &&
+          c.encounterNo !== targetEncounterNo
+        );
+        localStorage.setItem("syncvet_local_consultations", JSON.stringify(filtered));
+      } catch {}
+
+      try {
+        const local = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
+        const filtered = local.filter((c: any) => 
+          c.id !== id && 
+          c.encounterNo !== id && 
+          c.encounter_no !== id &&
+          c.id !== targetId &&
+          c.encounterNo !== targetEncounterNo
+        );
+        localStorage.setItem("cvo_consultations_v2", JSON.stringify(filtered));
+      } catch {}
+
+      // 3. Purge from active daily queue in local storage
+      try {
+        const today = format(new Date(), "yyyy-MM-dd");
+        const queueKey = `syncvet_clinic_queue_${today}`;
+        const queueData = JSON.parse(localStorage.getItem(queueKey) || "{}");
+        if (Array.isArray(queueData.activeTickets)) {
+          queueData.activeTickets = queueData.activeTickets.filter(
+            (t: any) => 
+              t.appointmentId !== id && 
+              t.encounterNo !== id && 
+              t.id !== id &&
+              t.appointmentId !== targetId &&
+              t.encounterNo !== targetEncounterNo
+          );
+          localStorage.setItem(queueKey, JSON.stringify(queueData));
+        }
+      } catch {}
 
       addAuditLog({
         user: activeRoleView,
         role: activeRoleView,
         action: "Deleted Consultation Record",
         entity: "Consultation",
-        recordId: id,
-        details: `Encounter ${id} removed from municipal records`,
+        recordId: targetEncounterNo || id,
+        details: `Encounter ${targetEncounterNo || id} removed from municipal records`,
       });
 
+      return id;
+    },
+    onMutate: async (id: string) => {
+      const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
+      const targetId = existing?.id || id;
+      const targetEncounterNo = existing?.encounterNo || id;
+
+      // Cancel queries
+      await queryClient.cancelQueries({ queryKey: ["cvo_consultations"] });
+
+      // Snapshot previous
+      const previous = queryClient.getQueryData<CVOConsultation[]>(["cvo_consultations"]);
+
+      // Optimistically update TanStack cache immediately
+      queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
+        old.filter((c) => 
+          c.id !== id && 
+          c.encounterNo !== id &&
+          c.id !== targetId && 
+          c.encounterNo !== targetEncounterNo
+        )
+      );
+
+      // Also proactively update local storage right in onMutate
+      try {
+        const local = JSON.parse(localStorage.getItem("syncvet_local_consultations") || "[]");
+        const filtered = local.filter((c: any) => 
+          c.id !== id && 
+          c.encounterNo !== id && 
+          c.encounter_no !== id &&
+          c.id !== targetId &&
+          c.encounterNo !== targetEncounterNo
+        );
+        localStorage.setItem("syncvet_local_consultations", JSON.stringify(filtered));
+      } catch {}
+
+      // Dispatch real-time events
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("syncvet-consultation-updated"));
+        window.dispatchEvent(new Event("syncvet-queue-updated"));
+      }
+
+      return { previous };
+    },
+    onError: (err, id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["cvo_consultations"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["user-consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
+    },
+  });
+
+  const deleteConsultation = async (id: string): Promise<boolean> => {
+    // Check if the consultation is locked by vet response/modifications
+    const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
+    const isStaff = activeRoleView === "Administrator" || activeRoleView === "Veterinarian";
+    if (!isStaff && existing && isConsultationLockedByVet(existing)) {
+      toast.error("Cannot Delete Official Record", {
+        description: "Official consultations that have been reviewed, diagnosed, or attended by a veterinarian cannot be deleted.",
+      });
+      return false;
+    }
+
+    try {
+      await deleteConsultationMutation.mutateAsync(id);
       return true;
-    } catch (err) {
-      console.error("Delete consultation failed:", err);
+    } catch {
       return false;
     }
   };

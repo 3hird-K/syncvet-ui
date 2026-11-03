@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
 import { useUser } from "@clerk/nextjs";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
@@ -131,7 +131,8 @@ import { CVOAnnouncementsCard } from "@/components/dashboard/cvo-announcements-c
 import { CVOClinicInfoCard } from "@/components/dashboard/cvo-clinic-info-card";
 import { CVOSocialFeed } from "@/components/dashboard/cvo-social-feed";
 import { PetOwnerQueueTracker } from "@/components/dashboard/pet-owner-queue-tracker";
-import { syncConsultationsToQueue } from "@/lib/cvo-queue";
+import { syncConsultationsToQueue, getDailyQueue } from "@/lib/cvo-queue";
+import { PetQueueCheckInDialog } from "@/components/dashboard/pet-queue-checkin-dialog";
 import { parsePetWeightKg } from "@/lib/pet-weight";
 import { PetOwnerOutreachCheckInDialog } from "@/components/dashboard/pet-owner-outreach-checkin-dialog";
 import { toast } from "sonner";
@@ -285,6 +286,27 @@ export default function PetOwnerPortalPage() {
     window.addEventListener("syncvet-outreach-scanned", handleOutreachScanned);
     return () => {
       window.removeEventListener("syncvet-outreach-scanned", handleOutreachScanned);
+    };
+  }, []);
+
+  // Station QR Queue Check-in state
+  const [checkInDialogOpen, setCheckInDialogOpen] = useState(false);
+  const [selectedTxForCheckIn, setSelectedTxForCheckIn] = useState<any>(null);
+  const [todayQueueState, setTodayQueueState] = useState(() => getDailyQueue());
+
+  useEffect(() => {
+    const handleQueueChange = () => {
+      setTodayQueueState(getDailyQueue());
+    };
+    window.addEventListener("syncvet-queue-updated", handleQueueChange);
+    window.addEventListener("syncvet-appointment-updated", handleQueueChange);
+    window.addEventListener("syncvet-consultation-updated", handleQueueChange);
+    window.addEventListener("storage", handleQueueChange);
+    return () => {
+      window.removeEventListener("syncvet-queue-updated", handleQueueChange);
+      window.removeEventListener("syncvet-appointment-updated", handleQueueChange);
+      window.removeEventListener("syncvet-consultation-updated", handleQueueChange);
+      window.removeEventListener("storage", handleQueueChange);
     };
   }, []);
 
@@ -626,6 +648,7 @@ export default function PetOwnerPortalPage() {
 
         if (!error && data) {
           data.forEach((item: any) => {
+            if (item.status === "cancelled") return;
             if (!seenIds.has(item.id)) {
               seenIds.add(item.id);
               const petData = Array.isArray(item.pets) ? item.pets[0] : item.pets;
@@ -653,6 +676,7 @@ export default function PetOwnerPortalPage() {
 
         if (txData) {
           txData.forEach((tx: any) => {
+            if (tx.status === "cancelled") return;
             const refId = tx.reference_id || tx.id;
             if (!seenIds.has(refId)) {
               seenIds.add(refId);
@@ -684,6 +708,7 @@ export default function PetOwnerPortalPage() {
       try {
         const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
         local.forEach((item: any) => {
+          if (item.status === "cancelled") return;
           if (!seenIds.has(item.id) && (item.owner_id === ownerId || item.owner_id === user?.id)) {
             seenIds.add(item.id);
             list.push(item);
@@ -772,32 +797,125 @@ export default function PetOwnerPortalPage() {
     });
   }, [ownerAppointments]);
 
-  const handleCancelAppointment = async (appointmentId: string) => {
-    try {
-      await supabase
-        .from("appointments")
-        .update({ status: "cancelled" })
-        .eq("id", appointmentId);
-
-      await supabase
-        .from("service_transactions")
-        .update({ status: "cancelled" })
-        .or(`reference_id.eq.${appointmentId},id.eq.${appointmentId}`);
+  const deleteAppointmentMutation = useMutation({
+    mutationFn: async ({ appointmentId, rawAppointment }: { appointmentId: string; rawAppointment?: any }) => {
+      // 1. Delete and mark cancelled in Supabase
+      try {
+        await supabase
+          .from("appointments")
+          .delete()
+          .eq("id", appointmentId);
+      } catch {}
 
       try {
+        await supabase
+          .from("appointments")
+          .update({ status: "cancelled" })
+          .eq("id", appointmentId);
+      } catch {}
+
+      try {
+        await supabase
+          .from("service_transactions")
+          .delete()
+          .or(`reference_id.eq.${appointmentId},id.eq.${appointmentId}`);
+      } catch {}
+
+      // 2. Remove from localStorage syncvet_local_appointments
+      try {
         const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
-        const updated = local.map((l: any) => (l.id === appointmentId ? { ...l, status: "cancelled" } : l));
-        localStorage.setItem("syncvet_local_appointments", JSON.stringify(updated));
-      } catch (e) {
-        // ignore
+        const filtered = local.filter(
+          (l: any) => l.id !== appointmentId && l.reference_id !== appointmentId
+        );
+        localStorage.setItem("syncvet_local_appointments", JSON.stringify(filtered));
+      } catch (e) {}
+
+      // 3. Remove ticket from clinic queue in localStorage
+      try {
+        const today = format(new Date(), "yyyy-MM-dd");
+        const queueKey = `syncvet_clinic_queue_${today}`;
+        const queueData = JSON.parse(localStorage.getItem(queueKey) || "{}");
+        if (Array.isArray(queueData.activeTickets)) {
+          const ticketNo = rawAppointment?.queue_ticket;
+          queueData.activeTickets = queueData.activeTickets.filter(
+            (t: any) =>
+              t.appointmentId !== appointmentId &&
+              t.id !== appointmentId &&
+              (!ticketNo || t.ticketNumber !== ticketNo)
+          );
+          localStorage.setItem(queueKey, JSON.stringify(queueData));
+        }
+      } catch {}
+
+      return appointmentId;
+    },
+    onMutate: async ({ appointmentId, rawAppointment }) => {
+      // Cancel ongoing queries
+      await queryClient.cancelQueries({ queryKey: ["user-appointments"] });
+
+      // Snapshot previous
+      const previousAppointments = queryClient.getQueriesData({ queryKey: ["user-appointments"] });
+
+      // Optimistically filter out appointment immediately from TanStack cache
+      queryClient.setQueriesData({ queryKey: ["user-appointments"] }, (old: any) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((a: any) => a.id !== appointmentId && a.reference_id !== appointmentId);
+      });
+
+      // Optimistically update todayQueueState
+      setTodayQueueState((prev: any) => {
+        if (!prev || !Array.isArray(prev.activeTickets)) return prev;
+        const ticketNo = rawAppointment?.queue_ticket;
+        return {
+          ...prev,
+          activeTickets: prev.activeTickets.filter(
+            (t: any) =>
+              t.appointmentId !== appointmentId &&
+              t.id !== appointmentId &&
+              (!ticketNo || t.ticketNumber !== ticketNo)
+          ),
+        };
+      });
+
+      // Proactively clean local storage right in onMutate
+      try {
+        const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+        const filtered = local.filter(
+          (l: any) => l.id !== appointmentId && l.reference_id !== appointmentId
+        );
+        localStorage.setItem("syncvet_local_appointments", JSON.stringify(filtered));
+      } catch {}
+
+      // Dispatch real-time events
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("syncvet-appointment-updated"));
+        window.dispatchEvent(new Event("syncvet-queue-updated"));
       }
 
+      return { previousAppointments };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previousAppointments) {
+        context.previousAppointments.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      toast.error("Failed to delete appointment: " + (err?.message || "Error"));
+    },
+    onSuccess: () => {
+      toast.success("Appointment deleted successfully.");
+      setTodayQueueState(getDailyQueue());
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
       queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
-      toast.success("Appointment cancelled. Your slot has been released back to the clinic schedule.");
-    } catch (err: any) {
-      toast.error("Failed to cancel appointment: " + (err?.message || "Error"));
-    }
+      queryClient.invalidateQueries({ queryKey: ["user-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
+    },
+  });
+
+  const handleCancelAppointment = (appointmentId: string, rawAppointment?: any) => {
+    deleteAppointmentMutation.mutate({ appointmentId, rawAppointment });
   };
 
   // Supabase Realtime channel subscription for pets to update TanStack Query live on deletion/changes
@@ -1302,8 +1420,9 @@ export default function PetOwnerPortalPage() {
     };
   }, [allMedicalHistory]);
 
-  // Unified Scheduled Transactions for Our Pets: All scheduled appointments + in-queue clinic consultations
+  // Unified Scheduled Transactions for Our Pets: All scheduled appointments + in-queue clinic consultations (Present & Future Only)
   const allScheduledTransactions = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     const list: Array<{
       id: string;
       kind: "appointment" | "consultation-queue";
@@ -1320,12 +1439,20 @@ export default function PetOwnerPortalPage() {
       status: string;
       notes?: string;
       isMissed: boolean;
+      isUnofficial: boolean;
+      queueTicket?: string;
       rawAppointment?: any;
       rawConsultation?: any;
     }> = [];
 
-    // 1. Appointments (Vaccinations, Spay/Neuter, etc.)
+    // 1. Appointments (Vaccinations, Spay/Neuter, etc.) - Present and Future schedules only
     ownerAppointments.forEach((apt: any) => {
+      if (apt.status === "cancelled") return;
+
+      const aptDate = (apt.date || "").split("T")[0];
+      // Exclude appointments from the past (strictly present today or future schedules)
+      if (aptDate && aptDate < todayStr) return;
+
       const aptPet = pets.find(
         (p) =>
           (apt.pet_id && p.id === apt.pet_id) ||
@@ -1333,6 +1460,16 @@ export default function PetOwnerPortalPage() {
       ) || apt.pets;
       const displayPetName = aptPet?.name || apt.pets?.name || apt.pet_name || "Pet";
       const isSpayNeuter = apt.service_id === "spay-neuter";
+
+      const matchedTicket = todayQueueState.activeTickets.find(
+        (t: any) => t.appointmentId === apt.id || (apt.queue_ticket && t.ticketNumber === apt.queue_ticket)
+      );
+      const isCheckedIn = !!matchedTicket || apt.status === "checked-in" || apt.status === "in-consultation" || !!apt.checked_in_at;
+      const isCompleted = apt.status === "completed";
+      const isCancelled = apt.status === "cancelled";
+      const isMissed = apt.status === "missed";
+      const isUnofficial = !isCheckedIn && !isCompleted && !isCancelled && !isMissed;
+
       list.push({
         id: apt.id,
         kind: "appointment",
@@ -1343,55 +1480,94 @@ export default function PetOwnerPortalPage() {
         species: aptPet?.species || apt.pets?.species,
         breed: aptPet?.breed || apt.pets?.breed,
         photoUrl: aptPet?.photo_url || apt.pets?.photo_url,
-        date: apt.date || format(new Date(), "yyyy-MM-dd"),
+        date: apt.date || todayStr,
         timeSlot: formatClinicScheduleSlot(apt.time_slot),
         location: apt.location || "City Veterinary Office - Carmen Central Clinic",
-        status: apt.status || "confirmed",
+        status: isMissed ? "missed" : isUnofficial ? "unofficial" : isCheckedIn ? "checked-in" : (apt.status || "confirmed"),
         notes: apt.notes || "",
-        isMissed: apt.status === "missed",
+        isMissed,
+        isUnofficial,
+        queueTicket: matchedTicket?.ticketNumber || apt.queue_ticket,
         rawAppointment: apt,
       });
     });
 
-    // 2. Waiting or active consultation queue entries
+    // 2. Waiting, scheduled (unofficial), or active consultation entries - Present and Future schedules only
     ownerConsultations.forEach((c) => {
+      if ((c.status as string) === "cancelled") return;
+
+      const consultDate = (c.date || "").split("T")[0];
+      // Exclude consultations from the past (strictly present today or future schedules)
+      if (consultDate && consultDate < todayStr) return;
+
       const isOverdue = isConsultationOverdue(c.date, c.status);
-      const isWaiting = c.status === "waiting" || c.status === "in-consultation";
-      if (isWaiting || isOverdue) {
-        const cPet = pets.find(
-          (p) =>
-            (c.petId && p.id === c.petId) ||
-            (c.petName && p.name.toLowerCase() === c.petName.toLowerCase())
-        );
-        list.push({
-          id: c.id,
-          kind: "consultation-queue",
-          serviceId: "consultation",
-          serviceLabel: "Clinical Consultation Queue",
-          petName: c.petName,
-          petId: c.petId || cPet?.id,
-          species: cPet?.species || c.species,
-          breed: cPet?.breed || c.breed,
-          photoUrl: cPet?.photo_url,
-          date: c.date,
-          timeSlot: c.time || formatClinicScheduleSlot(null),
-          location: "City Veterinary Office - Carmen Central Clinic",
-          status: isOverdue ? "overdue" : c.status,
-          notes: c.chiefComplaint,
-          isMissed: isOverdue,
-          rawConsultation: c,
-        });
-      }
+      const matchedTicket = todayQueueState.activeTickets.find(
+        (t: any) =>
+          t.appointmentId === (c.encounterNo || c.id) ||
+          t.encounterNo === (c.encounterNo || c.id) ||
+          (t.serviceId === "consultation" &&
+            t.petName?.toLowerCase().trim() === (c.petName || "").toLowerCase().trim() &&
+            t.ownerName?.toLowerCase().trim() === (c.ownerName || "").toLowerCase().trim())
+      );
+      const isCheckedIn = !!matchedTicket || c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment";
+      const isCompleted = c.status === "completed";
+      const isUnofficial = !isCheckedIn && !isCompleted && !isOverdue;
+
+      const cPet = pets.find(
+        (p) =>
+          (c.petId && p.id === c.petId) ||
+          (c.petName && p.name.toLowerCase() === c.petName.toLowerCase())
+      );
+      list.push({
+        id: c.id,
+        kind: "consultation-queue",
+        serviceId: "consultation",
+        serviceLabel: isUnofficial
+          ? "Clinical Consultation"
+          : isCheckedIn
+          ? "Clinical Consultation Queue"
+          : "Clinical Consultation",
+        petName: c.petName,
+        petId: c.petId || cPet?.id,
+        species: cPet?.species || c.species,
+        breed: cPet?.breed || c.breed,
+        photoUrl: cPet?.photo_url,
+        date: c.date || todayStr,
+        timeSlot: c.time || formatClinicScheduleSlot(null),
+        location: "City Veterinary Office - Carmen Central Clinic",
+        status: isOverdue ? "overdue" : isUnofficial ? "unofficial" : isCompleted ? "completed" : c.status,
+        notes: c.chiefComplaint,
+        isMissed: isOverdue,
+        isUnofficial,
+        queueTicket: matchedTicket?.ticketNumber,
+        rawConsultation: c,
+      });
     });
 
-    // Sort by date newest first
-    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [ownerAppointments, ownerConsultations, pets]);
+    // Sort: present today schedules first, followed by future upcoming dates
+    return list.sort((a, b) => {
+      const dateA = a.date || "";
+      const dateB = b.date || "";
+      const dateDiff = dateA.localeCompare(dateB);
+      if (dateDiff !== 0) return dateDiff;
+      if (a.queueTicket && !b.queueTicket) return -1;
+      if (!a.queueTicket && b.queueTicket) return 1;
+      return 0;
+    });
+  }, [ownerAppointments, ownerConsultations, pets, todayQueueState]);
 
   const displayedScheduledTransactions = useMemo(() => {
     let list = allScheduledTransactions;
     if (appointmentFilter === "upcoming") {
-      list = allScheduledTransactions.filter((a) => a.status === "confirmed" || a.status === "waiting" || a.status === "in-consultation");
+      list = allScheduledTransactions.filter(
+        (a) =>
+          a.isUnofficial ||
+          a.status === "unofficial" ||
+          a.status === "confirmed" ||
+          a.status === "waiting" ||
+          a.status === "checked-in" ||
+          a.status === "in-consultation"
+      );
     } else if (appointmentFilter === "missed") {
       list = allScheduledTransactions.filter((a) => a.isMissed || a.status === "missed" || a.status === "overdue");
     } else if (appointmentFilter === "completed") {
@@ -1646,14 +1822,24 @@ export default function PetOwnerPortalPage() {
   }, [pets]);
 
   const activeAppointmentsCount = useMemo(() => {
-    return ownerAppointments.filter((a: any) => a.status !== "cancelled" && a.status !== "completed").length;
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return ownerAppointments.filter((a: any) => {
+      if (a.status === "cancelled" || a.status === "completed" || a.status === "missed") return false;
+      const aptDate = (a.date || a.appointment_date || "").split("T")[0];
+      if (aptDate && aptDate < todayStr) return false;
+      return true;
+    }).length;
   }, [ownerAppointments]);
 
   const activeConsultationsCount = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     return ownerConsultations.filter(
-      (c: any) =>
-        (c.status === "waiting" || c.status === "in-consultation" || c.status === "treatment") &&
-        !isConsultationOverdue(c.date, c.status)
+      (c: any) => {
+        if (c.status !== "waiting" && c.status !== "in-consultation" && c.status !== "treatment") return false;
+        const consultDate = (c.date || "").split("T")[0];
+        if (consultDate && consultDate < todayStr) return false;
+        return !isConsultationOverdue(c.date, c.status);
+      }
     ).length;
   }, [ownerConsultations]);
 
@@ -1998,16 +2184,21 @@ export default function PetOwnerPortalPage() {
 
         {/* ── Mobile Upcoming Care Quick Banner (< md only) ── */}
         {(() => {
+          const todayStr = format(new Date(), "yyyy-MM-dd");
           const activeAppointments = ownerAppointments.filter(
             (a: any) =>
               a.status !== "cancelled" &&
               a.status !== "completed" &&
               a.status !== "missed" &&
+              ((a.date || a.appointment_date || "").split("T")[0] >= todayStr) &&
               !isConsultationOverdue(a.appointment_date || a.date, a.status)
           );
           const nextApt = activeAppointments[0];
           const waitingConsultation = ownerConsultations.find(
-            (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
+            (c: any) =>
+              c.status === "waiting" &&
+              ((c.date || "").split("T")[0] >= todayStr) &&
+              !isConsultationOverdue(c.date, c.status)
           );
           if (!nextApt && !waitingConsultation) return null;
 
@@ -2484,34 +2675,6 @@ export default function PetOwnerPortalPage() {
           </div>
         </div>
 
-        {/* Transaction Filter Dropdown */}
-        <div className="flex items-center justify-between gap-2.5 pt-1">
-          <Select
-            value={appointmentFilter}
-            onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
-              setAppointmentFilter(val)
-            }
-          >
-            <SelectTrigger className="h-8 text-xs w-44 bg-card border-border/80 rounded-xl font-semibold shadow-2xs cursor-pointer">
-              <SelectValue placeholder="All Transactions" />
-            </SelectTrigger>
-            <SelectContent className="text-xs rounded-xl">
-              <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
-                All Transactions
-              </SelectItem>
-              <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
-                Upcoming / Queue
-              </SelectItem>
-              <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
-                Missed / Overdue
-              </SelectItem>
-              <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
-                Completed Transactions
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Unattended Schedule Notice Banner */}
         {missedAppointmentsCount > 0 && (
           <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in-0">
@@ -2561,14 +2724,9 @@ export default function PetOwnerPortalPage() {
               </p>
             </div>
           </Card>
-        ) : displayedScheduledTransactions.length === 0 ? (
-          <Card className="p-6 text-center border-dashed border border-border/70 bg-muted/10 space-y-2 rounded-xl">
-            <p className="text-xs font-semibold text-foreground">No scheduled transactions under &quot;{appointmentFilter}&quot;</p>
-            <p className="text-[11px] text-muted-foreground">Select another filter above or book a new appointment.</p>
-          </Card>
         ) : (
           <div className="space-y-3">
-            {displayedScheduledTransactions.map((tx) => {
+            {allScheduledTransactions.map((tx) => {
               const isSpayNeuter = tx.serviceId === "spay-neuter";
               const isConsultationQueue = tx.kind === "consultation-queue";
               const isVaccination = !isSpayNeuter && !isConsultationQueue;
@@ -2648,11 +2806,13 @@ export default function PetOwnerPortalPage() {
                               variant="outline"
                               className={cn(
                                 "text-[9px] font-bold pointer-events-none select-none shadow-none gap-1 px-1.5 py-0",
-                                isCompleted
+                                tx.isUnofficial
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/35 font-extrabold"
+                                  : isCompleted
                                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                   : isOverdue
                                   ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
-                                  : isCheckedIn
+                                  : isCheckedIn || tx.queueTicket
                                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                   : isWaiting
                                   ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
@@ -2661,15 +2821,20 @@ export default function PetOwnerPortalPage() {
                                   : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
                               )}
                             >
-                              {isOverdue ? (
+                              {tx.isUnofficial ? (
+                                <>
+                                  <QrCode className="size-2.5 text-amber-600 dark:text-amber-400" />
+                                  UNOFFICIAL • SCAN QR TO QUEUE
+                                </>
+                              ) : isOverdue ? (
                                 <>
                                   <AlertCircle className="size-2.5 text-rose-600 dark:text-rose-400" />
                                   OVERDUE
                                 </>
-                              ) : isCheckedIn ? (
+                              ) : isCheckedIn || tx.queueTicket ? (
                                 <>
-                                  <CheckCircle2 className="size-2.5 text-emerald-600" />
-                                  CHECKED-IN
+                                  <CheckCircle2 className="size-2.5 text-emerald-600 dark:text-emerald-400" />
+                                  IN QUEUE {tx.queueTicket ? `• #${tx.queueTicket}` : ""}
                                 </>
                               ) : isWaiting ? (
                                 <>
@@ -2693,14 +2858,20 @@ export default function PetOwnerPortalPage() {
                             <span
                               className={cn(
                                 "font-semibold truncate max-w-[220px] sm:max-w-[340px]",
-                                isVaccination
+                                tx.isUnofficial
+                                  ? "text-amber-700 dark:text-amber-400 font-medium"
+                                  : isVaccination
                                   ? "text-emerald-700 dark:text-emerald-400"
                                   : isSpayNeuter
                                   ? "text-indigo-700 dark:text-indigo-400"
                                   : "text-primary"
                               )}
                             >
-                              {tx.serviceLabel}
+                              {tx.isUnofficial
+                                ? `${tx.serviceLabel} • Needs Station QR Scan`
+                                : tx.queueTicket
+                                ? `${tx.serviceLabel} • Live Queue Ticket #${tx.queueTicket}`
+                                : tx.serviceLabel}
                             </span>
                             <span className="text-muted-foreground/40">•</span>
                             <span className="text-[11px] text-muted-foreground font-mono shrink-0 flex items-center gap-1">
@@ -2711,8 +2882,23 @@ export default function PetOwnerPortalPage() {
                         </div>
                       </div>
 
-                      {/* Right: View Details Button */}
-                      <div className="flex items-center gap-2 shrink-0">
+                      {/* Right: Actions */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {tx.isUnofficial && (
+                          <Button
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTxForCheckIn(tx);
+                              setCheckInDialogOpen(true);
+                            }}
+                            className="size-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer active:scale-95 transition-transform shrink-0"
+                            title="Scan QR Code to Enter Queue"
+                            aria-label="Scan QR Code to Enter Queue"
+                          >
+                            <QrCode className="size-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -2733,6 +2919,42 @@ export default function PetOwnerPortalPage() {
                     {/* ── Collapsible Full Details Section ── */}
                     {isExpanded && (
                       <div className="pt-3 mt-3 border-t border-border/50 space-y-3 text-xs animate-in fade-in-50 duration-200">
+                        {/* Unofficial / QR Check-in Required Notice */}
+                        {tx.isUnofficial && (
+                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200 animate-in fade-in-50">
+                            <div className="size-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30 mt-0.5">
+                              <QrCode className="size-4" />
+                            </div>
+                            <div className="space-y-0.5">
+                              <p className="font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+                                Unofficial Reservation — QR Station Check-in Required
+                              </p>
+                              <p className="text-muted-foreground text-xs leading-relaxed">
+                                This booking is reserved as unofficial. To enter Today&apos;s Clinic Queue and receive your live queue ticket (#Q-XXX), please scan the QR code displayed at the clinic Check-in QR Station upon arrival.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* In Queue Ticket Notice */}
+                        {tx.queueTicket && (
+                          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs text-emerald-950 dark:text-emerald-200">
+                            <div className="flex items-center gap-2.5">
+                              <div className="size-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                                <CheckCircle2 className="size-4" />
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="font-bold text-emerald-900 dark:text-emerald-200 text-xs sm:text-sm">
+                                  Official Live Queue Ticket: #{tx.queueTicket}
+                                </p>
+                                <p className="text-muted-foreground text-xs">
+                                  Patient has checked in via station QR and is now in Today&apos;s Clinic Queue.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Overdue / Unattended alert if missed */}
                         {tx.isMissed && (
                           <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
@@ -2803,7 +3025,7 @@ export default function PetOwnerPortalPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleCancelAppointment(tx.id)}
+                                  onClick={() => handleCancelAppointment(tx.id, tx.rawAppointment)}
                                   className="size-8 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                                   title="Dismiss missed appointment"
                                 >
@@ -2841,29 +3063,55 @@ export default function PetOwnerPortalPage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleCancelAppointment(tx.id)}
+                                    onClick={() => handleCancelAppointment(tx.id, tx.rawAppointment)}
                                     className="size-8 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                                    title="Cancel appointment"
+                                    title="Cancel or delete appointment"
                                   >
                                     <Trash2 className="size-4" />
                                   </Button>
                                 )}
                               </>
                             )
-                          ) : tx.rawConsultation ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedConsultation(tx.rawConsultation);
-                                setSheetOpen(true);
-                              }}
-                              className="size-8 p-0 rounded-lg border-border/80 hover:bg-muted cursor-pointer shadow-2xs"
-                              title="Queue Sheet"
-                            >
-                              <FileText className="size-4 text-primary" />
-                            </Button>
+                          ) : (tx.rawConsultation || tx.kind === "consultation-queue") ? (
+                            <>
+                              {tx.rawConsultation && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedConsultation(tx.rawConsultation);
+                                    setSheetOpen(true);
+                                  }}
+                                  className="size-8 p-0 rounded-lg border-border/80 hover:bg-muted cursor-pointer shadow-2xs"
+                                  title="Queue Sheet"
+                                >
+                                  <FileText className="size-4 text-primary" />
+                                </Button>
+                              )}
+
+                              {tx.status !== "cancelled" && tx.status !== "completed" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const consultObj =
+                                      tx.rawConsultation ||
+                                      consultations.find((c) => c.id === tx.id || c.encounterNo === tx.id);
+                                    if (consultObj) {
+                                      setConsultationToDelete(consultObj);
+                                      setDeleteConsultationOpen(true);
+                                    }
+                                  }}
+                                  className="size-8 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                                  title="Cancel or delete consultation request"
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              )}
+                            </>
                           ) : null}
+
+
                         </div>
                       </div>
                     )}
@@ -3356,13 +3604,15 @@ export default function PetOwnerPortalPage() {
               </div>
             </div>
             {(() => {
+              const todayStr = format(new Date(), "yyyy-MM-dd");
               const activeCount = ownerAppointments.filter(
                 (a: any) =>
                   a.status !== "cancelled" &&
                   a.status !== "completed" &&
                   a.status !== "missed" &&
+                  ((a.date || a.appointment_date || "").split("T")[0] >= todayStr) &&
                   !isConsultationOverdue(a.appointment_date || a.date, a.status)
-              ).length + (ownerConsultations.some((c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)) ? 1 : 0);
+              ).length + (ownerConsultations.some((c: any) => (c.status === "waiting" || c.status === "scheduled") && ((c.date || "").split("T")[0] >= todayStr) && !isConsultationOverdue(c.date, c.status)) ? 1 : 0);
 
               if (activeCount === 0) return null;
               return (
@@ -3376,16 +3626,18 @@ export default function PetOwnerPortalPage() {
 
         <CardContent className="p-4 space-y-3 text-xs">
           {(() => {
+            const todayStr = format(new Date(), "yyyy-MM-dd");
             const activeAppointments = ownerAppointments.filter(
               (a: any) =>
                 a.status !== "cancelled" &&
                 a.status !== "completed" &&
                 a.status !== "missed" &&
+                ((a.date || a.appointment_date || "").split("T")[0] >= todayStr) &&
                 !isConsultationOverdue(a.appointment_date || a.date, a.status)
             );
             const nextApt = activeAppointments[0];
             const waitingConsultation = ownerConsultations.find(
-              (c: any) => c.status === "waiting" && !isConsultationOverdue(c.date, c.status)
+              (c: any) => (c.status === "waiting" || c.status === "scheduled") && ((c.date || "").split("T")[0] >= todayStr) && !isConsultationOverdue(c.date, c.status)
             );
 
             if (!nextApt && !waitingConsultation) {
@@ -3505,9 +3757,30 @@ export default function PetOwnerPortalPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
                           Pending Consultation
                         </span>
-                        <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30">
-                          Waiting Vet
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          {waitingConsultation.status === "scheduled" ? (
+                            <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30 gap-1 font-bold">
+                              <QrCode className="size-2.5" />
+                              Unofficial • Scan QR
+                            </Badge>
+                          ) : (
+                            <Badge className="text-[9px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30 font-bold">
+                              In Live Queue
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setConsultationToDelete(waitingConsultation);
+                              setDeleteConsultationOpen(true);
+                            }}
+                            className="size-5.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer rounded-md p-0"
+                            title="Cancel or delete consultation request"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex items-start gap-2.5">
                         <div className="shrink-0 mt-0.5">
@@ -4691,6 +4964,11 @@ export default function PetOwnerPortalPage() {
         consultation={consultationToDelete}
         open={deleteConsultationOpen}
         onOpenChange={setDeleteConsultationOpen}
+        onDeleted={() => {
+          setTodayQueueState(getDailyQueue());
+          queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+          queryClient.invalidateQueries({ queryKey: ["user-consultations"] });
+        }}
       />
 
       {/* ── Procedure Appointment Slip Dialog ── */}
@@ -4733,6 +5011,25 @@ export default function PetOwnerPortalPage() {
         pets={pets}
         ownerName={user?.fullName || "Pet Owner"}
       />
+
+      {/* ── Pet Queue Station QR Check-In Dialog ── */}
+      {selectedTxForCheckIn && (
+        <PetQueueCheckInDialog
+          open={checkInDialogOpen}
+          onOpenChange={setCheckInDialogOpen}
+          transaction={selectedTxForCheckIn}
+          ownerProfile={{
+            name: ownerName,
+            contact: ownerContact,
+            barangay: ownerBarangay,
+          }}
+          onCheckedIn={() => {
+            setTodayQueueState(getDailyQueue());
+            queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+            queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import Image from "next/image";
 import Logo from "@/assets/logo-dark.png";
 import {
@@ -69,6 +69,23 @@ function QueueCheckinContent() {
     const checkEligibilityAndEnroll = async () => {
       setLoading(true);
       setEligibilityError(null);
+
+      // 0. Verify station QR code date validity (valid on that day only)
+      const paramDate = searchParams.get("date");
+      if (paramDate && paramDate !== todayStr) {
+        let formattedParamDate = paramDate;
+        try {
+          const parts = paramDate.split("-").map(Number);
+          const d = new Date(parts[0], parts[1] - 1, parts[2]);
+          if (isValid(d)) formattedParamDate = format(d, "MMMM d, yyyy");
+        } catch {}
+
+        setEligibilityError(
+          `This Check-in QR code was generated for ${formattedParamDate} and was valid on that day only. If you scan that QR code from another day, it cannot be scanned. Please scan today's active station QR code at the clinic reception desk.`
+        );
+        setLoading(false);
+        return;
+      }
 
       const ownerId = user.id;
       const ownerEmail = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
@@ -379,17 +396,27 @@ function QueueCheckinContent() {
     );
   }
 
-  // Ineligible: No appointment today
+  // Ineligible or Expired QR
   if (eligibilityError) {
+    const isExpiredQr = eligibilityError.includes("valid on that day only") || eligibilityError.includes("expired");
+
     return (
       <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4 sm:p-6 bg-muted/15">
         <Card className="max-w-md w-full border border-border/80 rounded-3xl shadow-xl overflow-hidden bg-card">
           <div className="p-5 border-b border-border/60 flex items-center gap-3 bg-muted/30">
-            <div className="size-10 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25">
-              <ShieldAlert className="size-5" />
+            <div
+              className={`size-10 rounded-2xl flex items-center justify-center shrink-0 border ${
+                isExpiredQr
+                  ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25"
+                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25"
+              }`}
+            >
+              {isExpiredQr ? <AlertCircle className="size-5" /> : <ShieldAlert className="size-5" />}
             </div>
             <div>
-              <h2 className="text-sm font-bold text-foreground">Scheduled Booking Required</h2>
+              <h2 className="text-sm font-bold text-foreground">
+                {isExpiredQr ? "Check-in QR Code Expired" : "Scheduled Booking Required"}
+              </h2>
               <p className="text-[11px] text-muted-foreground">Carmen Clinic Arrival Desk</p>
             </div>
           </div>
@@ -401,12 +428,22 @@ function QueueCheckinContent() {
 
             <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-1.5">
               <span className="text-xs font-bold text-foreground block">
-                Next Steps:
+                {isExpiredQr ? "How to Check-in:" : "Next Steps:"}
               </span>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-muted-foreground leading-relaxed">
-                <li>If you are a walk-in pet owner, please approach the triage window for intake.</li>
-                <li>If your appointment is scheduled for a future date, please check in on the day of your booking.</li>
-                <li>You can book a free sterilization or anti-rabies slot anytime from your dashboard.</li>
+                {isExpiredQr ? (
+                  <>
+                    <li>Station QR codes are generated each morning and are valid for that day only.</li>
+                    <li>Please locate today&apos;s active Check-in Station QR code standee at the reception window.</li>
+                    <li>If you have any difficulty, the attending staff will assist you.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>If you are a walk-in pet owner, please approach the triage window for intake.</li>
+                    <li>If your appointment is scheduled for a future date, please check in on the day of your booking.</li>
+                    <li>You can book a free sterilization or anti-rabies slot anytime from your dashboard.</li>
+                  </>
+                )}
               </ul>
             </div>
 

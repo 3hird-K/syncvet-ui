@@ -7,6 +7,8 @@ import {
   QrCode,
   Printer,
   Download,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import {
   Dialog,
@@ -16,6 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { getTodayDateStr } from "@/lib/cvo-queue";
 
@@ -33,7 +36,7 @@ export function DailyQueueQrDialog({ isStaff, trigger }: DailyQueueQrDialogProps
 
   const checkinUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/queue-checkin?date=${todayStr}`;
+    return `${window.location.origin}/queue-checkin?date=${todayStr}&station=cvo-carmen&token=cvo-queue-${todayStr}`;
   }, [todayStr]);
 
   // Generate high-resolution QR Code (600px for crisp download & printing)
@@ -233,9 +236,14 @@ export function DailyQueueQrDialog({ isStaff, trigger }: DailyQueueQrDialogProps
         {/* Minimalist Header */}
         <DialogHeader className="px-6 pt-6 pb-2 pr-32 sm:pr-36">
           <div>
-            <DialogTitle className="text-base sm:text-lg font-extrabold text-foreground tracking-tight">
-              Clinic Queue Check-in QR
-            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <DialogTitle className="text-base sm:text-lg font-extrabold text-foreground tracking-tight">
+                Clinic Queue Check-in QR
+              </DialogTitle>
+              <Badge variant="outline" className="text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                Valid Today Only
+              </Badge>
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {todayFormatted} • Carmen Clinic
             </p>
@@ -260,9 +268,14 @@ export function DailyQueueQrDialog({ isStaff, trigger }: DailyQueueQrDialogProps
               )}
             </div>
 
-            <p className="text-xs sm:text-sm font-semibold text-foreground">
-              Scan with phone camera to join queue
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs sm:text-sm font-semibold text-foreground">
+                Scan with phone camera to join queue
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Valid on <strong className="text-foreground">{todayFormatted}</strong> only • Cannot be scanned on other days
+              </p>
+            </div>
           </div>
 
           {/* Minimalist Footnote */}

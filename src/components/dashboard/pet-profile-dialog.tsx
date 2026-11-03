@@ -33,7 +33,12 @@ import {
   Phone,
   Info,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Scale,
+  History,
+  Activity,
+  Pill,
 } from "lucide-react";
 import { PawIcon } from "@/components/icons/paw-icon";
 import { Badge } from "@/components/ui/badge";
@@ -217,6 +222,7 @@ export interface PetProfileDialogProps {
   onCompleteSurgery?: (encounter: any) => void;
   onViewOfficialSheet?: (encounter: any) => void;
   onUpdateEncounterStatus?: (encounter: any, newStatus: string) => void;
+  onDeleteEncounter?: (encounter: any) => void;
   isVaccineOutOfStock?: boolean;
 }
 
@@ -234,6 +240,7 @@ export function PetProfileDialog({
   onCompleteSurgery,
   onViewOfficialSheet,
   onUpdateEncounterStatus,
+  onDeleteEncounter,
   isVaccineOutOfStock = false,
 }: PetProfileDialogProps) {
   const [activeProfileTab, setActiveProfileTab] = useState<
@@ -244,6 +251,14 @@ export function PetProfileDialog({
   const [showEditPetPanel, setShowEditPetPanel] = useState(false);
   const [showAvatarPickerPanel, setShowAvatarPickerPanel] = useState(false);
   const [selectedActivityDetail, setSelectedActivityDetail] = useState<any | null>(null);
+
+  // Clinical & Medical History Panel state (Vaccination, Consultation, Spay/Neuter)
+  const [showHistoryPanel, setShowHistoryPanel] = useState(true);
+  const [historyCategoryFilter, setHistoryCategoryFilter] = useState<"all" | "vaccination" | "consultation" | "spay-neuter">("all");
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const toggleExpandHistory = (id: string) => {
+    setExpandedHistoryId((prev) => (prev === id ? null : id));
+  };
 
   // Editable pet state
   const [currentPet, setCurrentPet] = useState<PetProfileRecord | null>(pet);
@@ -886,6 +901,158 @@ export function PetProfileDialog({
     return { upcomingSchedule: upcoming, pastHistory: history };
   }, [petDbAppointments, petConsultations, petDbVaccinations, currentPet, vaxStatus]);
 
+  // Unified Clinical & Medical History for the current pet (Vaccination, Consultation, Spay/Neuter)
+  const petUnifiedHistory = useMemo(() => {
+    if (!currentPet) return [];
+    const list: Array<{
+      id: string;
+      category: "vaccination" | "consultation" | "spay-neuter";
+      title: string;
+      date: string;
+      time?: string;
+      status: string;
+      badgeText: string;
+      badgeVariant: "emerald" | "blue" | "purple" | "amber" | "rose";
+      chiefComplaint?: string;
+      diagnosis?: string;
+      treatment?: string;
+      medication?: string;
+      vetName?: string;
+      batchNumber?: string;
+      vitals?: { weightKg?: number; temperatureC?: number };
+      raw?: any;
+    }> = [];
+
+    // 1. Consultations
+    petConsultations.forEach((c) => {
+      const isCompleted = c.status === "completed";
+      list.push({
+        id: c.encounterNo || c.id,
+        category: "consultation",
+        title: c.chiefComplaint ? `EMR Consult: "${c.chiefComplaint}"` : "Clinical Consultation",
+        date: c.date,
+        time: c.time,
+        status: c.status || "completed",
+        badgeText: isCompleted ? "Completed" : (c.status?.toUpperCase() || "WAITING"),
+        badgeVariant: isCompleted ? "emerald" : "blue",
+        chiefComplaint: c.chiefComplaint,
+        diagnosis: c.diagnosis && c.diagnosis !== "Pending Clinical Examination" ? c.diagnosis : undefined,
+        treatment: c.treatment && !c.treatment.toLowerCase().includes("pending") ? c.treatment : undefined,
+        medication: c.medication || undefined,
+        vetName: c.vetName || "Dr. Helen Ann P. Tacandong, DVM",
+        vitals: c.vitals,
+        raw: c,
+      });
+    });
+
+    // 2. Vaccinations (from vaccination_records table)
+    petDbVaccinations.forEach((v: any) => {
+      const vaxDate = v.date_administered || v.created_at?.split("T")[0] || "2026-10-28";
+      list.push({
+        id: v.id || `VAX-${v.batch_number}`,
+        category: "vaccination",
+        title: `${v.vaccine_type || "Anti-Rabies Prophylaxis"} (Lot #${v.batch_number || "RB-2026"})`,
+        date: vaxDate,
+        status: "completed",
+        badgeText: "Administered",
+        badgeVariant: "emerald",
+        diagnosis: "Rabies Prophylaxis & Core Immunization (RA 9482)",
+        treatment: "1.0 mL Subcutaneous (SC) Injection",
+        medication: `Vaccine Lot #${v.batch_number || "RB-2026"}`,
+        vetName: v.administering_vet || "Dr. Helen Ann P. Tacandong, DVM",
+        batchNumber: v.batch_number || "RB-2026",
+        raw: v,
+      });
+    });
+
+    // Fallback if currentPet has registered vaccination flag but no record in DB table yet
+    if (currentPet.vaccinated && !list.some((i) => i.category === "vaccination")) {
+      list.push({
+        id: `VAX-CDO-${currentPet.id.slice(0, 6)}`,
+        category: "vaccination",
+        title: "Anti-Rabies Core Immunization (1.0 mL SC)",
+        date: currentPet.lastVaccinationDate || "2026-10-28",
+        status: "completed",
+        badgeText: "Protected",
+        badgeVariant: "emerald",
+        diagnosis: "Municipal Anti-Rabies Core Immunization (RA 9482)",
+        treatment: "Subcutaneous Rabies Vaccine Administered",
+        medication: `Next Booster Due: ${currentPet.nextVaccinationDate || "Annual"}`,
+        vetName: "Dr. Helen Ann P. Tacandong, DVM",
+      });
+    }
+
+    // 3. Spay & Neuter (Kapon) Procedures from database appointments
+    petDbAppointments.forEach((a: any) => {
+      const isSurg =
+        a.service_id?.toLowerCase().includes("spay") ||
+        a.service_id?.toLowerCase().includes("neuter") ||
+        a.service_id?.toLowerCase().includes("kapon");
+      const isVax = a.service_id?.toLowerCase().includes("vaccin");
+
+      if (isSurg) {
+        const isCompleted = a.status?.toLowerCase() === "completed";
+        list.push({
+          id: a.id,
+          category: "spay-neuter",
+          title: "Spay & Neuter (Kapon Surgical Procedure)",
+          date: (a.date || "").split("T")[0],
+          time: formatClinicScheduleSlot(a.time_slot),
+          status: a.status || "completed",
+          badgeText: isCompleted ? "Sterilized" : (a.status || "Scheduled"),
+          badgeVariant: isCompleted ? "purple" : "amber",
+          diagnosis: "Elective Reproductive Sterilization",
+          treatment: a.notes || "Surgical sterilization, post-operative wound care & pain management.",
+          vetName: "Dr. Helen Ann P. Tacandong, DVM",
+          raw: a,
+        });
+      } else if (isVax && !list.some((existing) => existing.id === a.id)) {
+        const isCompleted = a.status?.toLowerCase() === "completed";
+        list.push({
+          id: a.id,
+          category: "vaccination",
+          title: "Anti-Rabies Prophylaxis Protocol",
+          date: (a.date || "").split("T")[0],
+          time: formatClinicScheduleSlot(a.time_slot),
+          status: a.status || "completed",
+          badgeText: isCompleted ? "Administered" : (a.status || "Scheduled"),
+          badgeVariant: isCompleted ? "emerald" : "blue",
+          treatment: "Subcutaneous Rabies Vaccination",
+          vetName: "Dr. Helen Ann P. Tacandong, DVM",
+          raw: a,
+        });
+      }
+    });
+
+    // Fallback if currentPet has sterilized flag
+    if (currentPet.sterilized && !list.some((i) => i.category === "spay-neuter")) {
+      list.push({
+        id: `SURG-${currentPet.id.slice(0, 6)}`,
+        category: "spay-neuter",
+        title: "Spay & Neuter (Kapon Sterilization)",
+        date: (currentPet as any).sterilizationDate || "2026-06-15",
+        status: "completed",
+        badgeText: "Sterilized",
+        badgeVariant: "purple",
+        diagnosis: "Elective Reproductive Sterilization",
+        treatment: "Completed municipal spay/neuter surgery with post-op antibiotic coverage.",
+        vetName: "Dr. Helen Ann P. Tacandong, DVM",
+      });
+    }
+
+    // Sort by date newest first
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [currentPet, petConsultations, petDbVaccinations, petDbAppointments]);
+
+  const filteredUnifiedHistory = useMemo(() => {
+    if (historyCategoryFilter === "all") return petUnifiedHistory;
+    return petUnifiedHistory.filter((item) => item.category === historyCategoryFilter);
+  }, [petUnifiedHistory, historyCategoryFilter]);
+
+  const vaxCount = useMemo(() => petUnifiedHistory.filter((i) => i.category === "vaccination").length, [petUnifiedHistory]);
+  const consultCount = useMemo(() => petUnifiedHistory.filter((i) => i.category === "consultation").length, [petUnifiedHistory]);
+  const surgCount = useMemo(() => petUnifiedHistory.filter((i) => i.category === "spay-neuter").length, [petUnifiedHistory]);
+
   // Determine the date in focus for clinical review (scheduled date or today)
   const activeReviewDate = useMemo(() => {
     if (encounter?.date) {
@@ -1017,8 +1184,8 @@ export function PetProfileDialog({
           showCloseButton={false}
           className={cn(
             "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[88vh] max-h-[88vh] flex flex-col overflow-x-hidden",
-            showAvatarPickerPanel || showEditPetPanel || !!selectedActivityDetail
-              ? "max-w-5xl sm:max-w-5xl"
+            showAvatarPickerPanel || showEditPetPanel || !!selectedActivityDetail || showHistoryPanel
+              ? "max-w-5xl sm:max-w-5xl xl:max-w-6xl"
               : activeProfileTab !== "overview"
               ? "max-w-4xl sm:max-w-4xl"
               : "max-w-3xl sm:max-w-3xl"
@@ -1069,46 +1236,25 @@ export function PetProfileDialog({
                     <span className="sr-only">Official Digital Health Passport</span>
                   </button>
 
-                  {/* Care Schedule & Clinical Encounters (Stethoscope) */}
+                  {/* Medical & Clinical History Toggle (Vaccinations, Consultations, Kapon) */}
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveProfileTab((prev) => (prev === "consultation" ? "overview" : "consultation"));
+                      setShowHistoryPanel((prev) => !prev);
                       setShowEditPetPanel(false);
                       setShowAvatarPickerPanel(false);
                       setSelectedActivityDetail(null);
                     }}
                     className={cn(
                       "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                      activeProfileTab === "consultation"
+                      showHistoryPanel && !showEditPetPanel && !showAvatarPickerPanel && !selectedActivityDetail
                         ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
                         : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
                     )}
-                    title={activeProfileTab === "consultation" ? "Close Care Schedule View" : "Care Schedule & Medical Encounters Timeline"}
+                    title={showHistoryPanel ? "Hide Clinical History Panel" : "View Clinical History (Vaccinations, Consultations, Kapon)"}
                   >
-                    <Stethoscope className="size-4 text-white" />
-                    <span className="sr-only">Care Schedule & Encounters</span>
-                  </button>
-
-                  {/* Clinical Services Review & Administration (ClipboardCheck - Replaced Calendar) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveProfileTab((prev) => (prev === "review" ? "overview" : "review"));
-                      setShowEditPetPanel(false);
-                      setShowAvatarPickerPanel(false);
-                      setSelectedActivityDetail(null);
-                    }}
-                    className={cn(
-                      "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
-                      activeProfileTab === "review"
-                        ? "bg-white/30 text-white border-white/60 ring-2 ring-white/40 shadow-md scale-105"
-                        : "bg-white/10 hover:bg-white/25 text-white border-white/20 hover:border-white/40 backdrop-blur-md"
-                    )}
-                    title={activeProfileTab === "review" ? "Close Clinical Services Review" : "Clinical Services Review & Administration (Vaccines, Kapon, Consultations)"}
-                  >
-                    <HeartPulse className="size-4 text-white" />
-                    <span className="sr-only">Clinical Services Review & Administration</span>
+                    <History className="size-4 text-white" />
+                    <span className="sr-only">Clinical History</span>
                   </button>
 
                   {/* Delete Pet Record Button (Trash2) */}
@@ -1420,24 +1566,39 @@ export function PetProfileDialog({
                             <Button
                               type="button"
                               variant="outline"
-                              size="sm"
+                              size="icon"
                               onClick={() => onViewOfficialSheet?.(encounter)}
-                              className="h-7 px-2 text-[10.5px] font-medium gap-1 rounded-lg border-border hover:bg-muted cursor-pointer shrink-0"
+                              className="size-7 rounded-lg border-border hover:bg-muted cursor-pointer shrink-0"
                               title="View Official CVO Field Sheet"
                             >
-                              <FileText className="size-3 text-primary" />
-                              <span className="hidden md:inline">Field Sheet</span>
+                              <FileText className="size-3.5 text-primary" />
+                              <span className="sr-only">Field Sheet</span>
+                            </Button>
+                          )}
+
+                          {/* Delete Encounter Button (Staff Action) */}
+                          {onDeleteEncounter && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => onDeleteEncounter(encounter)}
+                              className="size-7 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/10 cursor-pointer shrink-0"
+                              title="Delete Clinical Encounter"
+                            >
+                              <Trash2 className="size-3.5 text-destructive" />
+                              <span className="sr-only">Delete</span>
                             </Button>
                           )}
 
                           {/* Primary Action Button */}
                           {encounter.category === "vaccination" && (
                             <Button
-                              size="sm"
+                              size="icon"
                               disabled={encounter.isOverdue || (isVaccineOutOfStock && encounter.status !== "completed")}
                               onClick={() => onAdministerVaccine?.(encounter)}
                               className={cn(
-                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                "size-7 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
                                 encounter.isOverdue
                                   ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
                                   : encounter.status === "completed"
@@ -1446,67 +1607,70 @@ export function PetProfileDialog({
                                   ? "bg-rose-600 hover:bg-rose-700 text-white cursor-not-allowed"
                                   : "bg-blue-600 hover:bg-blue-700 text-white"
                               )}
-                            >
-                              <Syringe className="size-3.5" />
-                              <span>
-                                {encounter.isOverdue
+                              title={
+                                encounter.isOverdue
                                   ? "Locked"
                                   : encounter.status === "completed"
                                   ? "Update Dose"
                                   : isVaccineOutOfStock
                                   ? "Out of Stock"
-                                  : "Administer Dose"}
-                              </span>
+                                  : "Administer Dose"
+                              }
+                            >
+                              <Syringe className="size-3.5" />
+                              <span className="sr-only">Administer Dose</span>
                             </Button>
                           )}
 
                           {encounter.category === "consultation" && (
                             <Button
-                              size="sm"
+                              size="icon"
                               disabled={encounter.isOverdue}
                               onClick={() => onFillExamination?.(encounter)}
                               className={cn(
-                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                "size-7 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
                                 encounter.isOverdue
                                   ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
                                   : encounter.status === "completed"
                                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                                   : "bg-blue-600 hover:bg-blue-700 text-white"
                               )}
-                            >
-                              <ClipboardCheck className="size-3.5" />
-                              <span>
-                                {encounter.isOverdue
+                              title={
+                                encounter.isOverdue
                                   ? "Locked"
                                   : encounter.status === "completed"
                                   ? "Update Findings"
-                                  : "Fill Exam"}
-                              </span>
+                                  : "Fill Exam"
+                              }
+                            >
+                              <ClipboardCheck className="size-3.5" />
+                              <span className="sr-only">Fill Exam</span>
                             </Button>
                           )}
 
                           {encounter.category === "spay-neuter" && (
                             <Button
-                              size="sm"
+                              size="icon"
                               disabled={encounter.isOverdue}
                               onClick={() => onCompleteSurgery?.(encounter)}
                               className={cn(
-                                "h-7 px-2.5 sm:px-3 text-[11px] font-bold gap-1 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
+                                "size-7 rounded-lg cursor-pointer shadow-2xs shrink-0 transition-all",
                                 encounter.isOverdue
                                   ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
                                   : encounter.status === "completed"
                                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                                   : "bg-purple-600 hover:bg-purple-700 text-white"
                               )}
-                            >
-                              <Scissors className="size-3.5" />
-                              <span>
-                                {encounter.isOverdue
+                              title={
+                                encounter.isOverdue
                                   ? "Locked"
                                   : encounter.status === "completed"
                                   ? "Review Kapon"
-                                  : "Execute Kapon"}
-                              </span>
+                                  : "Execute Kapon"
+                              }
+                            >
+                              <Scissors className="size-3.5" />
+                              <span className="sr-only">Execute Kapon</span>
                             </Button>
                           )}
                         </div>
@@ -2163,12 +2327,13 @@ export function PetProfileDialog({
                               </Select>
 
                               <Button
-                                size="sm"
+                                size="icon"
                                 onClick={handleAdministerVaccine}
-                                className="h-8 px-3 text-xs font-semibold gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer shrink-0"
+                                className="size-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer shrink-0"
+                                title="Administer Vaccine Dose"
                               >
-                                <Syringe className="size-3.5" />
-                                <span>Administer Dose</span>
+                                <Syringe className="size-4" />
+                                <span className="sr-only">Administer Dose</span>
                               </Button>
                             </div>
                           </div>
@@ -2231,12 +2396,13 @@ export function PetProfileDialog({
                               </Select>
 
                               <Button
-                                size="sm"
+                                size="icon"
                                 onClick={handleCompleteSurgery}
-                                className="h-8 px-3 text-xs font-semibold gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white shadow-xs cursor-pointer shrink-0"
+                                className="size-8 rounded-lg bg-purple-600 hover:bg-purple-700 text-white shadow-xs cursor-pointer shrink-0"
+                                title="Execute Kapon (Spay / Neuter)"
                               >
-                                <Scissors className="size-3.5" />
-                                <span>Execute Kapon</span>
+                                <Scissors className="size-4" />
+                                <span className="sr-only">Execute Kapon</span>
                               </Button>
                             </div>
                           </div>
@@ -2286,13 +2452,13 @@ export function PetProfileDialog({
                               <Button
                                 type="button"
                                 variant="outline"
-                                size="sm"
+                                size="icon"
                                 onClick={handleViewOfficialSheet}
-                                className="h-8 px-2.5 text-xs font-semibold gap-1 rounded-lg border border-emerald-200/90 dark:border-emerald-800 bg-white dark:bg-background hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 cursor-pointer shadow-2xs shrink-0"
+                                className="size-8 rounded-lg border border-emerald-200/90 dark:border-emerald-800 bg-white dark:bg-background hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 cursor-pointer shadow-2xs shrink-0"
                                 title="View Official Field Sheet"
                               >
-                                <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
-                                <span>Sheet</span>
+                                <FileText className="size-4 text-emerald-600 dark:text-emerald-400" />
+                                <span className="sr-only">Field Sheet</span>
                               </Button>
 
                               <Select
@@ -2311,12 +2477,13 @@ export function PetProfileDialog({
                               </Select>
 
                               <Button
-                                size="sm"
+                                size="icon"
                                 onClick={handleFillExamination}
-                                className="h-8 px-3 text-xs font-semibold gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer shrink-0"
+                                className="size-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer shrink-0"
+                                title="Fill Clinical Examination"
                               >
-                                <ClipboardCheck className="size-3.5" />
-                                <span>Fill Exam</span>
+                                <ClipboardCheck className="size-4" />
+                                <span className="sr-only">Fill Exam</span>
                               </Button>
                             </div>
                           </div>
@@ -2920,6 +3087,304 @@ export function PetProfileDialog({
                 </div>
               );
             })()}
+
+            {/* ── Right Side: Clinical & Medical History Panel (Vaccination, Consultation, Spay/Neuter) ── */}
+            {!showEditPetPanel && !showAvatarPickerPanel && !selectedActivityDetail && showHistoryPanel && (
+              <div className="w-[320px] sm:w-[360px] md:w-[390px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                {/* Panel Header */}
+                <div className="p-3.5 sm:p-4 border-b border-border/70 flex items-center justify-between bg-muted/40 shrink-0">
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="size-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                        <History className="size-3.5" />
+                      </div>
+                      <h3 className="text-sm font-bold text-foreground truncate">
+                        Clinical History
+                      </h3>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Vaccinations, Consultations & Kapon for {currentPet.name}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge variant="outline" className="text-[10px] font-mono font-bold bg-background">
+                      {petUnifiedHistory.length} Record{petUnifiedHistory.length === 1 ? "" : "s"}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => setShowHistoryPanel(false)}
+                      className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+                      title="Close history panel"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="p-2 border-b border-border/60 bg-muted/20 shrink-0 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryCategoryFilter("all")}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer shrink-0",
+                      historyCategoryFilter === "all"
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryCategoryFilter("vaccination")}
+                    className={cn(
+                      "px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1",
+                      historyCategoryFilter === "vaccination"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                  >
+                    <Syringe className="size-3" />
+                    <span>Vax</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryCategoryFilter("consultation")}
+                    className={cn(
+                      "px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1",
+                      historyCategoryFilter === "consultation"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                  >
+                    <Stethoscope className="size-3" />
+                    <span>EMR</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryCategoryFilter("spay-neuter")}
+                    className={cn(
+                      "px-2 py-1 text-[11px] font-semibold rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1",
+                      historyCategoryFilter === "spay-neuter"
+                        ? "bg-purple-600 text-white shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    )}
+                  >
+                    <Scissors className="size-3" />
+                    <span>Kapon</span>
+                  </button>
+                </div>
+
+                {/* Records List Area */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {filteredUnifiedHistory.length === 0 ? (
+                    <div className="h-full min-h-[220px] flex flex-col items-center justify-center p-6 text-center space-y-2.5">
+                      <div className="size-11 rounded-2xl bg-muted/80 flex items-center justify-center text-muted-foreground">
+                        <History className="size-5.5 opacity-40" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">
+                          No {historyCategoryFilter === "all" ? "Clinical" : historyCategoryFilter} Records
+                        </p>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[220px]">
+                          No records found under this category for {currentPet.name}. Completed clinic visits and procedures will appear here.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredUnifiedHistory.map((item) => {
+                      const isExpanded = expandedHistoryId === item.id;
+                      const isConsult = item.category === "consultation";
+                      const isVax = item.category === "vaccination";
+                      const isSurg = item.category === "spay-neuter";
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "rounded-xl border transition-all duration-200 overflow-hidden bg-card shadow-2xs",
+                            isExpanded
+                              ? "border-emerald-500/50 ring-1 ring-emerald-500/20 shadow-xs"
+                              : "border-border/70 hover:border-emerald-500/40 hover:shadow-xs"
+                          )}
+                        >
+                          {/* Clickable Header / Summary */}
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => toggleExpandHistory(item.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleExpandHistory(item.id);
+                              }
+                            }}
+                            className="p-3 cursor-pointer select-none space-y-2 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:bg-muted/40"
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <div
+                                  className={cn(
+                                    "size-5 rounded-md flex items-center justify-center shrink-0 text-white text-[10px]",
+                                    isVax
+                                      ? "bg-emerald-600"
+                                      : isSurg
+                                      ? "bg-purple-600"
+                                      : "bg-blue-600"
+                                  )}
+                                >
+                                  {isVax ? (
+                                    <Syringe className="size-3" />
+                                  ) : isSurg ? (
+                                    <Scissors className="size-3" />
+                                  ) : (
+                                    <Stethoscope className="size-3" />
+                                  )}
+                                </div>
+                                <span className="font-mono text-[10px] font-bold text-foreground truncate">
+                                  {item.id}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <Badge
+                                  className={cn(
+                                    "text-[9px] font-bold px-1.5 py-0.2 shrink-0 border-0",
+                                    item.badgeVariant === "emerald"
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                      : item.badgeVariant === "purple"
+                                      ? "bg-purple-500/15 text-purple-700 dark:text-purple-300"
+                                      : item.badgeVariant === "amber"
+                                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                      : item.badgeVariant === "rose"
+                                      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                                      : "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                                  )}
+                                >
+                                  {item.badgeText}
+                                </Badge>
+                                <div
+                                  className={cn(
+                                    "size-5 rounded flex items-center justify-center text-muted-foreground transition-transform duration-200",
+                                    isExpanded && "rotate-180 text-foreground"
+                                  )}
+                                >
+                                  <ChevronDown className="size-3.5" />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <p className="text-xs font-bold text-foreground line-clamp-1 leading-snug">
+                                {item.title}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
+                                <Calendar className="size-3 text-muted-foreground/70 shrink-0" />
+                                <span>{item.date}</span>
+                                {item.time && (
+                                  <>
+                                    <span>•</span>
+                                    <Clock className="size-3 text-muted-foreground/70 shrink-0" />
+                                    <span>{item.time}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {!isExpanded && item.chiefComplaint && (
+                              <p className="text-[10.5px] text-muted-foreground line-clamp-1 italic">
+                                &ldquo;{item.chiefComplaint}&rdquo;
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Expanded Full Details */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-1 border-t border-border/60 bg-muted/15 space-y-2 text-[11px] animate-in fade-in-0 duration-200">
+                              {item.chiefComplaint && (
+                                <div className="text-[11px] bg-card p-2 rounded-lg border border-border/60 text-foreground">
+                                  <span className="text-[9.5px] uppercase font-bold text-muted-foreground block mb-0.5">
+                                    Chief Complaint / Reason:
+                                  </span>
+                                  <p className="leading-relaxed">{item.chiefComplaint}</p>
+                                </div>
+                              )}
+
+                              {item.diagnosis && (
+                                <div className="text-[11px] bg-emerald-500/10 dark:bg-emerald-950/20 p-2 rounded-lg border border-emerald-500/20 text-emerald-900 dark:text-emerald-200">
+                                  <span className="text-[9.5px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block mb-0.5">
+                                    Diagnosis / Finding:
+                                  </span>
+                                  <p className="leading-relaxed">{item.diagnosis}</p>
+                                </div>
+                              )}
+
+                              {item.treatment && (
+                                <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-200">
+                                  <span className="text-[9.5px] uppercase font-bold text-blue-700 dark:text-blue-400 block mb-0.5">
+                                    Treatment / Dosage:
+                                  </span>
+                                  <p className="leading-relaxed">{item.treatment}</p>
+                                </div>
+                              )}
+
+                              {item.medication && (
+                                <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-200">
+                                  <span className="text-[9.5px] uppercase font-bold text-purple-700 dark:text-purple-400 block mb-0.5 flex items-center gap-1">
+                                    <Pill className="size-2.5" />
+                                    Prescriptions:
+                                  </span>
+                                  <p className="leading-relaxed">{item.medication}</p>
+                                </div>
+                              )}
+
+                              {item.vitals && (item.vitals.weightKg || item.vitals.temperatureC) && (
+                                <div className="grid grid-cols-2 gap-1.5 text-[10px] text-muted-foreground bg-card p-2 rounded-lg border border-border/50">
+                                  {item.vitals.weightKg ? <div>Weight: <strong className="text-foreground">{item.vitals.weightKg} kg</strong></div> : null}
+                                  {item.vitals.temperatureC ? <div>Temp: <strong className="text-foreground">{item.vitals.temperatureC} °C</strong></div> : null}
+                                </div>
+                              )}
+
+                              {item.vetName && (
+                                <p className="text-[10px] text-muted-foreground pt-0.5">
+                                  <strong className="text-foreground">Attending Vet:</strong> {item.vetName}
+                                </p>
+                              )}
+
+                              {isConsult && item.raw && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedConsultationForSheet(item.raw);
+                                    setConsultationSheetOpen(true);
+                                  }}
+                                  className="w-full text-[11px] font-semibold gap-1.5 h-7.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 cursor-pointer"
+                                >
+                                  <FileText className="size-3 text-emerald-600 dark:text-emerald-400" />
+                                  <span>View Official Field Sheet</span>
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Panel Footer */}
+                <div className="p-2.5 sm:p-3 border-t border-border/70 bg-muted/20 text-center shrink-0">
+                  <p className="text-[10px] sm:text-[10.5px] text-muted-foreground font-medium">
+                    City Veterinary Office • Official EMR Registry
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

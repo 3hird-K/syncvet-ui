@@ -1,5 +1,7 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
+
 import { useState, useEffect, useMemo } from "react";
 import {
   Stethoscope,
@@ -16,6 +18,12 @@ import {
   Lock,
   Save,
   X,
+  History,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Activity,
+  Pill,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -259,6 +267,7 @@ export function PetOwnerConsultationDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { addConsultation, consultations } = useCVO();
+  const { user } = useUser();
 
   const firstPet = initialPet || (pets.length > 0 ? pets[0] : undefined);
   const [selectedPetId, setSelectedPetId] = useState<string>(firstPet?.id || (pets.length > 0 ? pets[0].id : ""));
@@ -336,6 +345,36 @@ export function PetOwnerConsultationDialog({
   }, [consultations, selectedPet]);
 
   const isConsultationAlreadyScheduled = Boolean(existingActiveConsultation);
+
+  // History of previous consultations for the currently selected pet
+  const [showHistoryPanel, setShowHistoryPanel] = useState(true);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const toggleExpandHistory = (id: string) => {
+    setExpandedHistoryId((prev) => (prev === id ? null : id));
+  };
+
+  const petConsultationHistory = useMemo(() => {
+    if (!selectedPet) return [];
+    const targetPetId = String(selectedPet.id || "").toLowerCase().trim();
+    const targetPetName = String(selectedPet.name || "").toLowerCase().trim();
+
+    return consultations
+      .filter((c) => {
+        const cPetId = String(c.petId || (c as any).pet_id || "").toLowerCase().trim();
+        const cPetName = String(c.petName || (c as any).pet_name || "").toLowerCase().trim();
+
+        const isSamePet =
+          (targetPetId && cPetId && targetPetId === cPetId) ||
+          (targetPetName && cPetName && targetPetName === cPetName);
+
+        return isSamePet;
+      })
+      .sort((a, b) => {
+        const dateA = a.date || "";
+        const dateB = b.date || "";
+        return dateB.localeCompare(dateA);
+      });
+  }, [consultations, selectedPet]);
 
   const handleSelectPet = (id: string) => {
     setSelectedPetId(id);
@@ -420,7 +459,8 @@ export function PetOwnerConsultationDialog({
       }).format(new Date());
 
       const newRecord = addConsultation({
-        petId: selectedPet ? selectedPet.id : `pet-${effectivePetName.toLowerCase().replace(/\s+/g, "-")}`,
+        petId: selectedPet?.id || (pets.find((p: any) => p.name.toLowerCase() === effectivePetName.toLowerCase())?.id),
+        ownerId: user?.id || (ownerProfile as any)?.id || (ownerProfile as any)?.ownerId,
         petName: effectivePetName,
         species: effectiveSpecies as any,
         breed: effectiveBreed,
@@ -468,6 +508,9 @@ export function PetOwnerConsultationDialog({
           duration: 6000,
         }
       );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("syncvet-consultation-updated"));
+      }
       onSuccess?.();
     }, 600);
   };
@@ -755,6 +798,200 @@ export function PetOwnerConsultationDialog({
         </form>
   );
 
+  const consultationHistoryPanel = (
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
+      {/* Panel Header */}
+      <div className="p-3.5 sm:p-4 border-b border-border/70 flex items-center justify-between bg-card shrink-0">
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="size-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <History className="size-3.5" />
+            </div>
+            <h3 className="text-sm font-bold text-foreground truncate">
+              Consultation History
+            </h3>
+          </div>
+          <p className="text-[11px] text-muted-foreground truncate">
+            Clinical visits for {selectedPet?.name || "Patient"}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <Badge variant="outline" className="text-[10px] font-mono font-bold bg-background/80 shrink-0">
+            {petConsultationHistory.length} {petConsultationHistory.length === 1 ? "Record" : "Records"}
+          </Badge>
+          <button
+            type="button"
+            onClick={() => setShowHistoryPanel(false)}
+            className="size-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center justify-center cursor-pointer transition-colors"
+            title="Close history panel"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* History Items List */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+        {petConsultationHistory.length === 0 ? (
+          <div className="h-full min-h-[240px] flex flex-col items-center justify-center p-6 text-center space-y-2.5">
+            <div className="size-11 rounded-2xl bg-muted/80 flex items-center justify-center text-muted-foreground">
+              <Stethoscope className="size-5.5 opacity-40" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-foreground">No Previous Consultations</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed max-w-[240px]">
+                No recorded clinical consultation history for {selectedPet?.name || "this pet"} yet. New intakes will appear here once submitted.
+              </p>
+            </div>
+          </div>
+        ) : (
+          petConsultationHistory.map((item) => {
+            const isOverdue = isConsultationOverdue(item.date, item.status);
+            const isCompleted = item.status === "completed";
+            const itemId = item.id || item.encounterNo;
+            const isExpanded = expandedHistoryId === itemId;
+
+            return (
+              <div
+                key={itemId}
+                className={cn(
+                  "rounded-xl border transition-all duration-200 overflow-hidden bg-card shadow-2xs",
+                  isExpanded
+                    ? "border-emerald-500/50 ring-1 ring-emerald-500/20 shadow-xs"
+                    : "border-border/70 hover:border-emerald-500/40 hover:shadow-xs"
+                )}
+              >
+                {/* Clickable Card Header / Summary */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleExpandHistory(itemId)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleExpandHistory(itemId);
+                    }
+                  }}
+                  className="p-3 cursor-pointer select-none space-y-2 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:bg-muted/40"
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="font-mono text-[10.5px] font-bold text-foreground truncate">
+                      {item.encounterNo || item.id}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge
+                        className={cn(
+                          "text-[9px] font-bold capitalize px-1.5 py-0.2 shrink-0 border-0",
+                          isOverdue
+                            ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                            : isCompleted
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                            : "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                        )}
+                      >
+                        {isOverdue ? "Overdue" : item.status}
+                      </Badge>
+                      <div
+                        className={cn(
+                          "size-5 rounded flex items-center justify-center text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-180 text-foreground"
+                        )}
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Calendar className="size-3 text-muted-foreground/70 shrink-0" />
+                    <span>{item.date}</span>
+                    {item.time && (
+                      <>
+                        <span>•</span>
+                        <Clock className="size-3 text-muted-foreground/70 shrink-0" />
+                        <span>{item.time}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {!isExpanded && item.chiefComplaint && (
+                    <p className="text-[10.5px] text-muted-foreground line-clamp-1 italic">
+                      &ldquo;{item.chiefComplaint}&rdquo;
+                    </p>
+                  )}
+                </div>
+
+                {/* Collapsible Clinical Findings & Diagnosis */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-1 border-t border-border/60 bg-muted/15 space-y-2 text-[11px] animate-in fade-in-0 duration-200">
+                    {item.chiefComplaint && (
+                      <div className="text-[11px] bg-card p-2 rounded-lg border border-border/60 text-foreground">
+                        <span className="text-[9.5px] uppercase font-bold text-muted-foreground block mb-0.5">
+                          Reason / Complaint:
+                        </span>
+                        <p className="leading-relaxed">{item.chiefComplaint}</p>
+                      </div>
+                    )}
+
+                    {item.diagnosis && item.diagnosis !== "Pending Clinical Examination" && (
+                      <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200">
+                        <span className="text-[9.5px] uppercase font-bold text-emerald-700 dark:text-emerald-400 block mb-0.5 flex items-center gap-1">
+                          <Activity className="size-2.5" />
+                          Clinical Diagnosis:
+                        </span>
+                        <p className="leading-relaxed">{item.diagnosis}</p>
+                      </div>
+                    )}
+
+                    {item.treatment && !item.treatment.toLowerCase().includes("pending") && (
+                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-200">
+                        <span className="text-[9.5px] uppercase font-bold text-blue-700 dark:text-blue-400 block mb-0.5">
+                          Treatment Administered:
+                        </span>
+                        <p className="leading-relaxed">{item.treatment}</p>
+                      </div>
+                    )}
+
+                    {item.medication && (
+                      <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-200">
+                        <span className="text-[9.5px] uppercase font-bold text-purple-700 dark:text-purple-400 block mb-0.5 flex items-center gap-1">
+                          <Pill className="size-2.5" />
+                          Prescriptions / Medication:
+                        </span>
+                        <p className="leading-relaxed">{item.medication}</p>
+                      </div>
+                    )}
+
+                    {item.vitals && (item.vitals.weightKg > 0 || item.vitals.temperatureC > 0) && (
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px] text-muted-foreground bg-card p-2 rounded-lg border border-border/50">
+                        {item.vitals.weightKg > 0 && <div>Weight: <strong className="text-foreground">{item.vitals.weightKg} kg</strong></div>}
+                        {item.vitals.temperatureC > 0 && <div>Temp: <strong className="text-foreground">{item.vitals.temperatureC} °C</strong></div>}
+                      </div>
+                    )}
+
+                    {item.vetName && (
+                      <p className="text-[10px] text-muted-foreground pt-0.5">
+                        <strong className="text-foreground">Attending Vet:</strong> {item.vetName}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-2.5 sm:p-3 border-t border-border/70 bg-card text-center shrink-0">
+        <p className="text-[10px] sm:text-[10.5px] text-muted-foreground font-medium">
+          City Veterinary Office • Carmen Central Clinic
+        </p>
+      </div>
+    </div>
+  );
+
   if (embedded) {
     return formContent;
   }
@@ -770,70 +1007,108 @@ export function PetOwnerConsultationDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent showCloseButton={false} className="sm:max-w-3xl lg:max-w-4xl w-[calc(100vw-1.5rem)] sm:w-full max-h-[90vh] overflow-y-auto overflow-x-hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden p-4 sm:p-6 md:p-7 bg-background rounded-2xl shadow-xl">
-        <DialogHeader className="border-b pb-3 min-w-0 pr-0 sm:pr-0">
-          <div className="flex items-center justify-between gap-2.5 sm:gap-3 min-w-0 w-full">
-            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 overflow-hidden">
-              <div className="size-8 sm:size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
-                <Stethoscope className="size-4 sm:size-5" />
-              </div>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate block">
-                  CVO Consultation Request Form
-                </DialogTitle>
-                <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate block">
-                  Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
-                </DialogDescription>
-              </div>
-            </div>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          "w-full p-0 bg-transparent border-0 shadow-none transition-all duration-300 ease-in-out h-[88vh] max-h-[88vh] flex flex-col overflow-x-hidden",
+          showHistoryPanel ? "max-w-5xl sm:max-w-5xl xl:max-w-6xl" : "max-w-3xl sm:max-w-3xl"
+        )}
+      >
+        <div className="flex items-stretch gap-2 sm:gap-3.5 w-full h-full min-h-0 flex-1 overflow-hidden">
+          {/* Left Side: Form Card */}
+          <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden min-w-0 rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl">
+            <DialogHeader className="p-4 sm:p-5 border-b border-border/70 bg-card shrink-0 space-y-0">
+              <div className="flex items-center justify-between gap-2.5 sm:gap-3 min-w-0 w-full">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 overflow-hidden">
+                  <div className="size-8 sm:size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                    <Stethoscope className="size-4 sm:size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <DialogTitle className="text-sm sm:text-base md:text-lg font-bold text-foreground truncate block">
+                      CVO Consultation Request Form
+                    </DialogTitle>
+                    <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate block">
+                      Official Cagayan de Oro LGU Field Treatment & Clinic Consultation Intake
+                    </DialogDescription>
+                  </div>
+                </div>
 
-            {/* Top Action Buttons: Quick Submit & Close */}
-            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-              <Button
-                type="submit"
-                form="pet-owner-consultation-form"
-                variant="ghost"
-                size="icon"
-                disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
-                className={cn(
-                  "inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
-                  loading || pets.length === 0 || isConsultationAlreadyScheduled
-                    ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
-                    : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
-                )}
-                title={
-                  pets.length === 0
-                    ? "Register a pet first"
-                    : isConsultationAlreadyScheduled
-                    ? "Consultation already in queue"
-                    : "Submit Consultation Request"
-                }
-              >
-                {loading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                <span className="sr-only">Submit Consultation Request</span>
-              </Button>
+                {/* Top Action Buttons: History Toggle, Quick Submit & Close */}
+                <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowHistoryPanel((prev) => !prev)}
+                    className={cn(
+                      "size-8 rounded-full border transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-xs active:scale-95",
+                      showHistoryPanel
+                        ? "bg-primary/20 text-primary border-primary/40 ring-2 ring-primary/20 shadow-xs"
+                        : "bg-muted/80 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground"
+                    )}
+                    title={showHistoryPanel ? "Hide Consultation History" : "View Consultation History"}
+                  >
+                    <History className="size-4" />
+                    <span className="sr-only">Toggle Consultation History</span>
+                  </Button>
 
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                  title="Close"
-                >
-                  <X className="size-4" />
-                  <span className="sr-only">Close</span>
-                </Button>
-              </DialogClose>
+                  <Button
+                    type="submit"
+                    form="pet-owner-consultation-form"
+                    variant="ghost"
+                    size="icon"
+                    disabled={loading || pets.length === 0 || isConsultationAlreadyScheduled}
+                    className={cn(
+                      "inline-flex size-8 rounded-full border border-border/60 transition-all shadow-xs shrink-0",
+                      loading || pets.length === 0 || isConsultationAlreadyScheduled
+                        ? "opacity-40 cursor-not-allowed bg-muted text-muted-foreground"
+                        : "cursor-pointer bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground hover:scale-105 active:scale-95"
+                    )}
+                    title={
+                      pets.length === 0
+                        ? "Register a pet first"
+                        : isConsultationAlreadyScheduled
+                        ? "Consultation already in queue"
+                        : "Submit Consultation Request"
+                    }
+                  >
+                    {loading ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Save className="size-4" />
+                    )}
+                    <span className="sr-only">Submit Consultation Request</span>
+                  </Button>
+
+                  <DialogClose asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-full border border-border/60 bg-muted/80 text-muted-foreground shadow-xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                      title="Close"
+                    >
+                      <X className="size-4" />
+                      <span className="sr-only">Close</span>
+                    </Button>
+                  </DialogClose>
+                </div>
+              </div>
+            </DialogHeader>
+
+            {/* Scrollable Form Content */}
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {formContent}
             </div>
           </div>
-        </DialogHeader>
 
-        {formContent}
+          {/* Right Side: Consultation History Panel */}
+          {showHistoryPanel && (
+            <div className="w-[320px] sm:w-[360px] md:w-[390px] rounded-2xl sm:rounded-3xl border border-border/80 bg-background shadow-2xl flex flex-col h-full min-h-0 shrink-0 overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-right-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+              {consultationHistoryPanel}
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

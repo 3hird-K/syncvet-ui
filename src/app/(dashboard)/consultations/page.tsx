@@ -26,8 +26,17 @@ import {
   ArrowUp,
   Loader2,
   Download,
+  Trash2,
 } from "lucide-react";
 import { format, parseISO, isValid, isBefore, startOfDay } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
@@ -80,7 +89,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, isTodayDate, isConsultationOverdue } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 
 export type QueueCategory = "consultation" | "vaccination" | "spay-neuter";
@@ -94,7 +103,7 @@ export interface QueueEncounter extends CVOConsultation {
 }
 
 function ConsultationsContent() {
-  const { consultations: allConsultations, updateConsultationStatus, activeRoleView, inventory } = useCVO();
+  const { consultations: allConsultations, updateConsultationStatus, activeRoleView, inventory, deleteConsultation } = useCVO();
   const { user } = useUser();
   const searchParams = useSearchParams();
   const targetEncounterNo = searchParams?.get("encounterNo");
@@ -119,6 +128,8 @@ function ConsultationsContent() {
   const [vaxDialogOpen, setVaxDialogOpen] = useState(false);
   const [surgeryDialogOpen, setSurgeryDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [encounterToDelete, setEncounterToDelete] = useState<QueueEncounter | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
@@ -213,6 +224,122 @@ function ConsultationsContent() {
     (user?.unsafeMetadata as any)?.roleTitle === "Pet Owner" ||
     (user?.unsafeMetadata as any)?.accountType === "pet_owner" ||
     user?.primaryEmailAddress?.emailAddress === "itcgeek03@gmail.com";
+
+  const isAdminOrVet = !isPetOwner || activeRoleView === "Administrator" || activeRoleView === "Veterinarian";
+
+  const deleteEncounterMutation = useMutation({
+    mutationFn: async (enc: QueueEncounter) => {
+      const isApt =
+        enc.category === "vaccination" ||
+        enc.category === "spay-neuter" ||
+        String(enc.id).startsWith("proc-");
+
+      if (isApt) {
+        const appointmentId = String(enc.id).replace("proc-", "");
+        const supabase = getPublicSupabaseClient();
+
+        try {
+          await supabase.from("appointments").delete().eq("id", appointmentId);
+        } catch {}
+        try {
+          await supabase.from("appointments").update({ status: "cancelled" }).eq("id", appointmentId);
+        } catch {}
+        try {
+          await supabase
+            .from("service_transactions")
+            .delete()
+            .or(`reference_id.eq.${appointmentId},id.eq.${appointmentId}`);
+        } catch {}
+
+        try {
+          const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          const filtered = local.filter(
+            (l: any) => l.id !== appointmentId && l.reference_id !== appointmentId
+          );
+          localStorage.setItem("syncvet_local_appointments", JSON.stringify(filtered));
+        } catch {}
+
+        try {
+          const today = format(new Date(), "yyyy-MM-dd");
+          const queueKey = `syncvet_clinic_queue_${today}`;
+          const queueData = JSON.parse(localStorage.getItem(queueKey) || "{}");
+          if (Array.isArray(queueData.activeTickets)) {
+            queueData.activeTickets = queueData.activeTickets.filter(
+              (t: any) => t.appointmentId !== appointmentId && t.id !== appointmentId
+            );
+            localStorage.setItem(queueKey, JSON.stringify(queueData));
+          }
+        } catch {}
+
+        return { type: "appointment" as const, enc };
+      } else {
+        const success = await deleteConsultation(enc.id);
+        if (!success) throw new Error("Could not delete consultation");
+        return { type: "consultation" as const, enc };
+      }
+    },
+    onMutate: async (enc: QueueEncounter) => {
+      const isApt =
+        enc.category === "vaccination" ||
+        enc.category === "spay-neuter" ||
+        String(enc.id).startsWith("proc-");
+
+      if (isApt) {
+        const appointmentId = String(enc.id).replace("proc-", "");
+        await queryClient.cancelQueries({ queryKey: ["procedure-appointments-queue"] });
+        queryClient.setQueryData(["procedure-appointments-queue"], (old: any = []) => {
+          if (!Array.isArray(old)) return [];
+          return old.filter((a: any) => a.id !== appointmentId && a.reference_id !== appointmentId);
+        });
+      } else {
+        await queryClient.cancelQueries({ queryKey: ["cvo_consultations"] });
+        queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
+          old.filter((c) => c.id !== enc.id && c.encounterNo !== enc.encounterNo && c.encounterNo !== enc.id)
+        );
+      }
+    },
+    onSuccess: (res) => {
+      if (res.type === "appointment") {
+        toast.success("Procedure Appointment Deleted", {
+          description: `Appointment for ${res.enc.petName} has been deleted and the slot released.`,
+        });
+      } else {
+        toast.success("Consultation Deleted", {
+          description: `Encounter #${res.enc.encounterNo} for ${res.enc.petName} has been deleted.`,
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast.error("Failed to delete encounter: " + (err?.message || "Error"));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["consultations-list"] });
+      queryClient.invalidateQueries({ queryKey: ["procedure-appointments-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+      queryClient.invalidateQueries({ queryKey: ["cvo-today-appointments-quota"] });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("syncvet-consultation-updated"));
+        window.dispatchEvent(new Event("syncvet-appointment-updated"));
+        window.dispatchEvent(new Event("syncvet-queue-updated"));
+      }
+    },
+  });
+
+  const confirmDeleteEncounter = () => {
+    if (!encounterToDelete) return;
+    const targetEnc = encounterToDelete;
+    setDeleteDialogOpen(false);
+    setEncounterToDelete(null);
+    if (selectedConsultation?.id === targetEnc.id || (targetEnc.encounterNo && (selectedConsultation as any)?.encounterNo === targetEnc.encounterNo)) {
+      setSelectedConsultation(null);
+    }
+    deleteEncounterMutation.mutate(targetEnc);
+  };
+
+  const deleting = deleteEncounterMutation.isPending;
 
   // Check if an encounter schedule has passed without completion (or past 6:00 PM cutoff today)
   const isItemOverdue = (dateStr?: string, status?: string) => {
@@ -1403,10 +1530,10 @@ function ConsultationsContent() {
                       </TableCell>
                     )}
 
-                    {/* 7. Schedule Date (Last Column, time removed) */}
+                    {/* 7. Schedule Date & Actions */}
                     {visibleColumns.includes("date") && (
                       <TableCell className="py-3.5 align-middle whitespace-nowrap text-right pr-6">
-                        <div className="flex items-center justify-end gap-2.5">
+                        <div className="flex items-center justify-end gap-2">
                           <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
                             <Calendar className="size-3.5 text-muted-foreground/60 shrink-0" />
                             <span>{formatEncounterDate(c.date)}</span>
@@ -1416,6 +1543,25 @@ function ConsultationsContent() {
                               </span>
                             )}
                           </div>
+
+                          {isAdminOrVet && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEncounterToDelete(c);
+                                setDeleteDialogOpen(true);
+                              }}
+                              className="size-7 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer transition-colors shrink-0"
+                              title={`Delete Encounter ${c.encounterNo}`}
+                            >
+                              <Trash2 className="size-3.5 text-destructive" />
+                              <span className="sr-only">Delete</span>
+                            </Button>
+                          )}
+
                           <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                         </div>
                       </TableCell>
@@ -1472,6 +1618,10 @@ function ConsultationsContent() {
         }}
         isVaccineOutOfStock={isVaccineOutOfStock}
         consultations={allConsultations}
+        onDeleteEncounter={(enc) => {
+          setEncounterToDelete(enc);
+          setDeleteDialogOpen(true);
+        }}
         onAvatarChange={() => {
           queryClient.invalidateQueries({ queryKey: ["queue-pets"] });
         }}
@@ -1547,6 +1697,85 @@ function ConsultationsContent() {
         ]}
         onExport={handleExportCsv}
       />
+
+      {/* ── Admin / Vet Delete Encounter Confirmation Dialog ── */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md p-6 bg-card rounded-3xl border border-destructive/20 shadow-2xl">
+          <DialogHeader className="space-y-2">
+            <div className="size-11 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center border border-destructive/20 shrink-0">
+              <Trash2 className="size-5" />
+            </div>
+            <div>
+              <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+                Delete Clinical Encounter
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+                Are you sure you want to delete this encounter? This action will permanently remove the record from official municipal records and cancel any active queue intake.
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          {encounterToDelete && (
+            <div className="p-3.5 rounded-2xl bg-destructive/5 border border-destructive/20 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-foreground">
+                  {encounterToDelete.encounterNo}
+                </span>
+                <Badge variant="outline" className="text-[10px] capitalize font-bold">
+                  {encounterToDelete.category}
+                </Badge>
+              </div>
+              <div className="space-y-0.5 text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">Patient:</strong> {encounterToDelete.petName} ({encounterToDelete.species})
+                </p>
+                <p>
+                  <strong className="text-foreground">Owner:</strong> {encounterToDelete.ownerName} • {encounterToDelete.ownerBarangay}
+                </p>
+                {encounterToDelete.diagnosis && (
+                  <p>
+                    <strong className="text-foreground">Service/Diagnosis:</strong> {encounterToDelete.diagnosis}
+                  </p>
+                )}
+                <p>
+                  <strong className="text-foreground">Date:</strong> {formatEncounterDate(encounterToDelete.date)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeleteDialogOpen(false)}
+              className="rounded-xl border-border text-xs font-semibold cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDeleteEncounter}
+              className="rounded-xl text-xs font-bold gap-1.5 cursor-pointer shadow-md bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="size-3.5" />
+                  <span>Delete Encounter</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

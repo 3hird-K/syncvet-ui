@@ -233,20 +233,7 @@ export function FacebookTopBar({
               <p className="text-[10px] text-muted-foreground">Carmen Central Clinic & Public Desk</p>
             </div>
 
-            <DropdownMenuItem
-              onClick={() => setScanQrOpen(true)}
-              className="cursor-pointer gap-2.5 py-2 rounded-xl"
-            >
-              <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                <QrCode className="size-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-xs text-foreground">Scan Clinic Arrival QR</p>
-                <p className="text-[10px] text-muted-foreground">Check-in at clinic entrance to join queue</p>
-              </div>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
+                        <DropdownMenuItem
               onClick={() => handleTabClick("consultations")}
               className="cursor-pointer gap-2.5 py-2 rounded-xl"
             >

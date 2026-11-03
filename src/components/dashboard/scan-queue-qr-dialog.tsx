@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { format, isValid } from "date-fns";
 import {
   QrCode,
   Camera,
@@ -169,20 +170,51 @@ export function ScanQueueQrDialog({
       return;
     }
 
-    // Automatically navigate if it's a queue check-in link or standard check-in (fast 250ms feedback)
-    setTimeout(() => {
-      setOpen(false);
-      if (decodedText.includes("/queue-checkin") || decodedText.includes("queue-checkin")) {
-        // If relative or absolute
+    // Check if the QR code is for queue checkin
+    if (decodedText.includes("/queue-checkin") || decodedText.includes("queue-checkin")) {
+      // Validate date parameter
+      let qrDate: string | null = null;
+      try {
+        const url = new URL(decodedText, window.location.origin);
+        qrDate = url.searchParams.get("date");
+      } catch {}
+
+      if (!qrDate) {
+        const match = decodedText.match(/[?&]date=([0-9]{4}-[0-9]{2}-[0-9]{2})/);
+        if (match) qrDate = match[1];
+      }
+
+      if (qrDate && qrDate !== todayStr) {
+        let formattedQrDate = qrDate;
+        try {
+          const parts = qrDate.split("-").map(Number);
+          const d = new Date(parts[0], parts[1] - 1, parts[2]);
+          if (isValid(d)) formattedQrDate = format(d, "MMMM d, yyyy");
+        } catch {}
+
+        toast.error("Expired QR Code", {
+          description: `This Check-in QR code was generated for ${formattedQrDate} and is valid on that day only. QR codes from other days cannot be scanned.`,
+          duration: 6000,
+        });
+        return;
+      }
+
+      setTimeout(() => {
+        setOpen(false);
         try {
           const url = new URL(decodedText, window.location.origin);
           router.push(url.pathname + url.search);
         } catch {
           router.push(`/queue-checkin?date=${todayStr}`);
         }
-      } else {
-        router.push(`/queue-checkin?date=${todayStr}`);
-      }
+      }, 250);
+      return;
+    }
+
+    // Default fallback
+    setTimeout(() => {
+      setOpen(false);
+      router.push(`/queue-checkin?date=${todayStr}`);
     }, 250);
   };
 

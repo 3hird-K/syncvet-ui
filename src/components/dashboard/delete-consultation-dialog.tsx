@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, Trash2, AlertTriangle, Stethoscope, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,14 +30,68 @@ export function DeleteConsultationDialog({
   onOpenChange,
   onDeleted,
 }: DeleteConsultationDialogProps) {
-  const [loading, setLoading] = useState(false);
-  const { deleteConsultation } = useCVO();
+  const queryClient = useQueryClient();
+  const { deleteConsultation, activeRoleView } = useCVO();
+
+  const isStaff = activeRoleView === "Administrator" || activeRoleView === "Veterinarian";
+  const isLocked = !isStaff && isConsultationLockedByVet(consultation);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const success = await deleteConsultation(id);
+      if (!success) throw new Error("Failed to delete record");
+      return id;
+    },
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["cvo_consultations"] });
+      await queryClient.cancelQueries({ queryKey: ["user-consultations"] });
+
+      const prevConsultations = queryClient.getQueryData<CVOConsultation[]>(["cvo_consultations"]);
+      const targetEnc = consultation?.encounterNo;
+
+      queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
+        old.filter((c) => 
+          c.id !== id && 
+          c.encounterNo !== id && 
+          (!targetEnc || c.encounterNo !== targetEnc) &&
+          (!targetEnc || c.id !== targetEnc)
+        )
+      );
+      queryClient.setQueriesData({ queryKey: ["user-consultations"] }, (old: any = []) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((c: any) => 
+          c.id !== id && 
+          c.encounterNo !== id && 
+          (!targetEnc || c.encounterNo !== targetEnc) &&
+          (!targetEnc || c.id !== targetEnc)
+        );
+      });
+
+      return { prevConsultations };
+    },
+    onSuccess: () => {
+      toast.success("Consultation Record Deleted", {
+        description: `Encounter #${consultation?.encounterNo} for ${consultation?.petName} has been removed.`,
+      });
+      if (onDeleted) onDeleted();
+      onOpenChange(false);
+    },
+    onError: (err, id, context) => {
+      if (context?.prevConsultations) {
+        queryClient.setQueryData(["cvo_consultations"], context.prevConsultations);
+      }
+      toast.error("Failed to delete record. Please try again.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["user-consultations"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-consultations"] });
+    },
+  });
 
   if (!consultation) return null;
 
-  const isLocked = isConsultationLockedByVet(consultation);
-
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (isLocked) {
       toast.error("Cannot Delete Official Record", {
         description: "Official records that have already been reviewed or modified by a veterinarian cannot be deleted.",
@@ -44,27 +99,7 @@ export function DeleteConsultationDialog({
       onOpenChange(false);
       return;
     }
-
-    setLoading(true);
-
-    try {
-      const success = await deleteConsultation(consultation.id);
-
-      if (success) {
-        toast.success("Consultation Record Deleted", {
-          description: `Encounter #${consultation.encounterNo} for ${consultation.petName} has been removed.`,
-        });
-        if (onDeleted) onDeleted();
-        onOpenChange(false);
-      } else {
-        toast.error("Failed to delete record. Please try again.");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("An unexpected error occurred while deleting.");
-    } finally {
-      setLoading(false);
-    }
+    deleteMutation.mutate(consultation.id);
   };
 
   return (
@@ -153,7 +188,7 @@ export function DeleteConsultationDialog({
                 variant="outline"
                 size="sm"
                 onClick={() => onOpenChange(false)}
-                disabled={loading}
+                disabled={deleteMutation.isPending}
                 className="h-9 px-4 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Cancel
@@ -163,10 +198,10 @@ export function DeleteConsultationDialog({
                 variant="destructive"
                 size="sm"
                 onClick={handleDelete}
-                disabled={loading}
+                disabled={deleteMutation.isPending}
                 className="h-9 px-4 text-xs font-bold gap-1.5 rounded-xl cursor-pointer shadow-xs"
               >
-                {loading ? (
+                {deleteMutation.isPending ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />
                     <span>Deleting...</span>

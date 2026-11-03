@@ -917,7 +917,7 @@ export function ScheduleProcedureDialog({
               appointmentDate,
               "MMMM d, yyyy"
             )}.`
-          : `Appointment confirmed! Scheduled ${serviceConfig.shortTitle} for ${currentPet.name} on ${format(
+          : `Service Scheduled (Unofficial Reservation)! Scheduled ${serviceConfig.shortTitle} for ${currentPet.name} on ${format(
               appointmentDate,
               "MMMM d, yyyy"
             )}.`
