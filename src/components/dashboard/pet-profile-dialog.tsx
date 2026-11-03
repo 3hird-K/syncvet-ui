@@ -1064,6 +1064,11 @@ export function PetProfileDialog({
     return getTodayDateString();
   }, [encounter, upcomingSchedule]);
 
+  // Whether the review date is in the past (no updates should be allowed)
+  const isReviewDatePast = useMemo(() => {
+    return activeReviewDate < getTodayDateString();
+  }, [activeReviewDate]);
+
   // Check if pet really has a Vaccination for that certain day
   const scheduledVaxForDay = useMemo(() => {
     // 1. Encounter passed directly to dialog - MUST be category === "vaccination"
@@ -1518,7 +1523,7 @@ export function PetProfileDialog({
                         {/* Right: Status Dropdown/Badge + Action Buttons in one single compact row */}
                         <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
                           {/* Queue Lifecycle Status (Styled as a compact badge dropdown) */}
-                          {onUpdateEncounterStatus && !encounter.isOverdue ? (
+                          {onUpdateEncounterStatus && !encounter.isOverdue && !isReviewDatePast ? (
                             <Select
                               value={encounter.status}
                               onValueChange={(val) => onUpdateEncounterStatus(encounter, val)}
@@ -1577,7 +1582,7 @@ export function PetProfileDialog({
                           )}
 
                           {/* Delete Encounter Button (Staff Action) */}
-                          {onDeleteEncounter && (
+                          {onDeleteEncounter && !isReviewDatePast && (
                             <Button
                               type="button"
                               variant="outline"
@@ -1592,7 +1597,7 @@ export function PetProfileDialog({
                           )}
 
                           {/* Primary Action Button */}
-                          {encounter.category === "vaccination" && (
+                          {encounter.category === "vaccination" && !isReviewDatePast && (
                             <Button
                               size="icon"
                               disabled={encounter.isOverdue || (isVaccineOutOfStock && encounter.status !== "completed")}
@@ -1622,7 +1627,7 @@ export function PetProfileDialog({
                             </Button>
                           )}
 
-                          {encounter.category === "consultation" && (
+                          {encounter.category === "consultation" && !isReviewDatePast && (
                             <Button
                               size="icon"
                               disabled={encounter.isOverdue}
@@ -1648,7 +1653,7 @@ export function PetProfileDialog({
                             </Button>
                           )}
 
-                          {encounter.category === "spay-neuter" && (
+                          {encounter.category === "spay-neuter" && !isReviewDatePast && (
                             <Button
                               size="icon"
                               disabled={encounter.isOverdue}
@@ -2311,6 +2316,11 @@ export function PetProfileDialog({
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {isReviewDatePast ? (
+                                <Badge className="text-[10px] font-bold border-0 py-1 px-2 shadow-2xs bg-muted text-muted-foreground">
+                                  {vaxStatusVal.toUpperCase()}
+                                </Badge>
+                              ) : (
                               <Select
                                 value={vaxStatusVal}
                                 onValueChange={(val) => handleStatusChange("vaccination", val)}
@@ -2325,7 +2335,9 @@ export function PetProfileDialog({
                                   <SelectItem value="completed" className="text-xs py-1.5">Completed</SelectItem>
                                 </SelectContent>
                               </Select>
+                              )}
 
+                              {!isReviewDatePast && (
                               <Button
                                 size="icon"
                                 onClick={handleAdministerVaccine}
@@ -2335,6 +2347,7 @@ export function PetProfileDialog({
                                 <Syringe className="size-4" />
                                 <span className="sr-only">Administer Dose</span>
                               </Button>
+                              )}
                             </div>
                           </div>
                         );
@@ -2380,6 +2393,11 @@ export function PetProfileDialog({
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {isReviewDatePast ? (
+                                <Badge className="text-[10px] font-bold border-0 py-1 px-2 shadow-2xs bg-muted text-muted-foreground">
+                                  {surgStatusVal.toUpperCase()}
+                                </Badge>
+                              ) : (
                               <Select
                                 value={surgStatusVal}
                                 onValueChange={(val) => handleStatusChange("spay-neuter", val)}
@@ -2394,7 +2412,9 @@ export function PetProfileDialog({
                                   <SelectItem value="completed" className="text-xs py-1.5">Completed</SelectItem>
                                 </SelectContent>
                               </Select>
+                              )}
 
+                              {!isReviewDatePast && (
                               <Button
                                 size="icon"
                                 onClick={handleCompleteSurgery}
@@ -2404,6 +2424,7 @@ export function PetProfileDialog({
                                 <Scissors className="size-4" />
                                 <span className="sr-only">Execute Kapon</span>
                               </Button>
+                              )}
                             </div>
                           </div>
                         );
@@ -2461,6 +2482,11 @@ export function PetProfileDialog({
                                 <span className="sr-only">Field Sheet</span>
                               </Button>
 
+                              {isReviewDatePast ? (
+                                <Badge className="text-[10px] font-bold border-0 py-1 px-2 shadow-2xs bg-muted text-muted-foreground">
+                                  {consultStatusVal.toUpperCase()}
+                                </Badge>
+                              ) : (
                               <Select
                                 value={consultStatusVal}
                                 onValueChange={(val) => handleStatusChange("consultation", val)}
@@ -2475,7 +2501,9 @@ export function PetProfileDialog({
                                   <SelectItem value="completed" className="text-xs py-1.5">Completed</SelectItem>
                                 </SelectContent>
                               </Select>
+                              )}
 
+                              {!isReviewDatePast && (
                               <Button
                                 size="icon"
                                 onClick={handleFillExamination}
@@ -2485,6 +2513,7 @@ export function PetProfileDialog({
                                 <ClipboardCheck className="size-4" />
                                 <span className="sr-only">Fill Exam</span>
                               </Button>
+                              )}
                             </div>
                           </div>
                         );
