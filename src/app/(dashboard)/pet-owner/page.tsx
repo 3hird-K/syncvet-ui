@@ -2079,40 +2079,6 @@ export default function PetOwnerPortalPage() {
               Complete medical encounters, administered vaccinations, and surgical history across all your pets
             </p>
           </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <PetOwnerConsultationDialog
-              pets={pets}
-              initialPet={pets[0]}
-              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-              trigger={
-                <Button
-                  size="icon"
-                  className="size-8 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
-                  title="New Consultation"
-                  aria-label="New Consultation"
-                >
-                  <Plus className="size-4" />
-                </Button>
-              }
-            />
-            <ScheduleProcedureDialog
-              initialService="vaccination"
-              pets={pets}
-              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-              trigger={
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="size-8 rounded-xl border-border hover:bg-muted shadow-xs cursor-pointer"
-                  title="Schedule Procedure"
-                  aria-label="Schedule Procedure"
-                >
-                  <Calendar className="size-4 text-primary" />
-                </Button>
-              }
-            />
-          </div>
         </div>
 
         {/* Category Filter Dropdown (All History) */}
@@ -2472,7 +2438,7 @@ export default function PetOwnerPortalPage() {
       </TabsContent>
 
       {/* ════ TAB 2: Scheduled Transactions for Our Pets ════ */}
-      <TabsContent value="procedures" className="space-y-3 pt-2">
+      <TabsContent value="procedures" className="space-y-4 m-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-foreground">
@@ -2483,32 +2449,67 @@ export default function PetOwnerPortalPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Select
-              value={appointmentFilter}
-              onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
-                setAppointmentFilter(val)
+          <div className="flex items-center gap-1.5 shrink-0">
+            <PetOwnerConsultationDialog
+              pets={pets}
+              initialPet={pets[0]}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <Button
+                  size="icon"
+                  className="size-8 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs cursor-pointer"
+                  title="New Consultation"
+                  aria-label="New Consultation"
+                >
+                  <Plus className="size-4" />
+                </Button>
               }
-            >
-              <SelectTrigger className="h-8 w-44 text-xs bg-muted/20 border-border/70 rounded-lg cursor-pointer">
-                <SelectValue placeholder="All Transactions" />
-              </SelectTrigger>
-              <SelectContent className="text-xs rounded-lg">
-                <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
-                  All Transactions
-                </SelectItem>
-                <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
-                  Upcoming / Queue
-                </SelectItem>
-                <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
-                  Missed / Overdue
-                </SelectItem>
-                <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
-                  Completed Transactions
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            />
+            <ScheduleProcedureDialog
+              initialService="vaccination"
+              pets={pets}
+              ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
+              trigger={
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="size-8 rounded-xl border-border hover:bg-muted shadow-xs cursor-pointer"
+                  title="Schedule Procedure"
+                  aria-label="Schedule Procedure"
+                >
+                  <Calendar className="size-4 text-primary" />
+                </Button>
+              }
+            />
           </div>
+        </div>
+
+        {/* Transaction Filter Dropdown */}
+        <div className="flex items-center justify-between gap-2.5 pt-1">
+          <Select
+            value={appointmentFilter}
+            onValueChange={(val: "all" | "upcoming" | "missed" | "completed") =>
+              setAppointmentFilter(val)
+            }
+          >
+            <SelectTrigger className="h-8 text-xs w-44 bg-card border-border/80 rounded-xl font-semibold shadow-2xs cursor-pointer">
+              <SelectValue placeholder="All Transactions" />
+            </SelectTrigger>
+            <SelectContent className="text-xs rounded-xl">
+              <SelectItem value="all" className="text-xs py-1.5 cursor-pointer">
+                All Transactions
+              </SelectItem>
+              <SelectItem value="upcoming" className="text-xs py-1.5 cursor-pointer">
+                Upcoming / Queue
+              </SelectItem>
+              <SelectItem value="missed" className="text-xs py-1.5 cursor-pointer">
+                Missed / Overdue
+              </SelectItem>
+              <SelectItem value="completed" className="text-xs py-1.5 cursor-pointer">
+                Completed Transactions
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Unattended Schedule Notice Banner */}
