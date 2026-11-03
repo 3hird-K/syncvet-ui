@@ -139,6 +139,25 @@ export function PetQueueCheckInDialog({
   // Perform queue check-in for the transaction
   const performCheckIn = async (scanMethod: "qr" | "manual" = "qr") => {
     if (!transaction || checkingIn) return;
+
+    // A queue ticket is only valid for the clinic's current day. Do not create a
+    // ticket for a booking that belongs to another date, otherwise the check-in
+    // succeeds locally but never appears in the staff's Today's Clinic Queue.
+    const scheduledDate = (transaction.date || "").split("T")[0];
+    if (scheduledDate && scheduledDate !== todayStr) {
+      let formattedDate = scheduledDate;
+      try {
+        const parts = scheduledDate.split("-").map(Number);
+        const parsed = new Date(parts[0], parts[1] - 1, parts[2]);
+        if (isValid(parsed)) formattedDate = format(parsed, "MMMM d, yyyy");
+      } catch {}
+      toast.error("Check-in Not Yet Available", {
+        description: `This booking is scheduled for ${formattedDate}. Please scan the clinic check-in QR on that date.`,
+        duration: 5500,
+      });
+      return;
+    }
+
     setCheckingIn(true);
 
     try {

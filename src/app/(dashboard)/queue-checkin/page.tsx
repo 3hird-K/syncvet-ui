@@ -87,6 +87,7 @@ function QueueCheckinContent() {
         return;
       }
 
+      const requestedAppointmentId = searchParams.get("appointmentId");
       const ownerId = user.id;
       const ownerEmail = (user.primaryEmailAddress?.emailAddress || "").toLowerCase();
       const ownerName = user.fullName || user.firstName || "Pet Owner";
@@ -117,7 +118,7 @@ function QueueCheckinContent() {
       try {
         const { data, error } = await supabase
           .from("appointments")
-          .select("*, users:owner_id(full_name, phone_number, address), pets:pet_id(id, name, species, breed, photo_url, avatar_url)")
+          .select("*, users:owner_id(full_name, phone_number, address), pets:pet_id(id, name, species, breed, photo_url)")
           .eq("date", todayStr)
           .neq("status", "cancelled");
 
@@ -138,7 +139,7 @@ function QueueCheckinContent() {
                 pet_name: petData?.name || apt.pet_name || "Pet",
                 species: petData?.species || apt.species || "Dog",
                 breed: petData?.breed || apt.breed || "",
-                petPhotoUrl: petData?.photo_url || petData?.avatar_url || apt.photo_url,
+                petPhotoUrl: petData?.photo_url || apt.photo_url,
                 service_id: apt.service_id || "vaccination",
                 notes: apt.notes,
                 date: apt.date,
@@ -183,7 +184,7 @@ function QueueCheckinContent() {
       try {
         const { data: consults } = await supabase
           .from("consultations")
-          .select("*, pets:pet_id(id, name, species, breed, photo_url, avatar_url), users:owner_id(id, full_name, phone_number, address)")
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, phone_number, address)")
           .eq("date", todayStr)
           .neq("status", "completed")
           .neq("status", "cancelled");
@@ -207,7 +208,7 @@ function QueueCheckinContent() {
                 pet_name: petData?.name || c.pet_name || "Pet",
                 species: petData?.species || c.species || "Dog",
                 breed: petData?.breed || c.breed || "",
-                petPhotoUrl: petData?.photo_url || petData?.avatar_url || c.photo_url,
+                petPhotoUrl: petData?.photo_url || c.photo_url,
                 service_id: "consultation",
                 service_title: c.service_type || "Clinical Consultation",
                 notes: c.chief_complaint,
@@ -265,8 +266,25 @@ function QueueCheckinContent() {
         return;
       }
 
-      // Automatically check in the first eligible appointment or consultation
-      const primaryItem = matchingItems[0];
+      // If the owner scanned a specific appointment pass, check in that exact
+      // booking so the correct service (vaccination / spay-neuter / consultation)
+      // is queued even when the owner has multiple bookings today.
+      const requestedItem = requestedAppointmentId
+        ? matchingItems.find(
+            (item) => item.type === "appointment" && item.id === requestedAppointmentId
+          )
+        : undefined;
+
+      if (requestedAppointmentId && !requestedItem) {
+        setEligibilityError(
+          "The appointment pass you scanned does not match an active booking for today. Please scan today's check-in station QR code or contact the reception desk for assistance."
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Automatically check in the scanned appointment, or the first eligible item
+      const primaryItem = requestedItem || matchingItems[0];
       const serviceTitle =
         primaryItem.service_id === "spay-neuter"
           ? "Low-Cost / Free Spay & Neuter Surgery"

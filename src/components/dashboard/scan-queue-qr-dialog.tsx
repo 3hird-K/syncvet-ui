@@ -161,6 +161,28 @@ export function ScanQueueQrDialog({
       onScanSuccess(decodedText);
     }
 
+    // Appointment pass QR codes contain a JSON payload identifying the exact
+    // booking (vaccination, spay/neuter, etc.). Route to that specific check-in
+    // instead of falling back to the generic station QR path.
+    try {
+      const payload = JSON.parse(decodedText);
+      if (payload && typeof payload === "object" && payload.appointmentId) {
+        const apptDate =
+          typeof payload.date === "string" && payload.date
+            ? payload.date.split("T")[0]
+            : todayStr;
+        setTimeout(() => {
+          setOpen(false);
+          router.push(
+            `/queue-checkin?date=${apptDate}&appointmentId=${encodeURIComponent(
+              payload.appointmentId
+            )}`
+          );
+        }, 250);
+        return;
+      }
+    } catch {}
+
     // Automatically handle outreach attendance check-in
     if (decodedText.includes("outreach-checkin") || decodedText.includes("outreach-attendance")) {
       setTimeout(() => {

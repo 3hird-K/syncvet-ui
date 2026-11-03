@@ -159,7 +159,7 @@ export async function syncQueueFromSupabase(
     const supabase = getPublicSupabaseClient();
     const { data: appointments, error } = await supabase
       .from("appointments")
-      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (id, name, species, breed, photo_url, avatar_url)")
+      .select("*, users:owner_id (full_name, phone_number, address), pets:pet_id (id, name, species, breed, photo_url)")
       .eq("date", dateStr)
       .in("status", ["checked-in", "in-consultation", "serving"]);
 
@@ -191,7 +191,7 @@ export async function syncQueueFromSupabase(
         const ownerBarangay = ownerUser?.address || "Carmen, CDO";
         const species = petData?.species || apt.species || "Dog";
         const breed = petData?.breed || apt.breed || "";
-        const petPhotoUrl = petData?.photo_url || petData?.avatar_url || apt.photo_url || apt.pet_photo_url;
+        const petPhotoUrl = petData?.photo_url || apt.photo_url || apt.pet_photo_url;
 
         const ticketStatus: QueueTicket["status"] =
           apt.status === "in-consultation" || apt.status === "serving"
@@ -265,12 +265,36 @@ export function syncConsultationsToQueue(
   let updated = false;
   const tickets = [...current.activeTickets];
 
+  const matchesConsultation = (t: QueueTicket, c: any, encounterId: string) =>
+    t.appointmentId === encounterId ||
+    (!!t.encounterNo && t.encounterNo === encounterId) ||
+    (t.serviceId === "consultation" &&
+      (t.petName || "").toLowerCase().trim() === (c.petName || "").toLowerCase().trim() &&
+      (t.ownerName || "").toLowerCase().trim() === (c.ownerName || "").toLowerCase().trim());
+
   consultations.forEach((c) => {
     // Only include consultations scheduled for today
     const cDate = c.date || "";
     if (cDate !== dateStr && !cDate.startsWith(dateStr)) return;
 
     const encounterId = c.encounterNo || c.id;
+
+    if (c.status === "scheduled" || (c as any).isUnofficial) {
+      // Unofficial/reserved schedules must remain in "Scheduled Transactions" only.
+      // They may enter Today's Clinic Queue exclusively after the owner scans the
+      // station QR code (which issues a verified ticket and changes the status to
+      // "waiting"). Remove any unverified ticket auto-injected by older builds.
+      for (let i = tickets.length - 1; i >= 0; i--) {
+        const ticket = tickets[i];
+        const isVerifiedCheckIn =
+          ticket.checkedInVia === "qr" || ticket.checkedInVia === "manual";
+        if (matchesConsultation(ticket, c, encounterId) && !isVerifiedCheckIn) {
+          tickets.splice(i, 1);
+          updated = true;
+        }
+      }
+      return;
+    }
 
     if (c.status === "completed" || c.status === "cancelled") {
       const idx = tickets.findIndex(
@@ -283,14 +307,7 @@ export function syncConsultationsToQueue(
       return;
     }
 
-    const existingIdx = tickets.findIndex(
-      (t) =>
-        t.appointmentId === encounterId ||
-        (t.encounterNo && t.encounterNo === encounterId) ||
-        (t.serviceId === "consultation" &&
-          t.petName.toLowerCase().trim() === (c.petName || "").toLowerCase().trim() &&
-          t.ownerName.toLowerCase().trim() === (c.ownerName || "").toLowerCase().trim())
-    );
+    const existingIdx = tickets.findIndex((t) => matchesConsultation(t, c, encounterId));
 
     const ticketStatus: QueueTicket["status"] =
       c.status === "in-consultation" || c.status === "treatment"

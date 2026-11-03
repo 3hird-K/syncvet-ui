@@ -61,7 +61,7 @@ export function TodaysOperationsCard() {
         const supabase = getPublicSupabaseClient();
         const { data } = await supabase
           .from("pets")
-          .select("id, name, species, breed, photo_url, avatar_url");
+          .select("id, name, species, breed, photo_url");
         return data || [];
       } catch {
         return [];
@@ -78,7 +78,7 @@ export function TodaysOperationsCard() {
         (petId && p.id === petId) ||
         (petName && p.name?.toLowerCase().trim() === petName.toLowerCase().trim())
     );
-    return match?.photo_url || match?.avatar_url || null;
+    return match?.photo_url || null;
   };
 
   const getCategoryForConsultation = (c: any): "consultation" | "vaccination" | "spay-neuter" => {
@@ -193,11 +193,46 @@ export function TodaysOperationsCard() {
 
   const displayedConsultations = viewMode === "today" ? todaysConsultations : consultations;
 
-  // After 6:00 PM or when closed, items do not belong in today's active queue
+  // Unofficial/reserved schedules ("scheduled") are not verified queue entries yet.
+  // They must only appear in Today's Clinic Queue after the station QR is scanned.
+  const unscannedScheduledConsultationKeys = useMemo(() => {
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    todaysConsultations.forEach((c) => {
+      if (c.status !== "scheduled") return;
+      if (c.encounterNo) ids.add(c.encounterNo);
+      if (c.id) ids.add(c.id);
+      names.add(
+        `${(c.petName || "").toLowerCase().trim()}|${(c.ownerName || "").toLowerCase().trim()}`
+      );
+    });
+    return { ids, names };
+  }, [todaysConsultations]);
+
+  const isUnscannedScheduledTicket = (t: QueueTicket) => {
+    if (t.checkedInVia === "qr" || t.checkedInVia === "manual") return false;
+    if (
+      (t.appointmentId && unscannedScheduledConsultationKeys.ids.has(t.appointmentId)) ||
+      (t.encounterNo && unscannedScheduledConsultationKeys.ids.has(t.encounterNo))
+    ) {
+      return true;
+    }
+    return (
+      t.serviceId === "consultation" &&
+      unscannedScheduledConsultationKeys.names.has(
+        `${(t.petName || "").toLowerCase().trim()}|${(t.ownerName || "").toLowerCase().trim()}`
+      )
+    );
+  };
+
+  // After 6:00 PM or when closed, items do not belong in today's active queue.
+  // Also hide any legacy ticket tied to an unofficial schedule that was never scanned in.
   const activeQueueTickets = isClosed
     ? []
     : queueState.activeTickets.filter(
-        (t) => t.status === "waiting" || t.status === "in-consultation"
+        (t) =>
+          (t.status === "waiting" || t.status === "in-consultation") &&
+          !isUnscannedScheduledTicket(t)
       );
 
   // Displayed tickets in the primary active queue (exclude overdue)
@@ -213,6 +248,10 @@ export function TodaysOperationsCard() {
     if (isClosed) return []; // After 6:00 PM cutoff, all unattended encounters are overdue and not in active queue
     return displayedConsultations.filter(
       (c) =>
+        // Unofficial schedules ("scheduled") must remain in Scheduled Transactions only.
+        // They enter Today's Clinic Queue exclusively after scanning the station QR code
+        // (which changes their status to "waiting" and issues a queue ticket).
+        c.status !== "scheduled" &&
         !isConsultationOverdue(c.date, c.status) &&
         c.status !== "completed" &&
         !queueState.activeTickets.some(
@@ -545,7 +584,7 @@ export function TodaysOperationsCard() {
                 {viewMode === "today"
                   ? (isClosed
                       ? "Daily clinic transactions (8:00 AM – 5:00 PM) closed at 6:00 PM. Unattended patients have been recorded as Overdue in the Clinical Ledger."
-                      : "No active patient tickets or consultations queued today. New arrivals and consultations appear here automatically.")
+                      : "No active patient tickets queued today. Scheduled appointments and consultations appear here only after the owner scans the clinic check-in QR.")
                   : "No clinical encounters found in records."}
               </p>
             </div>
