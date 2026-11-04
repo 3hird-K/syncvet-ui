@@ -31,6 +31,7 @@ import {
   QueueTicket,
 } from "@/lib/cvo-queue";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { isBeforeClinicOpen } from "@/lib/utils";
 
 interface PetQueueCheckInDialogProps {
   open: boolean;
@@ -144,6 +145,14 @@ export function PetQueueCheckInDialog({
     // ticket for a booking that belongs to another date, otherwise the check-in
     // succeeds locally but never appears in the staff's Today's Clinic Queue.
     const scheduledDate = (transaction.date || "").split("T")[0];
+    if (isBeforeClinicOpen(todayStr)) {
+      toast.error("Clinic Not Open Yet", {
+        description:
+          "Check-in opens at 8:00 AM (operating hours 8:00 AM – 5:00 PM). Please scan the clinic QR code once the clinic opens.",
+        duration: 5500,
+      });
+      return;
+    }
     if (scheduledDate && scheduledDate !== todayStr) {
       let formattedDate = scheduledDate;
       try {

@@ -13,6 +13,7 @@ import {
   MapPin,
   Bell,
   BellRing,
+  UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -264,11 +265,7 @@ export function PetOwnerQueueTracker({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const lastChimedTicketRef = useRef<string | null>(null);
 
-  const isCalled = Boolean(
-    queueInfo.isMyTurn ||
-      queueInfo.isInConsultation ||
-      (queueInfo.myTicket && queueInfo.nowServing?.ticketNumber === queueInfo.myTicket.ticketNumber)
-  );
+  const isCalled = Boolean(queueInfo.isMyTurn || queueInfo.isInConsultation);
 
   // Sync with queue updates and Supabase realtime broadcast
   useEffect(() => {
@@ -511,11 +508,81 @@ export function PetOwnerQueueTracker({
   }
 
   // ═════════════════════════════════════════════════════════════════════
+  // STATE 1.5: SKIPPED / NO-SHOW TICKET — owner was removed from the queue
+  // ═════════════════════════════════════════════════════════════════════
+  if (queueInfo.myTicket?.status === "skipped") {
+    const skippedTicket = queueInfo.myTicket;
+    return (
+      <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-9 sm:size-10 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/25 shadow-xs">
+            <UserX className="size-4.5 sm:size-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-foreground text-xs sm:text-sm">
+                Marked No-Show
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/25">
+                {skippedTicket.ticketNumber}
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              You missed your turn at Carmen Central Clinic. Scan the clinic QR again to rejoin the queue with a fresh ticket number.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+          <ScanQueueQrDialog
+            trigger={
+              <Button
+                size="sm"
+                className="h-7.5 px-3 text-[11px] font-semibold gap-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Camera className="size-3" />
+                <span>Scan QR to Rejoin</span>
+              </Button>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // STATE 1.6: COMPLETED TICKET — visit is done
+  // ═════════════════════════════════════════════════════════════════════
+  if (queueInfo.myTicket?.status === "completed") {
+    const doneTicket = queueInfo.myTicket;
+    return (
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 sm:p-4 flex items-center gap-3 text-xs shadow-2xs">
+        <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
+          <CheckCircle2 className="size-4.5 sm:size-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-foreground text-xs sm:text-sm">
+              Visit Completed
+            </span>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
+              {doneTicket.ticketNumber}
+            </span>
+          </div>
+          <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
+            All done for {doneTicket.petName}. Thank you for visiting Carmen Central Clinic.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
   // STATE 2: ACTIVE QUEUE TICKET (MINIMALIST REDESIGN)
   // ═════════════════════════════════════════════════════════════════════
-  const { myTicket, nowServing, ticketsAhead, isMyTurn, isInConsultation, isQueueClosed, isOverdue } = queueInfo;
+  const { myTicket, nowServing, ticketsAhead, isMyTurn, isInConsultation, isNext, isQueueClosed, isOverdue } = queueInfo;
   const isTicketOverdue = isOverdue || (isQueueClosed && myTicket?.status === "overdue");
-  const isNextInLine = !isCalled && !isTicketOverdue && ticketsAhead === 0;
+  const isNextInLine = !isCalled && !isTicketOverdue && isNext;
 
   return (
     <div className="relative group transition-all duration-300">
@@ -572,6 +639,31 @@ export function PetOwnerQueueTracker({
                 <VolumeX className="size-4" />
               )}
             </button>
+          </div>
+        )}
+
+        {/* ── Next-in-Line Notice Banner ── */}
+        {isNextInLine && (
+          <div className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 border-b border-emerald-500/20 bg-emerald-500/10 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center justify-center size-8 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 shrink-0">
+                <Bell className="size-4 text-white" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight">
+                    YOU&apos;RE NEXT IN LINE
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs">
+                    {myTicket?.ticketNumber}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  Please stay nearby — you&apos;ll be called to {myTicket?.consultationRoom || "Desk 1"} shortly
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -649,10 +741,10 @@ export function PetOwnerQueueTracker({
               ) : isNextInLine ? (
                 <div className="text-left">
                   <span className="font-bold text-emerald-700 dark:text-emerald-300 text-xs">
-                    Next in Line
+                    You&apos;re Next
                   </span>
                   <span className="text-[11px] text-muted-foreground block">
-                    0 ahead · Ready near Desk 1
+                    0 patients ahead · Stay near Desk 1
                   </span>
                 </div>
               ) : (

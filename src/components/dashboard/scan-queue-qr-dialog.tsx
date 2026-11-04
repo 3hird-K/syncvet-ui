@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { getTodayDateStr } from "@/lib/cvo-queue";
+import { isBeforeClinicOpen } from "@/lib/utils";
 
 /**
  * Fast-path: Uses native browser BarcodeDetector API (GPU/hardware-accelerated, ~5ms)
@@ -145,6 +146,26 @@ export function ScanQueueQrDialog({
 
   // Handle successful scan
   const handleSuccess = async (decodedText: string) => {
+    // Before 8:00 AM the queue is not open. Reject any queue / appointment-pass QR
+    // before it can create a check-in ticket.
+    let isAppointmentPass = false;
+    try {
+      const parsed = JSON.parse(decodedText);
+      if (parsed && typeof parsed === "object" && parsed.appointmentId) {
+        isAppointmentPass = true;
+      }
+    } catch {}
+
+    const isQueueQr = decodedText.includes("queue-checkin") || isAppointmentPass;
+    if (isQueueQr && isBeforeClinicOpen(todayStr)) {
+      toast.error("Clinic Not Open Yet", {
+        description:
+          "Check-in opens at 8:00 AM (operating hours 8:00 AM – 5:00 PM). Please scan the clinic QR code at 8:00 AM, once the clinic opens.",
+        duration: 6000,
+      });
+      return;
+    }
+
     setDecodedResult(decodedText);
     toast.success("QR Code verified successfully!");
 

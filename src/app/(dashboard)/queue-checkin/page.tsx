@@ -40,6 +40,7 @@ import {
   getTodayDateStr,
   type QueueTicket,
 } from "@/lib/cvo-queue";
+import { isBeforeClinicOpen } from "@/lib/utils";
 
 function QueueCheckinContent() {
   const router = useRouter();
@@ -94,7 +95,21 @@ function QueueCheckinContent() {
       const ownerPhone = (user.unsafeMetadata?.phoneNumber as string) || "";
       const ownerBarangay = (user.unsafeMetadata?.barangay as string) || "Cagayan de Oro City";
 
-      // 1. First, check if pet owner is already checked into today's queue
+      // 0.5 Block scans before clinic opening (8:00 AM)
+      if (isBeforeClinicOpen(todayStr)) {
+        setEligibilityError(
+          `The clinic check-in opens at 8:00 AM. It is currently ${format(
+            new Date(),
+            "h:mm a"
+          )}. Please scan the station QR code at 8:00 AM, when clinic operating hours begin (8:00 AM – 5:00 PM).`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // 1. First, check if pet owner is already checked into today's queue.
+      // A skipped (no-show) ticket does not block re-checking in — the owner is
+      // issued a fresh ticket at the end of the line by the QR check-in below.
       const existingStatus = getPetOwnerQueueStatus(
         {
           ownerId,
@@ -103,7 +118,7 @@ function QueueCheckinContent() {
         },
         todayStr
       );
-      if (existingStatus.myTicket) {
+      if (existingStatus.myTicket && existingStatus.myTicket.status !== "skipped") {
         setTicket(existingStatus.myTicket);
         setIsExistingTicket(true);
         setLoading(false);
@@ -644,10 +659,18 @@ function QueueCheckinContent() {
                     Ahead of You
                   </span>
                   <p className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400">
-                    {currentStatus.isMyTurn ? "0 (You're Next!)" : currentStatus.ticketsAhead}
+                    {currentStatus.isMyTurn
+                      ? "Called"
+                      : currentStatus.isNext
+                      ? "0 (You're Next!)"
+                      : currentStatus.ticketsAhead}
                   </p>
                   <p className="text-[9.5px] text-muted-foreground truncate font-mono">
-                    {currentStatus.isMyTurn ? "Step Up to Desk" : `~${Math.max(5, currentStatus.ticketsAhead * 10)} mins wait`}
+                    {currentStatus.isMyTurn
+                      ? "Step Up to Desk"
+                      : currentStatus.isNext
+                      ? "Stay near the desk"
+                      : `~${Math.max(5, currentStatus.ticketsAhead * 10)} mins wait`}
                   </p>
                 </div>
               </div>
@@ -674,7 +697,11 @@ function QueueCheckinContent() {
                 <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                   <div
                     className={`h-full ${
-                      currentStatus.isMyTurn ? "w-full bg-blue-500 animate-pulse" : "w-0"
+                      currentStatus.isMyTurn
+                        ? "w-full bg-blue-500 animate-pulse"
+                        : currentStatus.isNext
+                        ? "w-full bg-emerald-500"
+                        : "w-0"
                     }`}
                   />
                 </div>
@@ -682,6 +709,8 @@ function QueueCheckinContent() {
                   className={`flex items-center gap-1 shrink-0 ${
                     currentStatus.isMyTurn
                       ? "text-blue-600 font-bold"
+                      : currentStatus.isNext
+                      ? "text-emerald-600 dark:text-emerald-400 font-bold"
                       : "text-muted-foreground font-medium"
                   }`}
                 >
@@ -695,6 +724,10 @@ function QueueCheckinContent() {
               {currentStatus.isMyTurn ? (
                 <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 font-bold text-center text-xs animate-pulse">
                   🔔 Ticket {ticket?.ticketNumber} called! Please proceed to Consultation Desk 1 with {ticket?.petName}.
+                </div>
+              ) : currentStatus.isNext ? (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-center text-xs">
+                  ✅ You&apos;re next! Please stay near the desk — ticket {ticket?.ticketNumber} will be called shortly.
                 </div>
               ) : (
                 <p className="text-[10.5px] text-muted-foreground text-center pt-0.5 leading-relaxed">

@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Syringe,
   Scissors,
+  UserX,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -37,6 +38,7 @@ import {
   getDailyQueue,
   callQueueTicket,
   completeQueueTicket,
+  skipQueueTicket,
   getTodayDateStr,
   syncQueueFromSupabase,
   syncConsultationsToQueue,
@@ -238,6 +240,12 @@ export function TodaysOperationsCard() {
   // Displayed tickets in the primary active queue (exclude overdue)
   const displayedTickets = activeQueueTickets;
 
+  // The earliest waiting ticket is the one staff should call next.
+  const nextTicket =
+    displayedTickets
+      .filter((t) => t.status === "waiting")
+      .sort((a, b) => a.queueSequence - b.queueSequence)[0] || null;
+
   const qrCheckinCount = activeQueueTickets.filter((t) => t.serviceId !== "consultation").length;
   const consultationQueueCount = activeQueueTickets.filter((t) => t.serviceId === "consultation").length;
   const totalActive = activeQueueTickets.length;
@@ -300,6 +308,17 @@ export function TodaysOperationsCard() {
       }
     }
     toast.success(`Ticket ${ticketNumber} (${petName}) completed.`);
+  };
+
+  const handleSkipTicket = (ticketNumber: string, petName: string) => {
+    if (isClosed) {
+      toast.warning("Clinic queue closed at 6:00 PM. Skipping is disabled.");
+      return;
+    }
+    skipQueueTicket(ticketNumber);
+    toast.info(
+      `Ticket ${ticketNumber} (${petName}) marked as no-show and removed from the queue. They can re-scan the QR to rejoin.`
+    );
   };
 
   const getStatusBadge = (status: string, isOverdueItem: boolean = false) => {
@@ -455,6 +474,11 @@ export function TodaysOperationsCard() {
                 ) : (
                   <>Now Serving: <strong className="text-blue-600 dark:text-blue-400">{queueState.nowServingTicketNumber || "None"}</strong></>
                 )}
+                {!isClosed && nextTicket && (
+                  <span className="ml-1.5">
+                    · Next to Call: <strong className="text-emerald-600 dark:text-emerald-400">{nextTicket.ticketNumber}</strong>
+                  </span>
+                )}
               </span>
             </div>
 
@@ -467,6 +491,7 @@ export function TodaysOperationsCard() {
                 t.ticketNumber
               );
               const petPhoto = getPetPhoto(t.petId, t.petName, t.petPhotoUrl);
+              const isNextTicket = nextTicket?.ticketNumber === t.ticketNumber;
 
               const serviceIcon =
                 category === "vaccination" ? (
@@ -481,7 +506,12 @@ export function TodaysOperationsCard() {
                 <div
                   key={t.id}
                   onClick={() => router.push(encounterUrl)}
-                  className="p-3 sm:p-3.5 rounded-2xl border border-border/80 bg-card hover:border-primary/40 hover:bg-muted/15 hover:shadow-xs transition-all space-y-2 cursor-pointer shadow-2xs group relative"
+                  className={cn(
+                    "p-3 sm:p-3.5 rounded-2xl border transition-all space-y-2 cursor-pointer shadow-2xs group relative",
+                    isNextTicket
+                      ? "border-emerald-500/50 bg-emerald-500/[0.05] ring-1 ring-emerald-500/20 hover:border-emerald-500/70 hover:bg-emerald-500/[0.08] hover:shadow-xs"
+                      : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/15 hover:shadow-xs"
+                  )}
                   title="Click to view and fill up clinical record / findings"
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -533,18 +563,75 @@ export function TodaysOperationsCard() {
 
                     {/* Right: Status, Call Button, Chevron */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {getStatusBadge(t.status)}
-                      {t.status === "waiting" && !isClosed && (
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCallTicket(t.ticketNumber, t.petName);
-                          }}
-                          className="h-7 px-2.5 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
+                      {isNextTicket ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-700 pointer-events-none select-none shadow-none gap-1"
                         >
-                          <Bell className="size-3" /> Call Next
-                        </Button>
+                          <Bell className="size-2.5 text-emerald-600" />
+                          Next to Call
+                        </Badge>
+                      ) : (
+                        getStatusBadge(t.status)
+                      )}
+                      {t.status === "waiting" && !isClosed && (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCallTicket(t.ticketNumber, t.petName);
+                            }}
+                            className={cn(
+                              "h-7 px-2.5 text-[11px] font-bold text-white rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform",
+                              isNextTicket
+                                ? "bg-emerald-600 hover:bg-emerald-700"
+                                : "bg-blue-600 hover:bg-blue-700"
+                            )}
+                          >
+                            <Bell className="size-3" /> {isNextTicket ? "Call Next" : "Call"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSkipTicket(t.ticketNumber, t.petName);
+                            }}
+                            title="No-show / Skip (removes them from the queue — they can scan the QR again to rejoin)"
+                            className="size-7 p-0 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 cursor-pointer"
+                          >
+                            <UserX className="size-3.5" />
+                            <span className="sr-only">No-show / Skip</span>
+                          </Button>
+                        </div>
+                      )}
+                      {t.status === "in-consultation" && !isClosed && (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCompleteTicket(t.ticketNumber, t.petName);
+                            }}
+                            title="Done — mark this visit as complete"
+                            className="h-7 px-2.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
+                          >
+                            <CheckCircle2 className="size-3" /> Done
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSkipTicket(t.ticketNumber, t.petName);
+                            }}
+                            title="No-show / Skip (removes them from the queue — they can scan the QR again to rejoin)"
+                            className="h-7 px-2.5 text-[11px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
+                          >
+                            <UserX className="size-3.5" /> No-show
+                          </Button>
+                        </div>
                       )}
                       <ChevronRight className="size-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all ml-0.5" />
                     </div>

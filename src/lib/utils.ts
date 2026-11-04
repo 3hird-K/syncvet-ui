@@ -123,6 +123,29 @@ export function formatClinicScheduleSlot(slot?: string | null): string {
 }
 
 /**
+ * Checks if it is before the clinic opens (8:00 AM) for the given date.
+ * Only gates "today" — future dates are not "before open", and past dates are handled
+ * by {@link isClinicQueueClosed}.
+ */
+export function isBeforeClinicOpen(targetDate?: string | Date | null): boolean {
+  const now = new Date();
+  if (!targetDate) {
+    return now.getHours() < 8;
+  }
+
+  const cleanDate = typeof targetDate === "string"
+    ? (targetDate.includes("T") ? targetDate.split("T")[0] : targetDate.trim())
+    : format(targetDate, "yyyy-MM-dd");
+
+  const todayStr = format(now, "yyyy-MM-dd");
+
+  // Only gate the current day; other dates are not affected by the 8:00 AM opening.
+  if (cleanDate !== todayStr) return false;
+
+  return now.getHours() < 8;
+}
+
+/**
  * Checks if the daily clinic queue has automatically closed for the date.
  * Clinical transactions operate 8:00 AM – 5:00 PM, and the queue automatically closes at 6:00 PM (18:00).
  * Past dates are always closed.

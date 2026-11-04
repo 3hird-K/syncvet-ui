@@ -2,7 +2,7 @@
 
 import { format, parseISO, isValid } from "date-fns";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
-import { isClinicQueueClosed } from "@/lib/utils";
+import { isClinicQueueClosed, isBeforeClinicOpen } from "@/lib/utils";
 
 export interface QueueTicket {
   id: string; // e.g. "q_ticket_1793265000"
@@ -315,16 +315,22 @@ export function syncConsultationsToQueue(
         : "waiting";
 
     if (existingIdx >= 0) {
-      if (tickets[existingIdx].status !== ticketStatus) {
+      const existingTicket = tickets[existingIdx];
+      // Do not resurrect a ticket that was explicitly skipped (no-show) or marked overdue.
+      // The owner must re-scan the clinic QR to rejoin with a fresh ticket number.
+      if (existingTicket.status === "skipped" || existingTicket.status === "overdue") {
+        return;
+      }
+      if (existingTicket.status !== ticketStatus) {
         tickets[existingIdx] = {
-          ...tickets[existingIdx],
+          ...existingTicket,
           status: ticketStatus,
           servingVet:
             c.attendingVet ||
-            tickets[existingIdx].servingVet ||
+            existingTicket.servingVet ||
             (ticketStatus === "in-consultation" ? "Dr. Helen Ann P. Tacandong, DVM" : undefined),
           consultationRoom:
-            tickets[existingIdx].consultationRoom ||
+            existingTicket.consultationRoom ||
             (ticketStatus === "in-consultation" ? "Consultation Desk 1" : undefined),
         };
         updated = true;
@@ -345,8 +351,16 @@ export function syncConsultationsToQueue(
   }
 
   if (updated) {
-    // If queue is closed, no ticket is being served
-    const activeInConsultation = current.isClosed ? undefined : tickets.find((t) => t.status === "in-consultation");
+    // If queue is closed, no ticket is being served.
+    // Otherwise keep the ticket already marked as now serving if it is still
+    // in consultation; only fall back to any other in-consultation ticket.
+    const activeInConsultation = current.isClosed
+      ? undefined
+      : tickets.find(
+          (t) =>
+            t.ticketNumber === current.nowServingTicketNumber &&
+            t.status === "in-consultation"
+        ) || tickets.find((t) => t.status === "in-consultation");
     const newState: DailyQueueState = {
       ...current,
       activeTickets: tickets,
@@ -402,6 +416,13 @@ export function checkInPetOwnerToQueue({
 }): { ticket: QueueTicket; isExisting: boolean; state: DailyQueueState } {
   const current = getDailyQueue(dateStr);
 
+  // The clinic opens at 8:00 AM — block any queue check-in before then.
+  if (isBeforeClinicOpen(dateStr)) {
+    throw new Error(
+      "Clinic check-in opens at 8:00 AM (operating hours 8:00 AM – 5:00 PM). Please scan the clinic QR code once the clinic opens."
+    );
+  }
+
   // If queue is closed (past 6:00 PM cut-off), do not allow new active queue tickets
   if (current.isClosed) {
     const closedTicket: QueueTicket = {
@@ -431,7 +452,9 @@ export function checkInPetOwnerToQueue({
     return { ticket: closedTicket, isExisting: false, state: current };
   }
 
-  // Check if this appointment is already checked in
+  // Check if this appointment is already checked in.
+  // A ticket that was skipped (no-show) or marked overdue (cut-off) can be re-scanned;
+  // the owner is issued a fresh ticket at the end of the line.
   const existing = current.activeTickets.find(
     (t) =>
       t.appointmentId === appointmentId ||
@@ -439,12 +462,20 @@ export function checkInPetOwnerToQueue({
       (t.ownerId === ownerId && t.petName.toLowerCase().trim() === petName.toLowerCase().trim() && t.status !== "completed")
   );
 
-  if (existing) {
+  const isRejoin = !!existing && (existing.status === "skipped" || existing.status === "overdue");
+
+  if (existing && !isRejoin) {
     return { ticket: existing, isExisting: true, state: current };
   }
 
-  // Calculate next sequential ticket number
-  const nextSeq = current.activeTickets.length + 1;
+  // If rejoining after a no-show, drop the missed ticket so the owner gets a fresh number.
+  const baseTickets = isRejoin
+    ? current.activeTickets.filter((t) => t.id !== existing!.id)
+    : current.activeTickets;
+
+  // Calculate next sequential ticket number (based on the highest sequence in use)
+  const nextSeq =
+    baseTickets.reduce((max, t) => Math.max(max, t.queueSequence || 0), 0) + 1;
   const ticketNumber = `Q-${String(nextSeq).padStart(3, "0")}`;
   const now = new Date();
   const timeStr = format(now, "h:mm a");
@@ -476,7 +507,7 @@ export function checkInPetOwnerToQueue({
 
   const updatedState: DailyQueueState = {
     ...current,
-    activeTickets: [...current.activeTickets, newTicket],
+    activeTickets: [...baseTickets, newTicket],
   };
 
   saveDailyQueue(updatedState);
@@ -601,8 +632,10 @@ export function skipQueueTicket(
 ): DailyQueueState {
   const current = getDailyQueue(dateStr);
 
+  let targetAppointmentId: string | null = null;
   const updatedTickets = current.activeTickets.map((t) => {
     if (t.ticketNumber === ticketNumber) {
+      targetAppointmentId = t.appointmentId;
       return {
         ...t,
         status: "skipped" as const,
@@ -623,6 +656,19 @@ export function skipQueueTicket(
   };
 
   saveDailyQueue(updatedState);
+
+  // Sync to Supabase in background: a no-show appointment is marked as missed.
+  if (targetAppointmentId) {
+    try {
+      const supabase = getPublicSupabaseClient();
+      supabase
+        .from("appointments")
+        .update({ status: "missed" })
+        .eq("id", targetAppointmentId)
+        .then();
+    } catch {}
+  }
+
   return updatedState;
 }
 
@@ -691,9 +737,11 @@ export function getPetOwnerQueueStatus(
 ): {
   myTicket: QueueTicket | null;
   nowServing: QueueTicket | null;
+  nextTicket: QueueTicket | null;
   ticketsAhead: number;
   isMyTurn: boolean;
   isInConsultation: boolean;
+  isNext: boolean;
   totalWaiting: number;
   isQueueClosed: boolean;
   isOverdue: boolean;
@@ -725,48 +773,70 @@ export function getPetOwnerQueueStatus(
     return false;
   };
 
-  // Find pet owner's active ticket for today (prioritizing in-consultation, then waiting, then non-completed)
+  // Find pet owner's ticket for today (prioritizing in-consultation, then waiting, then overdue).
+  // Skipped (no-show) and completed tickets are also returned so the owner sees a clear status
+  // (a skipped owner can re-scan the QR to rejoin with a fresh ticket).
   const myTicket =
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "in-consultation") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "waiting") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "overdue") ||
-    queue.activeTickets.find((t) => matchesTicket(t) && t.status !== "completed") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "skipped") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "completed") ||
     null;
 
   const isOverdue = !!myTicket && myTicket.status === "overdue";
   const nowServing =
     queue.activeTickets.find((t) => t.ticketNumber === queue.nowServingTicketNumber) || null;
 
+  // The next patient to call is the earliest waiting ticket. This stays valid
+  // even while another patient is currently in consultation.
+  const nextTicket =
+    queue.activeTickets
+      .filter((t) => t.status === "waiting")
+      .sort((a, b) => a.queueSequence - b.queueSequence)[0] || null;
+
   let ticketsAhead = 0;
   let isMyTurn = false;
   let isInConsultation = false;
 
   if (myTicket && !isQueueClosed && !isOverdue) {
-    if (myTicket.status === "in-consultation") {
-      isInConsultation = true;
+    // Only the ticket explicitly marked as "now serving" is actually being called.
+    // Other tickets may still carry an "in-consultation" status from earlier
+    // calls, so we must not treat every one of them as the owner's call.
+    if (queue.nowServingTicketNumber === myTicket.ticketNumber) {
       isMyTurn = true;
+      isInConsultation = myTicket.status === "in-consultation";
       ticketsAhead = 0;
-    } else if (queue.nowServingTicketNumber === myTicket.ticketNumber) {
-      isMyTurn = true;
-      ticketsAhead = 0;
-    } else if (myTicket.status === "waiting") {
-      // Count how many waiting tickets came before this ticket
+    } else {
+      // Count all active patients ahead of this ticket in the queue sequence.
       ticketsAhead = queue.activeTickets.filter(
         (t) =>
+          t.ticketNumber !== myTicket.ticketNumber &&
           (t.status === "waiting" || t.status === "in-consultation") &&
           t.queueSequence < myTicket.queueSequence
       ).length;
     }
   }
 
+  const isNext =
+    !!nextTicket &&
+    !!myTicket &&
+    !isQueueClosed &&
+    !isOverdue &&
+    !isMyTurn &&
+    myTicket.status === "waiting" &&
+    nextTicket.ticketNumber === myTicket.ticketNumber;
+
   const totalWaiting = isQueueClosed ? 0 : queue.activeTickets.filter((t) => t.status === "waiting").length;
 
   return {
     myTicket,
     nowServing,
+    nextTicket,
     ticketsAhead,
     isMyTurn,
     isInConsultation,
+    isNext,
     totalWaiting,
     isQueueClosed,
     isOverdue,
