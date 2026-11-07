@@ -26,8 +26,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useCVO } from "@/lib/cvo-context";
 import { getTodayDateStr } from "@/lib/cvo-queue";
-import { isBeforeClinicOpen } from "@/lib/utils";
+import { isBeforeClinicOpen, getFieldOpGracePeriod } from "@/lib/utils";
 
 /**
  * Fast-path: Uses native browser BarcodeDetector API (GPU/hardware-accelerated, ~5ms)
@@ -143,6 +144,7 @@ export function ScanQueueQrDialog({
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
 
   const todayStr = useMemo(() => getTodayDateStr(), []);
+  const { fieldOperations = [], incrementFieldOpSlots } = useCVO();
 
   // Handle successful scan
   const handleSuccess = async (decodedText: string) => {
@@ -206,9 +208,82 @@ export function ScanQueueQrDialog({
 
     // Automatically handle outreach attendance check-in
     if (decodedText.includes("outreach-checkin") || decodedText.includes("outreach-attendance")) {
+      // Validate date parameter: Attendance QR is strictly valid only on the date of outreach!
+      let outreachDate: string | null = null;
+      let opId: string | null = null;
+      let barangay: string | null = null;
+      try {
+        const url = new URL(decodedText, window.location.origin);
+        outreachDate = url.searchParams.get("date");
+        opId = url.searchParams.get("opId");
+        barangay = url.searchParams.get("barangay");
+      } catch {}
+
+      if (!outreachDate) {
+        const match = decodedText.match(/[?&]date=([0-9]{4}-[0-9]{2}-[0-9]{2})/);
+        if (match) outreachDate = match[1];
+      }
+      if (!opId) {
+        const match = decodedText.match(/[?&]opId=([A-Za-z0-9-_]+)/);
+        if (match) opId = match[1];
+      }
+      if (!barangay) {
+        const match = decodedText.match(/[?&]barangay=([^&]+)/);
+        if (match) barangay = decodeURIComponent(match[1]);
+      }
+
+      // Look up operation record if available for rich validation
+      const matchedOp = opId
+        ? fieldOperations.find((o) => o.opId === opId || o.id === opId)
+        : null;
+
+      if (matchedOp) {
+        if (!outreachDate) outreachDate = matchedOp.date;
+        if (!barangay) barangay = matchedOp.barangay;
+
+        const grace = getFieldOpGracePeriod(matchedOp.date, matchedOp.status);
+        if (grace.isPastGracePeriod || matchedOp.status === "completed" || matchedOp.status === "cancelled") {
+          toast.error("Expired Outreach QR Code", {
+            description: `This field operation in Barangay ${matchedOp.barangay} has concluded. Attendance QR codes are no longer valid.`,
+            duration: 6000,
+          });
+          return;
+        }
+      }
+
+      if (outreachDate) {
+        const cleanDate = outreachDate.includes("T") ? outreachDate.split("T")[0] : outreachDate.trim();
+        if (cleanDate !== todayStr) {
+          let formattedDate = cleanDate;
+          try {
+            const parts = cleanDate.split("-").map(Number);
+            const d = new Date(parts[0], parts[1] - 1, parts[2]);
+            if (isValid(d)) formattedDate = format(d, "MMMM d, yyyy");
+          } catch {}
+
+          const isFuture = cleanDate > todayStr;
+          toast.error(isFuture ? "Outreach QR Not Yet Active" : "Expired Outreach QR", {
+            description: isFuture
+              ? `This attendance QR poster is for outreach scheduled on ${formattedDate}. It is valid for check-in on that day only.`
+              : `This attendance QR was for outreach on ${formattedDate} and has expired. Attendance can only be recorded on the day of the outreach.`,
+            duration: 6000,
+          });
+          return;
+        }
+      }
+
+      // Automatically increment headcount on QR scan!
+      if (opId) {
+        incrementFieldOpSlots(opId, 1);
+        toast.success("Attendance Verified (+1 Headcount)", {
+          description: `Automatically registered attendance for Barangay ${barangay || "Outreach"}!`,
+        });
+      }
+
       setTimeout(() => {
         setOpen(false);
-        window.dispatchEvent(new CustomEvent("syncvet-outreach-scanned", { detail: decodedText }));
+        const urlWithFlag = `${decodedText}${decodedText.includes("?") ? "&" : "?"}autoCounted=true`;
+        window.dispatchEvent(new CustomEvent("syncvet-outreach-scanned", { detail: urlWithFlag }));
       }, 300);
       return;
     }

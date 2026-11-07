@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { getFieldOpGracePeriod } from "@/lib/utils";
+import { deleteQueueTicketsByRef } from "@/lib/cvo-queue";
 
 interface CVOContextType {
   consultations: CVOConsultation[];
@@ -52,6 +53,7 @@ interface CVOContextType {
     species?: string;
     serviceType?: string;
     vetName?: string;
+    skipIncrement?: boolean;
   }) => Promise<void>;
   addOfflineRecord: (rec: Omit<CVOOfflineVaccinationRecord, "id" | "timestamp" | "syncStatus">) => void;
   syncOfflineRecords: () => Promise<number>;
@@ -305,20 +307,39 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           .order("date", { ascending: false });
 
         let list: CVOConsultation[] = [];
+        let consultationsFetched = false;
         if (!error && data) {
+          consultationsFetched = true;
           list = data.map(mapDbConsultationToCVO);
         }
 
-        // Merge local consultations cache for instant offline persistence
+        // Merge local consultations cache for instant offline persistence.
+        // When Supabase was reachable, local entries that no longer exist there
+        // were deleted by an admin/vet — prune them instead of resurrecting them.
         try {
           if (typeof window !== "undefined") {
             const local = JSON.parse(localStorage.getItem("syncvet_local_consultations") || "[]");
             if (Array.isArray(local)) {
-              local.forEach((loc: any) => {
-                if (!list.some((existing) => existing.encounterNo === loc.encounterNo || existing.id === loc.id)) {
-                  list.unshift(loc);
+              if (consultationsFetched) {
+                const pruned = local.filter((loc: any) =>
+                  list.some(
+                    (existing) =>
+                      existing.encounterNo === loc.encounterNo ||
+                      existing.id === loc.id ||
+                      existing.encounterNo === loc.id ||
+                      existing.id === loc.encounterNo
+                  )
+                );
+                if (pruned.length !== local.length) {
+                  localStorage.setItem("syncvet_local_consultations", JSON.stringify(pruned));
                 }
-              });
+              } else {
+                local.forEach((loc: any) => {
+                  if (!list.some((existing) => existing.encounterNo === loc.encounterNo || existing.id === loc.id)) {
+                    list.unshift(loc);
+                  }
+                });
+              }
             }
           }
         } catch {}
@@ -802,6 +823,12 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
           c.encounterNo !== targetEncounterNo
         );
         localStorage.setItem("cvo_consultations_v2", JSON.stringify(filtered));
+      } catch {}
+
+      // 2.5. Purge any queue tickets tied to this schedule (shared Supabase + local cache)
+      try {
+        if (targetEncounterNo) await deleteQueueTicketsByRef(targetEncounterNo);
+        if (targetId && targetId !== targetEncounterNo) await deleteQueueTicketsByRef(targetId);
       } catch {}
 
       // 3. Purge from active daily queue in local storage
@@ -1302,15 +1329,45 @@ Reminders for Pet Owners:
     if (!targetOp) return;
 
     const newVaccinated = Math.max(0, (targetOp.petsVaccinated || 0) + count);
+
+    // 1. Instantly update TanStack query cache for immediate UI responsiveness
     queryClient.setQueryData<CVOFieldOperation[]>(["cvo_field_operations"], (old = []) =>
-      old.map((o) => (o.id === id || o.opId === id ? { ...o, petsVaccinated: newVaccinated } : o))
+      old.map((o) => (o.id === targetOp.id || o.opId === targetOp.opId ? { ...o, petsVaccinated: newVaccinated } : o))
     );
 
+    // 2. Broadcast live event & localStorage sync across dialogs and tabs
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("syncvet-field-op-updated", {
+            detail: { id: targetOp.id, opId: targetOp.opId, petsVaccinated: newVaccinated },
+          })
+        );
+        const stored = localStorage.getItem("cvo_field_operations_v2");
+        if (stored) {
+          const list = JSON.parse(stored);
+          const updated = list.map((o: any) =>
+            o.id === targetOp.id || o.op_id === targetOp.opId || o.opId === targetOp.opId
+              ? { ...o, petsVaccinated: newVaccinated, vaccinated_pets: newVaccinated }
+              : o
+          );
+          localStorage.setItem("cvo_field_operations_v2", JSON.stringify(updated));
+        }
+      } catch {}
+    }
+
+    // 3. Persist to Supabase safely without UUID casting errors
     try {
-      await supabase
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetOp.id);
+      const query = supabase
         .from("field_operations")
-        .update({ vaccinated_pets: newVaccinated, updated_at: new Date().toISOString() })
-        .or(`id.eq.${id},op_id.eq.${id}`);
+        .update({ vaccinated_pets: newVaccinated, updated_at: new Date().toISOString() });
+
+      if (isUuid) {
+        await query.eq("id", targetOp.id);
+      } else {
+        await query.eq("op_id", targetOp.opId);
+      }
     } catch (e) {
       console.warn("Increment field op slots notice", e);
     }
@@ -1326,11 +1383,8 @@ Reminders for Pet Owners:
     species?: string;
     serviceType?: string;
     vetName?: string;
+    skipIncrement?: boolean;
   }) => {
-    // 1. Increment operation slots
-    await incrementFieldOpSlots(params.opId, 1);
-
-    // 2. Add completed clinical encounter for the pet
     const todayStr = new Intl.DateTimeFormat("en-CA", {
       year: "numeric",
       month: "2-digit",
@@ -1338,6 +1392,25 @@ Reminders for Pet Owners:
       timeZone: "Asia/Manila",
     }).format(new Date());
 
+    // Validate if operation is scheduled for today
+    const matchedOp = fieldOperations.find(
+      (o) => o.opId === params.opId || o.id === params.opId
+    );
+    if (matchedOp) {
+      const cleanOpDate = matchedOp.date.includes("T") ? matchedOp.date.split("T")[0] : matchedOp.date.trim();
+      if (cleanOpDate !== todayStr) {
+        throw new Error(
+          `Outreach in Barangay ${matchedOp.barangay} is scheduled for ${cleanOpDate}. Attendance QR check-in is valid only on that day.`
+        );
+      }
+    }
+
+    // 1. Increment operation slots (if not already incremented on scan)
+    if (!params.skipIncrement) {
+      await incrementFieldOpSlots(params.opId, 1);
+    }
+
+    // 2. Add completed clinical encounter for the pet
     const timeStr = new Intl.DateTimeFormat("en-US", {
       hour: "2-digit",
       minute: "2-digit",

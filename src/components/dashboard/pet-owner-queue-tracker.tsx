@@ -22,6 +22,7 @@ import {
   checkInPetOwnerToQueue,
   resetPetOwnerQueue,
   removeQueueTicket,
+  syncQueueFromSupabase,
 } from "@/lib/cvo-queue";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -34,7 +35,7 @@ export function stopClinicCallingChime() {
   if (activeChimeContext) {
     try {
       activeChimeContext.close();
-    } catch {}
+    } catch { }
     activeChimeContext = null;
   }
 }
@@ -56,7 +57,7 @@ function playClinicCallingChime(repeatCount = 8) {
     activeChimeContext = ctx;
 
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().catch(() => { });
     }
 
     // Warm master filter to remove digital harshness and give rich acoustic bell resonance
@@ -151,7 +152,7 @@ function playClinicCallingChime(repeatCount = 8) {
       if (activeChimeContext === ctx) {
         try {
           ctx.close();
-        } catch {}
+        } catch { }
         activeChimeContext = null;
       }
     }, totalTimeMs);
@@ -172,7 +173,7 @@ function playTestChime() {
 
     const ctx = new AudioContextClass();
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().catch(() => { });
     }
 
     const filter = ctx.createBiquadFilter();
@@ -217,9 +218,9 @@ function playTestChime() {
     setTimeout(() => {
       try {
         ctx.close();
-      } catch {}
+      } catch { }
     }, 700);
-  } catch {}
+  } catch { }
 }
 
 interface PetOwnerQueueTrackerProps {
@@ -276,6 +277,12 @@ export function PetOwnerQueueTracker({
     // Immediate check
     handleUpdate();
 
+    // Pull the shared queue from Supabase so a reopened tracker sees tickets
+    // created on other devices (e.g. station QR scan on another phone).
+    syncQueueFromSupabase(todayStr)
+      .then(() => setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr)))
+      .catch(() => { });
+
     window.addEventListener("syncvet-queue-updated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
 
@@ -286,10 +293,10 @@ export function PetOwnerQueueTracker({
         if (payload?.payload?.date === todayStr) {
           try {
             localStorage.setItem(
-              `syncvet_daily_queue_${todayStr}`,
+              `syncvet_clinic_queue_${todayStr}`,
               JSON.stringify(payload.payload)
             );
-          } catch {}
+          } catch { }
           setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
         }
       })
@@ -311,13 +318,12 @@ export function PetOwnerQueueTracker({
         playClinicCallingChime(8);
       }
       toast.info(
-        `Ticket ${currentTicketNo} is called. Please proceed to the clinic desk with ${
-          queueInfo.myTicket?.petName || "your pet"
+        `Ticket ${currentTicketNo} is called. Please proceed to the clinic desk with ${queueInfo.myTicket?.petName || "your pet"
         }.`,
         {
           duration: 14000,
           action: {
-            label: "Hear Chime (8x)",
+            label: "Hear Chime",
             onClick: () => playClinicCallingChime(8),
           },
         }
@@ -362,8 +368,8 @@ export function PetOwnerQueueTracker({
         appointment.service_id === "spay-neuter"
           ? "Spay / Neuter Surgery"
           : appointment.service_id === "vaccination"
-          ? "Anti-Rabies Vaccination"
-          : "Clinical Consultation";
+            ? "Anti-Rabies Vaccination"
+            : "Clinical Consultation";
 
       const result = checkInPetOwnerToQueue({
         appointmentId: appointment.id,
@@ -389,7 +395,7 @@ export function PetOwnerQueueTracker({
               : `[Checked in: Ticket ${result.ticket.ticketNumber}]`,
           })
           .eq("id", appointment.id);
-      } catch {}
+      } catch { }
 
       setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
       toast.success(`Check-in confirmed! Your queue number is ${result.ticket.ticketNumber}.`);
@@ -425,8 +431,8 @@ export function PetOwnerQueueTracker({
       (primaryItem?.service_id === "spay-neuter"
         ? "Spay / Neuter Surgery"
         : primaryItem?.service_id === "vaccination"
-        ? "Anti-Rabies Vaccination"
-        : "Clinical Consultation");
+          ? "Anti-Rabies Vaccination"
+          : "Clinical Consultation");
 
     if (queueInfo.isQueueClosed) {
       return (
@@ -592,10 +598,10 @@ export function PetOwnerQueueTracker({
           isTicketOverdue
             ? "border-rose-500/30 bg-rose-500/5"
             : isCalled
-            ? "border-primary/40 bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent shadow-sm ring-1 ring-primary/25"
-            : isNextInLine
-            ? "border-emerald-500/30 bg-emerald-500/5"
-            : "border-border/60 bg-muted/20"
+              ? "border-primary/40 bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent shadow-sm ring-1 ring-primary/25"
+              : isNextInLine
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-border/60 bg-muted/20"
         )}
       >
         {/* ── Integrated Calling Notice Banner ── */}
@@ -678,8 +684,8 @@ export function PetOwnerQueueTracker({
                 isTicketOverdue
                   ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30"
                   : isCalled
-                  ? "bg-primary/15 text-primary border-primary/35"
-                  : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                    ? "bg-primary/15 text-primary border-primary/35"
+                    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
               )}
             >
               <span className="text-[9px] uppercase tracking-wider opacity-70 font-semibold leading-none mb-1">

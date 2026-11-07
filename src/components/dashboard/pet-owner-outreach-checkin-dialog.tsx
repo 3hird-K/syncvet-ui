@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { format, parseISO, isValid } from "date-fns";
 import {
   CheckCircle2,
   Building2,
@@ -12,7 +13,10 @@ import {
   User,
   ShieldCheck,
   Heart,
+  AlertTriangle,
+  Clock,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +68,7 @@ export function PetOwnerOutreachCheckInDialog({
         date: url.searchParams.get("date") || "2026-10-30",
         vet: url.searchParams.get("vet") || "Dr. Jeon Jungkook, DVM",
         venue: url.searchParams.get("venue") || "Barangay Covered Court",
+        autoCounted: url.searchParams.get("autoCounted") === "true",
       };
     } catch {
       return {
@@ -72,9 +77,24 @@ export function PetOwnerOutreachCheckInDialog({
         date: "2026-10-30",
         vet: "Dr. Jeon Jungkook, DVM",
         venue: "Barangay Covered Court",
+        autoCounted: false,
       };
     }
   })();
+
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const cleanDate = parsedMeta?.date ? (parsedMeta.date.includes("T") ? parsedMeta.date.split("T")[0] : parsedMeta.date.trim()) : "";
+  const isDateToday = cleanDate ? cleanDate === todayStr : true;
+  const isFutureDate = cleanDate ? cleanDate > todayStr : false;
+
+  const formattedDate = useMemo(() => {
+    if (!cleanDate) return "";
+    try {
+      const d = parseISO(cleanDate);
+      if (isValid(d)) return format(d, "MMMM d, yyyy");
+    } catch {}
+    return cleanDate;
+  }, [cleanDate]);
 
   useEffect(() => {
     if (pets.length > 0 && !selectedPetId) {
@@ -83,6 +103,13 @@ export function PetOwnerOutreachCheckInDialog({
   }, [pets, selectedPetId]);
 
   const handleSubmit = async () => {
+    if (!isDateToday) {
+      toast.error("Check-in Not Allowed Today", {
+        description: `This outreach is scheduled for ${formattedDate || parsedMeta?.date}. Attendance QR codes can only be scanned and recorded on the scheduled day.`,
+      });
+      return;
+    }
+
     if (!selectedPetId && pets.length > 0) {
       toast.error("Please select a pet");
       return;
@@ -104,6 +131,7 @@ export function PetOwnerOutreachCheckInDialog({
         species: chosenPet.species,
         serviceType: selectedService,
         vetName: parsedMeta?.vet,
+        skipIncrement: Boolean(parsedMeta?.autoCounted),
       });
 
       toast.success("Attendance Verified & Encounter Logged!", {
@@ -170,6 +198,19 @@ export function PetOwnerOutreachCheckInDialog({
               </div>
             </div>
           </div>
+
+          {/* Date Validation Alert if Not Today */}
+          {!isDateToday && (
+            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="size-4 shrink-0" />
+                <span>QR Attendance Valid on Event Date Only</span>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-300/90 leading-relaxed">
+                This community outreach is scheduled for <strong>{formattedDate || parsedMeta.date}</strong>. {isFutureDate ? "The QR attendance station is not yet active and will open on that day." : "This outreach visit has concluded."}
+              </p>
+            </div>
+          )}
 
           {/* Form: Select Pet & Service */}
           <div className="space-y-3 text-xs">
@@ -244,12 +285,17 @@ export function PetOwnerOutreachCheckInDialog({
             <Button
               type="button"
               size="sm"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !isDateToday}
               onClick={handleSubmit}
-              className="text-xs h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold gap-1.5 cursor-pointer shadow-xs"
+              className={cn(
+                "text-xs h-8 font-semibold gap-1.5 shadow-xs",
+                isDateToday
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                  : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+              )}
             >
               <CheckCircle2 className="size-3.5" />
-              <span>Confirm & Record Presence</span>
+              <span>{isDateToday ? "Confirm & Record Presence" : `Valid Only on ${parsedMeta.date}`}</span>
             </Button>
           </div>
         </div>

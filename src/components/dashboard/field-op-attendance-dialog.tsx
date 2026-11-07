@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { format, parseISO, isValid } from "date-fns";
 import QRCode from "qrcode";
 import {
   QrCode,
@@ -36,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useCVO } from "@/lib/cvo-context";
-import { getFieldOpGracePeriod } from "@/lib/utils";
+import { cn, getFieldOpGracePeriod } from "@/lib/utils";
 import type { CVOFieldOperation } from "@/data/cvo-store";
 import { toast } from "sonner";
 
@@ -49,19 +50,60 @@ interface FieldOpAttendanceDialogProps {
 export function FieldOpAttendanceDialog({
   open,
   onOpenChange,
-  operation,
+  operation: propOp,
 }: FieldOpAttendanceDialogProps) {
-  const { incrementFieldOpSlots } = useCVO();
+  const { fieldOperations, incrementFieldOpSlots } = useCVO();
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [customWalkinCount, setCustomWalkinCount] = useState<string>("");
   const [isUpdating, setIsUpdating] = useState(false);
   const printableRef = useRef<HTMLDivElement>(null);
+
+  // Live operation lookup from CVO context
+  const liveOp = useMemo(() => {
+    if (!propOp) return null;
+    return fieldOperations.find((o) => o.id === propOp.id || o.opId === propOp.opId) || propOp;
+  }, [fieldOperations, propOp]);
+
+  // Real-time listener for instant count updates across tabs & dialogs
+  const [liveVaccinatedCount, setLiveVaccinatedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    setLiveVaccinatedCount(null);
+  }, [propOp?.id, propOp?.opId]);
+
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      const detail = e.detail;
+      if (
+        detail &&
+        (detail.id === propOp?.id ||
+          detail.opId === propOp?.opId ||
+          detail.id === liveOp?.id ||
+          detail.opId === liveOp?.opId)
+      ) {
+        if (typeof detail.petsVaccinated === "number") {
+          setLiveVaccinatedCount(detail.petsVaccinated);
+        }
+      }
+    };
+    window.addEventListener("syncvet-field-op-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("syncvet-field-op-updated", handleUpdate);
+    };
+  }, [propOp?.id, propOp?.opId, liveOp?.id, liveOp?.opId]);
+
+  const operation = liveOp;
 
   const grace = useMemo(() => {
     return operation ? getFieldOpGracePeriod(operation.date, operation.status) : null;
   }, [operation]);
 
   const isLocked = grace?.isPastGracePeriod || operation?.status === "completed" || operation?.status === "cancelled";
+
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const cleanOpDate = operation?.date ? (operation.date.includes("T") ? operation.date.split("T")[0] : operation.date.trim()) : "";
+  const isOpToday = cleanOpDate === todayStr;
+  const isOpFuture = cleanOpDate > todayStr;
 
   // Construct attendance QR verification payload
   const qrPayload = useMemo(() => {
@@ -95,7 +137,7 @@ export function FieldOpAttendanceDialog({
   if (!operation) return null;
 
   const targetSlots = operation.petsTarget || 100;
-  const currentTotal = operation.petsVaccinated || 0;
+  const currentTotal = liveVaccinatedCount !== null ? liveVaccinatedCount : (operation.petsVaccinated || 0);
   const pct = Math.min(100, Math.round((currentTotal / targetSlots) * 100));
 
   // Resolved services list
@@ -103,14 +145,22 @@ export function FieldOpAttendanceDialog({
     operation.type.toLowerCase().includes("kapon") || operation.type.toLowerCase().includes("spay")
       ? ["vaccination", "spay-neuter"]
       : operation.type.toLowerCase().includes("rabies")
-      ? ["vaccination", "consultation"]
-      : ["consultation", "vaccination"]
+        ? ["vaccination", "consultation"]
+        : ["consultation", "vaccination"]
   );
 
   const handleIncrement = async (amt: number) => {
     if (isLocked) {
       toast.error("Editing Locked", {
         description: "1-day grace period has passed. Records are locked from further editing.",
+      });
+      return;
+    }
+    if (!isOpToday && !grace?.isGracePeriodActive) {
+      toast.error("Outreach Not Active Today", {
+        description: isOpFuture
+          ? `Headcount can only be recorded on the scheduled deployment date (${operation.date}).`
+          : `This outreach concluded on ${operation.date} and is no longer active for walk-in entry.`,
       });
       return;
     }
@@ -218,49 +268,49 @@ export function FieldOpAttendanceDialog({
       <DialogContent
         showCloseButton={false}
         overlayClassName="z-[90] bg-black/60 backdrop-blur-xs"
-        className="w-[95vw] sm:max-w-4xl lg:max-w-5xl max-h-[92vh] overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-0 rounded-2xl bg-background border border-border/80 shadow-2xl z-[100]"
+        className="w-[96vw] sm:max-w-5xl lg:max-w-6xl max-h-[96vh] overflow-y-auto lg:overflow-hidden no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-0 rounded-2xl bg-background border border-border/80 shadow-2xl z-[100] flex flex-col"
         onOpenAutoFocus={(e) => {
           e.preventDefault();
         }}
       >
         {/* ── Top-right Action Buttons (Print, Download, Close) pinned beside the X icon ── */}
-        <div className="absolute right-4 top-4 z-20 flex items-center gap-1.5">
+        <div className="absolute right-3.5 top-3.5 z-20 flex items-center gap-1.5">
           <button
             type="button"
             onClick={handlePrint}
-            className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+            className="flex size-7.5 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             title="Print Standee Poster"
             aria-label="Print Standee Poster"
           >
-            <Printer className="size-4" />
+            <Printer className="size-3.5" />
           </button>
 
           <button
             type="button"
             onClick={handleDownloadQr}
-            className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+            className="flex size-7.5 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             title="Download QR Image"
             aria-label="Download QR Image"
           >
-            <Download className="size-4" />
+            <Download className="size-3.5" />
           </button>
 
           <DialogClose asChild>
             <button
               type="button"
-              className="flex size-8 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex size-7.5 items-center justify-center rounded-full border border-border/60 bg-muted/70 text-muted-foreground shadow-2xs transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
               title="Close"
               aria-label="Close"
             >
-              <X className="size-4" />
+              <X className="size-3.5" />
               <span className="sr-only">Close</span>
             </button>
           </DialogClose>
         </div>
 
-        {/* ── Rich Header ── */}
-        <div className="p-5 sm:p-6 pb-4 bg-muted/20 border-b border-border/70 pr-32 sm:pr-36">
-          <div className="space-y-1">
+        {/* ── Header ── */}
+        <div className="p-3.5 sm:p-4 pb-2.5 bg-muted/20 border-b border-border/70 pr-28 sm:pr-32 shrink-0">
+          <div className="space-y-0.5">
             <div className="flex items-center gap-2 flex-wrap">
               <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
                 Barangay {operation.barangay} Field Outreach
@@ -284,90 +334,104 @@ export function FieldOpAttendanceDialog({
                   <Clock className="size-2.5" />
                   <span>1-Day Grace Period Active</span>
                 </Badge>
-              ) : (
+              ) : isOpToday ? (
                 <Badge
                   variant="outline"
                   className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 font-semibold gap-1"
                 >
                   <Sparkles className="size-2.5" />
-                  <span>Active Deployment</span>
+                  <span>Active Deployment (Today)</span>
+                </Badge>
+              ) : isOpFuture ? (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 font-semibold gap-1"
+                >
+                  <Calendar className="size-2.5" />
+                  <span>Scheduled ({operation.date})</span>
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] bg-muted/60 text-muted-foreground border-border/80 font-semibold gap-1"
+                >
+                  <Clock className="size-2.5" />
+                  <span>Concluded</span>
                 </Badge>
               )}
               <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-semibold">
                 100% Free CVO Public Service
               </Badge>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
+            <DialogDescription className="text-[11.5px] text-muted-foreground">
               Official City Veterinary Office community mission, hybrid slot management, and citizen check-in terminal.
             </DialogDescription>
           </div>
         </div>
 
-        {/* ── Unified 2-Column Command Terminal Layout (No Tabs) ── */}
-        <div className="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* ── LEFT COLUMN: Outreach Mission, Capacity, Walk-in Tally & Field Protocols ── */}
-          <div className="lg:col-span-7 space-y-4">
+        {/* ── Single-Page Command Terminal Layout (Zero Scroll on Desktop) ── */}
+        <div className="p-3.5 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          {/* ── LEFT COLUMN: Outreach Mission, Capacity & Rapid Walk-in Tally ── */}
+          <div className="lg:col-span-7 space-y-2.5">
             {/* 1. Deployment Overview & Mission Brief */}
-            <div className="p-4 rounded-xl border border-border/80 bg-card space-y-3">
+            <div className="p-3 rounded-xl border border-border/80 bg-card space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Building2 className="size-3.5 text-primary" />
                   <span>Field Mission Deployment Overview</span>
                 </span>
-                <span className="text-xs font-mono font-semibold text-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/60">
+                <span className="text-[11px] font-mono font-semibold text-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/60">
                   {operation.date}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                <div className="p-2.5 rounded-lg bg-muted/20 border border-border/60 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Venue & Station</span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 rounded-lg bg-muted/20 border border-border/50">
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground block">Venue & Station</span>
                   <p className="font-semibold text-foreground truncate">{operation.venue || "Barangay Covered Court"}</p>
-                  <p className="text-[10.5px] text-muted-foreground">{operation.timeWindow || "08:00 AM - 05:00 PM"}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{operation.timeWindow || "08:00 AM - 05:00 PM"}</p>
                 </div>
-                <div className="p-2.5 rounded-lg bg-muted/20 border border-border/60 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Lead Veterinarian</span>
+                <div className="p-2 rounded-lg bg-muted/20 border border-border/50">
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground block">Lead Veterinarian</span>
                   <p className="font-semibold text-foreground truncate">{operation.lead}</p>
-                  <p className="text-[10.5px] text-primary font-medium">{operation.vetProfile?.role || "Field Operations Officer"}</p>
+                  <p className="text-[10px] text-primary font-medium truncate">{operation.vetProfile?.role || "Field Operations Officer"}</p>
                 </div>
               </div>
 
               {/* Badged Free Services */}
-              <div className="space-y-1.5 pt-0.5">
-                <span className="text-[10.5px] font-semibold text-muted-foreground">Free Veterinary Services Included Today:</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {opServices.includes("consultation") && (
-                    <Badge variant="outline" className="text-[10.5px] gap-1 border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10 font-medium">
-                      <Stethoscope className="size-3" /> Clinical Consultation & Checkup
-                    </Badge>
-                  )}
-                  {opServices.includes("vaccination") && (
-                    <Badge variant="outline" className="text-[10.5px] gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-medium">
-                      <Syringe className="size-3" /> Anti-Rabies Immunization
-                    </Badge>
-                  )}
-                  {opServices.includes("spay-neuter") && (
-                    <Badge variant="outline" className="text-[10.5px] gap-1 border-purple-500/30 text-purple-600 dark:text-purple-400 bg-purple-500/10 font-medium">
-                      <Scissors className="size-3" /> Free Spay & Neuter (Kapon)
-                    </Badge>
-                  )}
-                </div>
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] font-semibold text-muted-foreground mr-0.5">Services:</span>
+                {opServices.includes("consultation") && (
+                  <Badge variant="outline" className="text-[9.5px] py-0 px-1.5 gap-1 border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10 font-medium">
+                    <Stethoscope className="size-2.5" /> Consultation &amp; Checkup
+                  </Badge>
+                )}
+                {opServices.includes("vaccination") && (
+                  <Badge variant="outline" className="text-[9.5px] py-0 px-1.5 gap-1 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-medium">
+                    <Syringe className="size-2.5" /> Anti-Rabies Immunization
+                  </Badge>
+                )}
+                {opServices.includes("spay-neuter") && (
+                  <Badge variant="outline" className="text-[9.5px] py-0 px-1.5 gap-1 border-purple-500/30 text-purple-600 dark:text-purple-400 bg-purple-500/10 font-medium">
+                    <Scissors className="size-2.5" /> Free Spay &amp; Neuter
+                  </Badge>
+                )}
               </div>
             </div>
 
-            {/* 2. Hybrid Capacity & Dual-Stream Telemetry */}
-            <div className="p-4 rounded-xl border border-border/80 bg-card space-y-3">
+            {/* 2. Hybrid Capacity & Live Walk-in Headcount Hub (Combined) */}
+            <div className="p-3 rounded-xl border border-border/80 bg-card space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-foreground flex items-center gap-1.5">
-                  <UserCheck className="size-4 text-primary" />
-                  <span>Hybrid Slot Allocation & Live Headcount</span>
+                <span className="font-bold text-foreground flex items-center gap-1.5 text-[11.5px]">
+                  <UserCheck className="size-3.5 text-primary" />
+                  <span>Hybrid Slot Allocation &amp; Live Headcount</span>
                 </span>
-                <span className="font-mono font-bold text-foreground bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">
+                <span className="font-mono font-bold text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">
                   {currentTotal} / {targetSlots} Slots ({pct}%)
                 </span>
               </div>
 
-              <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all duration-300"
                   style={{ width: `${pct}%` }}
@@ -375,210 +439,194 @@ export function FieldOpAttendanceDialog({
               </div>
 
               {/* 3-Part Metric Breakdown */}
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-muted/25 border border-border/60 text-center space-y-0.5">
-                  <span className="block text-[9.5px] uppercase font-bold tracking-wider text-muted-foreground">
-                    Target Quota
-                  </span>
-                  <span className="text-base font-extrabold text-foreground">{targetSlots}</span>
-                  <span className="block text-[9.5px] text-muted-foreground">Maximum Capacity</span>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="p-1.5 rounded-lg bg-muted/25 border border-border/60">
+                  <span className="block text-[9px] uppercase font-bold tracking-wider text-muted-foreground">Target Quota</span>
+                  <span className="text-sm font-extrabold text-foreground">{targetSlots}</span>
+                  <span className="block text-[8.5px] text-muted-foreground">Max Capacity</span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center space-y-0.5">
-                  <span className="block text-[9.5px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-300">
-                    Filled Count
-                  </span>
-                  <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">{currentTotal}</span>
-                  <span className="block text-[9.5px] text-emerald-700/80 dark:text-emerald-300/80">Total Animals Served</span>
+                <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <span className="block text-[9px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-300">Filled Count</span>
+                  <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">{currentTotal}</span>
+                  <span className="block text-[8.5px] text-emerald-700/80 dark:text-emerald-300/80">Animals Served</span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-muted/25 border border-border/60 text-center space-y-0.5">
-                  <span className="block text-[9.5px] uppercase font-bold tracking-wider text-muted-foreground">
-                    Remaining
-                  </span>
-                  <span className="text-base font-extrabold text-foreground">
-                    {Math.max(0, targetSlots - currentTotal)}
-                  </span>
-                  <span className="block text-[9.5px] text-muted-foreground">Available Spots</span>
+                <div className="p-1.5 rounded-lg bg-muted/25 border border-border/60">
+                  <span className="block text-[9px] uppercase font-bold tracking-wider text-muted-foreground">Remaining</span>
+                  <span className="text-sm font-extrabold text-foreground">{Math.max(0, targetSlots - currentTotal)}</span>
+                  <span className="block text-[8.5px] text-muted-foreground">Available Spots</span>
                 </div>
               </div>
 
-              {/* Hybrid Model Explanation */}
-              <div className="p-3 rounded-lg bg-muted/20 border border-border/50 text-xs text-muted-foreground leading-relaxed space-y-1">
-                <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Info className="size-3.5 text-primary shrink-0" />
-                  <span>How Hybrid Intake Works:</span>
+              {/* Seamless Inline Walk-in Tally Strip */}
+              <div className="pt-2 border-t border-border/50 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-0.5">Walk-in Tally:</span>
+                  {isLocked ? (
+                    <span className="text-[10px] text-rose-600 flex items-center gap-1 font-medium">
+                      <Lock className="size-3" /> Mission Concluded &amp; Locked
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isUpdating}
+                        onClick={() => handleIncrement(1)}
+                        className="h-7 px-2 text-[11px] font-semibold gap-1 bg-muted/30 hover:bg-muted cursor-pointer"
+                      >
+                        <Plus className="size-2.5 text-primary" /> +1
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isUpdating}
+                        onClick={() => handleIncrement(5)}
+                        className="h-7 px-2 text-[11px] font-semibold gap-1 bg-muted/30 hover:bg-muted cursor-pointer"
+                      >
+                        <Plus className="size-2.5 text-primary" /> +5
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isUpdating}
+                        onClick={() => handleIncrement(10)}
+                        className="h-7 px-2 text-[11px] font-semibold gap-1 bg-muted/30 hover:bg-muted cursor-pointer"
+                      >
+                        <Plus className="size-2.5 text-primary" /> +10
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                <p>
-                  <strong>1. Registered SyncVet App Users:</strong> Pet owners scan the attendance QR poster using their phone camera to instantly register, verify attendance, and receive an automated clinical entry into their pet&apos;s digital vaccination passport.
-                </p>
-                <p>
-                  <strong>2. Community Walk-ins:</strong> Residents without accounts or smartphones are accommodated directly on-site and tallied via the manual walk-in registry below to maintain accurate barangay public health census.
-                </p>
-              </div>
-            </div>
 
-            {/* 3. Unregistered Walk-in Headcount Tally */}
-            <div className="p-4 rounded-xl border border-border/80 bg-muted/15 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Plus className="size-3.5 text-primary" />
-                    <span>Rapid Walk-in Intake Registry</span>
-                  </h4>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Fast on-site tally counter for walk-in barangay residents without SyncVet accounts
-                  </p>
-                </div>
-              </div>
-
-              {isLocked ? (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-200 text-xs flex items-center gap-2">
-                  <Lock className="size-4 shrink-0 text-rose-600" />
-                  <span>Outreach mission concluded & 24-hour grace period ended. Slot tallies are locked for municipal auditing.</span>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={isUpdating}
-                    onClick={() => handleIncrement(1)}
-                    className="h-8 text-xs font-semibold gap-1 bg-card hover:bg-muted cursor-pointer"
-                  >
-                    <Plus className="size-3 text-primary" />
-                    <span>+1 Walk-in</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={isUpdating}
-                    onClick={() => handleIncrement(5)}
-                    className="h-8 text-xs font-semibold gap-1 bg-card hover:bg-muted cursor-pointer"
-                  >
-                    <Plus className="size-3 text-primary" />
-                    <span>+5 Walk-ins</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={isUpdating}
-                    onClick={() => handleIncrement(10)}
-                    className="h-8 text-xs font-semibold gap-1 bg-card hover:bg-muted cursor-pointer"
-                  >
-                    <Plus className="size-3 text-primary" />
-                    <span>+10 Walk-ins</span>
-                  </Button>
-
-                  <div className="flex items-center gap-1.5 ml-auto">
+                {!isLocked && (
+                  <div className="flex items-center gap-1.5">
                     <Input
                       type="number"
                       placeholder="Custom count..."
                       value={customWalkinCount}
                       onChange={(e) => setCustomWalkinCount(e.target.value)}
-                      className="h-8 text-xs w-32 bg-card"
+                      className="h-7 text-xs w-28 bg-muted/20"
                     />
                     <Button
                       type="button"
                       size="sm"
                       disabled={isUpdating || !customWalkinCount}
                       onClick={handleSetCustomCount}
-                      className="h-8 text-xs font-semibold cursor-pointer"
+                      className="h-7 px-2.5 text-xs font-semibold cursor-pointer"
                     >
-                      Add Tally
+                      Add
                     </Button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* 4. On-site Citizen Guidelines & 24h Policy */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl border border-border/70 bg-card text-muted-foreground space-y-1">
-                <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px]">
-                  <ShieldCheck className="size-3.5 text-primary" />
-                  <span>On-Site Citizen Guidelines</span>
+            {/* 3. Compact Guidelines & Grace Window */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/15 text-muted-foreground space-y-0.5">
+                <span className="font-semibold text-foreground flex items-center gap-1 text-[10.5px]">
+                  <ShieldCheck className="size-3 text-primary" />
+                  <span>Citizen Protocols</span>
                 </span>
-                <p className="text-[10.5px] leading-relaxed">
-                  • Dogs must be on a leash or harness; cats in secure carriers.
-                  <br />• Pets for anti-rabies vaccination must be at least 3 months of age and healthy.
-                  <br />• 15-minute post-vaccination observation advised before departure.
+                <p className="text-[10px] leading-relaxed">
+                  Dogs on leash/harness, cats in carriers. Pets for rabies must be healthy &amp; ≥3 mos old.
                 </p>
               </div>
-
-              <div className="p-3 rounded-xl border border-border/70 bg-card text-muted-foreground space-y-1">
-                <span className="font-semibold text-foreground flex items-center gap-1.5 text-[11px]">
-                  <AlertCircle className="size-3.5 text-amber-500" />
-                  <span>24-Hour Grace Period & Auto-Archive</span>
+              <div className="p-2.5 rounded-xl border border-border/60 bg-muted/15 text-muted-foreground space-y-0.5">
+                <span className="font-semibold text-foreground flex items-center gap-1 text-[10.5px]">
+                  <AlertCircle className="size-3 text-amber-500" />
+                  <span>24h Grace Period</span>
                 </span>
-                <p className="text-[10.5px] leading-relaxed">
-                  Field staff have 24 hours post-deployment to reconcile paper notes. When the grace window closes, records become permanently locked and bulletin announcements automatically move to pet owners&apos; archived records.
+                <p className="text-[10px] leading-relaxed">
+                  Staff have 24 hours post-mission to reconcile notes before automatic locking &amp; archiving.
                 </p>
               </div>
             </div>
           </div>
 
           {/* ── RIGHT COLUMN: Official Dark Attendance Standee Poster Preview ── */}
-          <div className="lg:col-span-5 space-y-3.5">
+          <div className="lg:col-span-5 space-y-2">
+            {!isOpToday && (
+              <div className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                <AlertCircle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span className="text-[11px] leading-tight">
+                  {isOpFuture
+                    ? `Standee scheduled for ${operation.date}. Citizen check-in scans unlock on event day.`
+                    : `Outreach concluded on ${operation.date}. QR code is now expired.`}
+                </span>
+              </div>
+            )}
+
             <div
               ref={printableRef}
-              className="p-5 sm:p-6 rounded-2xl border-2 border-slate-800/80 dark:border-slate-700 bg-card text-center space-y-3.5 shadow-sm select-none"
+              className="p-3 sm:p-3.5 rounded-2xl border-2 border-slate-800/80 dark:border-slate-700 bg-card text-center space-y-2 shadow-sm select-none"
             >
-              <div className="space-y-1">
-                <span className="text-[10px] font-extrabold tracking-widest uppercase text-primary block">
+              <div className="space-y-0.5">
+                <span className="text-[9px] font-extrabold tracking-widest uppercase text-primary block">
                   City Veterinary Office • Cagayan de Oro
                 </span>
-                <h3 className="text-base font-extrabold text-foreground">
+                <h3 className="text-sm font-extrabold text-foreground truncate">
                   Barangay {operation.barangay} Outreach
                 </h3>
-                <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                  <Building2 className="size-3.5 text-primary shrink-0" />
-                  <span className="truncate max-w-[240px] font-medium">{operation.venue || "Barangay Covered Court"}</span>
+                <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <Building2 className="size-3 text-primary shrink-0" />
+                  <span className="truncate max-w-[200px] font-medium text-[11px]">{operation.venue || "Barangay Covered Court"}</span>
                 </div>
-                <div className="text-[10.5px] text-muted-foreground">
-                  {operation.date} • {operation.timeWindow || "08:00 AM - 05:00 PM"}
+                <div className="flex items-center justify-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-muted-foreground">{operation.date} • {operation.timeWindow || "08:00 AM - 05:00 PM"}</span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[9px] py-0 px-1.5 font-semibold",
+                      isOpToday
+                        ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10"
+                        : "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10"
+                    )}
+                  >
+                    {isOpToday ? "✓ Valid to Scan Today" : `Valid on ${operation.date} Only`}
+                  </Badge>
                 </div>
               </div>
 
-              {/* Crisp Dark QR Code */}
-              <div className="p-3.5 bg-white rounded-xl border-2 border-slate-900 shadow-sm inline-block">
+              {/* Crisp Dark QR Code - sized to 135px/145px for single-page zero scroll */}
+              <div className="p-2 bg-white rounded-xl border-2 border-slate-900 shadow-sm inline-block">
                 {qrDataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={qrDataUrl}
                     alt="Attendance QR Code"
-                    className="size-48 sm:size-52 object-contain"
+                    className="size-32 sm:size-36 object-contain"
                   />
                 ) : (
-                  <div className="size-52 flex items-center justify-center text-xs text-muted-foreground">
+                  <div className="size-32 sm:size-36 flex items-center justify-center text-xs text-muted-foreground">
                     Generating Standee QR...
                   </div>
                 )}
               </div>
 
-              {/* QR Instructions for Citizens */}
-              <div className="space-y-1.5 text-left bg-muted/25 p-3 rounded-xl border border-border/60">
-                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <Smartphone className="size-3.5 text-primary" />
-                  <span>How to Check-In Digitally:</span>
+              {/* QR Instructions for Citizens - compact 2-line layout */}
+              <div className="text-left bg-muted/25 p-2 rounded-xl border border-border/60 space-y-0.5">
+                <span className="text-[10.5px] font-bold text-foreground flex items-center gap-1.5">
+                  <Smartphone className="size-3 text-primary" />
+                  <span>Pet Owner Digital Check-In:</span>
                 </span>
-                <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal list-inside leading-snug">
-                  <li>Open the <strong>SyncVet Pet Owner App</strong> on your mobile phone.</li>
-                  <li>Tap the <strong>Scan QR</strong> camera icon on your dashboard.</li>
-                  <li>Scan this QR standee to register your attendance and link to your pet&apos;s passport.</li>
-                </ol>
+                <p className="text-[9.5px] text-muted-foreground leading-snug">
+                  Open <strong>SyncVet Pet Owner App</strong> → Tap <strong>Scan QR</strong> camera icon → Scan this standee to record attendance &amp; sync pet passport.
+                </p>
               </div>
 
-              <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span className="truncate max-w-[150px]">Vet: {operation.lead}</span>
+              <div className="pt-1 border-t border-border/60 flex items-center justify-between text-[10px] text-muted-foreground">
+                <span className="truncate max-w-[130px]">Vet: {operation.lead}</span>
                 <span className="font-mono font-semibold text-foreground">{operation.opId}</span>
               </div>
             </div>
 
             {/* Staff Deployment Tip */}
-            <p className="text-[10.5px] text-muted-foreground text-center leading-tight pt-1">
-              Tip for field personnel: Use the download &amp; print icons at the top right to print this standee for the triage reception desk.
+            <p className="text-[10px] text-muted-foreground text-center leading-tight">
+              Tip for field personnel: Use the download &amp; print icons at top right for the reception standee.
             </p>
           </div>
         </div>

@@ -159,6 +159,16 @@ export function TodaysOperationsCard() {
         }
       )
       .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "queue_tickets" },
+        () => {
+          syncQueueFromSupabase(todayStr).then(() => {
+            const synced = syncConsultationsToQueue(consultations, todayStr);
+            setQueueState(synced);
+          });
+        }
+      )
+      .on(
         "broadcast",
         { event: "queue_state_updated" },
         (payload) => {
@@ -561,79 +571,90 @@ export function TodaysOperationsCard() {
                       </div>
                     </div>
 
-                    {/* Right: Status, Call Button, Chevron */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isNextTicket ? (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-700 pointer-events-none select-none shadow-none gap-1"
-                        >
-                          <Bell className="size-2.5 text-emerald-600" />
-                          Next to Call
-                        </Badge>
-                      ) : (
-                        getStatusBadge(t.status)
-                      )}
-                      {t.status === "waiting" && !isClosed && (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCallTicket(t.ticketNumber, t.petName);
-                            }}
-                            className={cn(
-                              "h-7 px-2.5 text-[11px] font-bold text-white rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform",
-                              isNextTicket
-                                ? "bg-emerald-600 hover:bg-emerald-700"
-                                : "bg-blue-600 hover:bg-blue-700"
-                            )}
+                    {/* Right: Status badge + Action Buttons (stacked, scannable) */}
+                    <div className="flex flex-col items-end justify-center gap-1.5 shrink-0 self-center">
+                      {/* Status / Next-to-Call badge */}
+                      <div className="flex items-center gap-1.5">
+                        {isNextTicket ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-700 pointer-events-none select-none shadow-none gap-1"
                           >
-                            <Bell className="size-3" /> {isNextTicket ? "Call Next" : "Call"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSkipTicket(t.ticketNumber, t.petName);
-                            }}
-                            title="No-show / Skip (removes them from the queue — they can scan the QR again to rejoin)"
-                            className="size-7 p-0 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 cursor-pointer"
-                          >
-                            <UserX className="size-3.5" />
-                            <span className="sr-only">No-show / Skip</span>
-                          </Button>
+                            <Bell className="size-2.5 text-emerald-600" />
+                            Next to Call
+                          </Badge>
+                        ) : (
+                          getStatusBadge(t.status)
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      {(t.status === "waiting" || t.status === "in-consultation") && !isClosed && (
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          {t.status === "waiting" ? (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCallTicket(t.ticketNumber, t.petName);
+                                }}
+                                title={isNextTicket ? "Call the next ticket in line" : "Call this ticket"}
+                                className={cn(
+                                  "h-8 px-3 text-[11px] font-bold text-white rounded-lg cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform",
+                                  isNextTicket
+                                    ? "bg-emerald-600 hover:bg-emerald-700"
+                                    : "bg-blue-600 hover:bg-blue-700"
+                                )}
+                              >
+                                <Bell className="size-3.5" />
+                                {isNextTicket ? "Call Next" : "Call"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSkipTicket(t.ticketNumber, t.petName);
+                                }}
+                                title="No-show — remove from the queue (they can scan the QR again to rejoin)"
+                                className="h-8 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg border border-rose-500/30 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 cursor-pointer active:scale-95 transition-transform"
+                              >
+                                <UserX className="size-3.5" />
+                                <span className="hidden sm:inline">No-show</span>
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCompleteTicket(t.ticketNumber, t.petName);
+                                }}
+                                title="Done — mark this visit as complete"
+                                className="h-8 px-3 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                Done
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSkipTicket(t.ticketNumber, t.petName);
+                                }}
+                                title="No-show — remove from the queue (they can scan the QR again to rejoin)"
+                                className="h-8 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg border border-rose-500/30 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 cursor-pointer active:scale-95 transition-transform"
+                              >
+                                <UserX className="size-3.5" />
+                                <span className="hidden sm:inline">No-show</span>
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
-                      {t.status === "in-consultation" && !isClosed && (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCompleteTicket(t.ticketNumber, t.petName);
-                            }}
-                            title="Done — mark this visit as complete"
-                            className="h-7 px-2.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
-                          >
-                            <CheckCircle2 className="size-3" /> Done
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSkipTicket(t.ticketNumber, t.petName);
-                            }}
-                            title="No-show / Skip (removes them from the queue — they can scan the QR again to rejoin)"
-                            className="h-7 px-2.5 text-[11px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 rounded-xl cursor-pointer shadow-xs gap-1.5 active:scale-95 transition-transform"
-                          >
-                            <UserX className="size-3.5" /> No-show
-                          </Button>
-                        </div>
-                      )}
-                      <ChevronRight className="size-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all ml-0.5" />
                     </div>
                   </div>
 

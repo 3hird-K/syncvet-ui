@@ -270,7 +270,7 @@ export default function AnnouncementsManagementPage() {
         if (parsed?.vetProfile?.avatarUrl) {
           return parsed.vetProfile.avatarUrl;
         }
-      } catch {}
+      } catch { }
     }
 
     if (staffProfiles && authorId) {
@@ -528,8 +528,8 @@ export default function AnnouncementsManagementPage() {
                     isInProgress
                       ? "border-blue-500/50 bg-gradient-to-b from-blue-500/[0.04] via-card to-card ring-1 ring-blue-500/20"
                       : item.is_pinned
-                      ? "border-amber-500/40 bg-gradient-to-b from-amber-500/5 via-card to-card shadow-sm"
-                      : "border-border/80"
+                        ? "border-amber-500/40 bg-gradient-to-b from-amber-500/5 via-card to-card shadow-sm"
+                        : "border-border/80"
                   )}
                 >
                   {/* Row 1: Badges & Management Controls */}
@@ -804,7 +804,7 @@ export default function AnnouncementsManagementPage() {
 
             {Object.keys(slotConfig.dateOverrides || {}).length > 0 && (
               <p className="text-[10px] text-muted-foreground bg-muted/40 p-2 rounded-xl border border-border/50 leading-relaxed">
-                ⚡ <strong>{Object.keys(slotConfig.dateOverrides).length} custom date override{Object.keys(slotConfig.dateOverrides).length === 1 ? "" : "s"}</strong> active for outreach or holiday operations.
+                <strong>{Object.keys(slotConfig.dateOverrides).length} custom date override{Object.keys(slotConfig.dateOverrides).length === 1 ? "" : "s"}</strong> active for outreach or holiday operations.
               </p>
             )}
           </Card>

@@ -91,6 +91,7 @@ import { cn, isTodayDate, isConsultationOverdue } from "@/lib/utils";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { deleteQueueTicketsByRef } from "@/lib/cvo-queue";
 
 export type QueueCategory = "consultation" | "vaccination" | "spay-neuter";
 
@@ -259,16 +260,9 @@ function ConsultationsContent() {
           localStorage.setItem("syncvet_local_appointments", JSON.stringify(filtered));
         } catch {}
 
+        // Purge any queue ticket tied to this deleted schedule (shared + local queue)
         try {
-          const today = format(new Date(), "yyyy-MM-dd");
-          const queueKey = `syncvet_clinic_queue_${today}`;
-          const queueData = JSON.parse(localStorage.getItem(queueKey) || "{}");
-          if (Array.isArray(queueData.activeTickets)) {
-            queueData.activeTickets = queueData.activeTickets.filter(
-              (t: any) => t.appointmentId !== appointmentId && t.id !== appointmentId
-            );
-            localStorage.setItem(queueKey, JSON.stringify(queueData));
-          }
+          await deleteQueueTicketsByRef(appointmentId);
         } catch {}
 
         return { type: "appointment" as const, enc };

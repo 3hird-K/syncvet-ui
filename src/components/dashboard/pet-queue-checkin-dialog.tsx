@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   RefreshCw,
   Loader2,
-  Sparkles,
   MapPin,
   Clock,
   Ticket,
@@ -410,7 +409,13 @@ export function PetQueueCheckInDialog({
         { facingMode: "environment" },
         {
           fps: 10,
-          qrbox: { width: 220, height: 220 },
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            return {
+              width: Math.floor(minEdge * 0.75),
+              height: Math.floor(minEdge * 0.75),
+            };
+          },
           aspectRatio: 1.0,
         },
         (decodedText) => {
@@ -496,62 +501,58 @@ export function PetQueueCheckInDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm sm:max-w-md p-0 overflow-hidden rounded-3xl border border-emerald-500/30 bg-card shadow-2xl">
-        <DialogHeader className="p-4 sm:p-5 pb-3 bg-gradient-to-r from-emerald-600/15 via-teal-600/10 to-transparent border-b border-border/70 pr-12">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="size-10 rounded-2xl bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-500/30 shadow-xs">
+      <DialogContent className="max-w-md sm:max-w-lg p-0 overflow-hidden rounded-3xl border border-emerald-500/20 bg-card shadow-2xl">
+        <DialogHeader className="p-4 sm:p-5 pb-3.5 bg-gradient-to-r from-emerald-600/10 via-teal-600/5 to-transparent border-b border-border/60 pr-12">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="size-10 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
               <QrCode className="size-5" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-sm sm:text-base font-extrabold text-foreground truncate">
+              <DialogTitle className="text-base font-bold text-foreground truncate">
                 Scan Clinic Arrival QR
               </DialogTitle>
-              <p className="text-[11px] text-muted-foreground truncate">
+              <p className="text-xs text-muted-foreground truncate">
                 Join live clinic queue for <strong className="text-foreground">{transaction.petName}</strong>
               </p>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="p-4 sm:p-5 space-y-4">
-          {/* Target Transaction Summary Card */}
-          <div className="p-3 rounded-2xl bg-muted/40 border border-border/60 flex items-center justify-between gap-3">
+        <div className="p-4 sm:p-6 space-y-4">
+          {/* Target Transaction Summary */}
+          <div className="px-3.5 py-2.5 rounded-2xl bg-muted/40 border border-border/60 flex items-center justify-between gap-3">
             <div className="min-w-0 space-y-0.5">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-bold text-xs text-foreground truncate">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-sm text-foreground truncate">
                   {transaction.petName}
                 </span>
-                <Badge variant="outline" className="text-[9px] font-bold bg-primary/10 text-primary border-primary/20">
+                <Badge variant="outline" className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20">
                   {transaction.serviceLabel}
                 </Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                <Clock className="size-3 text-muted-foreground/80" />
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Clock className="size-3 text-muted-foreground/70" />
                 {transaction.date} • {transaction.timeSlot || "Clinic Hours"}
               </p>
             </div>
-            <Badge variant="outline" className="text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1">
-              <QrCode className="size-2.5" />
-              Unofficial • Scan Station QR
-            </Badge>
           </div>
 
-          {/* Viewfinder Area */}
-          <div className="relative w-full aspect-square max-w-[260px] mx-auto rounded-2xl overflow-hidden bg-slate-950 border-2 border-emerald-500/40 shadow-inner flex flex-col items-center justify-center">
+          {/* Viewfinder Area (Larger & Minimal) */}
+          <div className="relative w-full aspect-square max-w-[340px] sm:max-w-[380px] mx-auto rounded-2xl overflow-hidden bg-slate-950 border border-emerald-500/30 shadow-inner flex flex-col items-center justify-center [&_video]:w-full [&_video]:h-full [&_video]:object-cover">
             <div id="pet-queue-camera-viewfinder" className="w-full h-full object-cover" />
             <div id="pet-queue-file-scanner-temp" className="hidden" />
 
             {/* Target Reticle */}
             {cameraActive && !decodedResult && (
-              <div className="absolute inset-5 pointer-events-none flex flex-col justify-between">
+              <div className="absolute inset-8 pointer-events-none flex flex-col justify-between">
                 <div className="flex justify-between">
-                  <span className="w-5 h-5 border-t-3 border-l-3 border-emerald-400 rounded-tl-md" />
-                  <span className="w-5 h-5 border-t-3 border-r-3 border-emerald-400 rounded-tr-md" />
+                  <span className="w-6 h-6 border-t-2 border-l-2 border-emerald-400 rounded-tl-md" />
+                  <span className="w-6 h-6 border-t-2 border-r-2 border-emerald-400 rounded-tr-md" />
                 </div>
-                <div className="w-full h-0.5 bg-emerald-400 shadow-[0_0_10px_#10b981] animate-pulse" />
+                <div className="w-full h-0.5 bg-emerald-400 shadow-[0_0_12px_#10b981] animate-pulse" />
                 <div className="flex justify-between">
-                  <span className="w-5 h-5 border-b-3 border-l-3 border-emerald-400 rounded-bl-md" />
-                  <span className="w-5 h-5 border-b-3 border-r-3 border-emerald-400 rounded-br-md" />
+                  <span className="w-6 h-6 border-b-2 border-l-2 border-emerald-400 rounded-bl-md" />
+                  <span className="w-6 h-6 border-b-2 border-r-2 border-emerald-400 rounded-br-md" />
                 </div>
               </div>
             )}
@@ -567,18 +568,18 @@ export function PetQueueCheckInDialog({
 
             {/* Camera Error */}
             {cameraError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-white p-3 text-center space-y-2 animate-in fade-in-50">
-                <AlertCircle className="size-6 text-amber-400" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 text-white p-4 text-center space-y-2.5 animate-in fade-in-50">
+                <AlertCircle className="size-7 text-amber-400" />
                 <p className="text-xs font-bold text-amber-200">Camera Unavailable</p>
-                <p className="text-[10px] text-slate-300 leading-tight">
-                  Snap a photo or use instant check-in below.
+                <p className="text-[11px] text-slate-300 max-w-[240px] leading-relaxed">
+                  Snap a photo or upload an image of the clinic standee QR code below.
                 </p>
                 <Button
                   size="sm"
                   onClick={() => cameraCaptureRef.current?.click()}
-                  className="h-7 text-[11px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                  className="h-8 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer gap-1.5"
                 >
-                  <Camera className="size-3 mr-1" /> Snap QR Photo
+                  <Camera className="size-3.5" /> Snap QR Photo
                 </Button>
               </div>
             )}
@@ -601,12 +602,12 @@ export function PetQueueCheckInDialog({
             )}
           </div>
 
-          <p className="text-center text-[11px] text-muted-foreground leading-relaxed">
+          <p className="text-center text-xs text-muted-foreground">
             Point your camera at the CVO Carmen Clinic Entrance standee to check in {transaction.petName}.
           </p>
 
           {/* Action buttons */}
-          <div className="pt-2 border-t border-border/70 space-y-2">
+          <div className="pt-2 border-t border-border/60">
             <input
               type="file"
               ref={cameraCaptureRef}
@@ -623,29 +624,14 @@ export function PetQueueCheckInDialog({
               className="hidden"
             />
 
-            {/* 1-Click Clinic Desk Station QR Scan simulation */}
-            <Button
-              type="button"
-              disabled={checkingIn}
-              onClick={() => handleScanSuccess(`${window.location.origin}/queue-checkin?date=${todayStr}&station=cvo-carmen&token=cvo-queue-${todayStr}`)}
-              className="w-full h-10 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold gap-2 shadow-md cursor-pointer"
-            >
-              {checkingIn ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
-              <span>Scan Station QR at Reception Desk</span>
-            </Button>
-
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={processingFile || checkingIn}
                 onClick={() => cameraCaptureRef.current?.click()}
-                className="h-8 rounded-xl border-border text-xs font-semibold gap-1.5 cursor-pointer bg-card hover:bg-muted"
+                className="h-9 rounded-xl border-border/70 text-xs font-semibold gap-2 cursor-pointer bg-muted/20 hover:bg-muted/50"
               >
                 <Camera className="size-3.5 text-muted-foreground" />
                 <span>Snap Photo</span>
@@ -657,7 +643,7 @@ export function PetQueueCheckInDialog({
                 size="sm"
                 disabled={processingFile || checkingIn}
                 onClick={() => fileInputRef.current?.click()}
-                className="h-8 rounded-xl border-border text-xs font-semibold gap-1.5 cursor-pointer bg-card hover:bg-muted"
+                className="h-9 rounded-xl border-border/70 text-xs font-semibold gap-2 cursor-pointer bg-muted/20 hover:bg-muted/50"
               >
                 <Upload className="size-3.5 text-muted-foreground" />
                 <span>Upload QR Photo</span>

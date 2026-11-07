@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { format, addDays, startOfDay, isBefore } from "date-fns";
 import {
   Plus,
   Loader2,
@@ -59,7 +60,7 @@ import { buildRealStaffList, type CVOVetProfile } from "@/data/cvo-vets";
 import { cn } from "@/lib/utils";
 
 const TIME_WINDOWS = [
-  { value: "08:00 AM - 05:00 PM", label: "Official Service Hours (08:00 AM - 05:00 PM)" },
+  { value: "08:00 AM - 05:00 PM", label: "08:00 AM - 05:00 PM (Official Hours)" },
 ];
 
 const COMMON_VENUES = [
@@ -133,8 +134,13 @@ export function ScheduleDriveDialog() {
     spayNeuter: false,
   });
 
+  // Earliest allowable scheduling date is strictly future dates (tomorrow onwards)
+  const minFutureDate = useMemo(() => {
+    return addDays(startOfDay(new Date()), 1);
+  }, []);
+
   // Scheduling details
-  const [date, setDate] = useState<Date | undefined>(new Date(Date.now() + 86400000)); // Tomorrow
+  const [date, setDate] = useState<Date | undefined>(() => addDays(startOfDay(new Date()), 1));
   const [timeWindow, setTimeWindow] = useState<string>("08:00 AM - 05:00 PM");
   const [targetPets, setTargetPets] = useState<number>(100);
 
@@ -231,11 +237,14 @@ export function ScheduleDriveDialog() {
       return;
     }
 
+    if (!date || isBefore(startOfDay(date), minFutureDate)) {
+      toast.error("Field operations must be scheduled for a future date (starting tomorrow onwards).");
+      return;
+    }
+
     setLoading(true);
     try {
-      const scheduledDateStr = date
-        ? date.toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0];
+      const scheduledDateStr = format(date, "yyyy-MM-dd");
 
       await addFieldOperation({
         barangay,
@@ -280,23 +289,23 @@ export function ScheduleDriveDialog() {
         </Button>
       </DialogTrigger>
 
-      {/* Wider Dialog Window: sm:max-w-4xl with top confirm button beside close X icon */}
+      {/* Responsive Dialog Window: sm:max-w-4xl lg:max-w-5xl */}
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-4xl w-[95vw] max-h-[92vh] overflow-y-auto p-0 gap-0"
+        className="sm:max-w-4xl lg:max-w-5xl w-[96vw] max-h-[92vh] overflow-y-auto p-0 gap-0 rounded-2xl sm:rounded-3xl border border-border bg-card shadow-2xl"
       >
         {/* Top Header Bar with Confirm Button beside X icon */}
-        <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/60 bg-muted/20 sticky top-0 z-20 backdrop-blur-md">
+        <DialogHeader className="p-4 sm:p-5 pb-3.5 border-b border-border/60 bg-muted/20 sticky top-0 z-20 backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
-                <CalendarPlus className="size-5" />
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="size-9 sm:size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20">
+                <CalendarPlus className="size-4.5 sm:size-5" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-base sm:text-lg font-bold tracking-tight text-foreground truncate">
+                <DialogTitle className="text-sm sm:text-base font-bold tracking-tight text-foreground truncate">
                   Schedule Barangay Outreach Visit
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground truncate">
+                <DialogDescription className="text-[11px] sm:text-xs text-muted-foreground truncate">
                   Plan and deploy a community outreach visit with automated announcement broadcasting.
                 </DialogDescription>
               </div>
@@ -309,7 +318,7 @@ export function ScheduleDriveDialog() {
                 form="schedule-drive-form"
                 disabled={loading}
                 size="sm"
-                className="h-8 px-3.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs gap-1.5 shrink-0"
+                className="hidden sm:inline-flex h-8.5 px-3.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs gap-1.5 shrink-0"
               >
                 {loading ? (
                   <>
@@ -340,8 +349,8 @@ export function ScheduleDriveDialog() {
         </DialogHeader>
 
         {/* Form Body: Balanced 2-Column Grid on larger screens */}
-        <form id="schedule-drive-form" onSubmit={handleSubmit} className="p-5 sm:p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+        <form id="schedule-drive-form" onSubmit={handleSubmit} className="p-4 sm:p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
             {/* ── LEFT COLUMN ── */}
             <div className="space-y-4">
               {/* 1. Target Barangay & Venue */}
@@ -352,7 +361,7 @@ export function ScheduleDriveDialog() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-1.5 min-w-0">
                     <Label htmlFor="barangay" className="text-[11px] font-semibold text-foreground">
                       Target Barangay (CDO) <span className="text-destructive">*</span>
                     </Label>
@@ -364,7 +373,7 @@ export function ScheduleDriveDialog() {
                           variant="outline"
                           role="combobox"
                           aria-expanded={barangayPopoverOpen}
-                          className="w-full h-9 justify-between px-3 text-xs bg-background font-normal border-input hover:bg-muted/40 cursor-pointer text-left"
+                          className="w-full h-9.5 justify-between px-3 text-xs bg-background font-normal border-input hover:bg-muted/40 cursor-pointer text-left"
                         >
                           <span className="font-semibold text-foreground truncate">
                             {barangay ? `Barangay ${barangay}` : "Select barangay..."}
@@ -432,7 +441,7 @@ export function ScheduleDriveDialog() {
                     </Popover>
                   </div>
 
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-1.5 min-w-0">
                     <Label htmlFor="venue" className="text-[11px] font-semibold text-foreground">
                       Outreach Venue <span className="text-destructive">*</span>
                     </Label>
@@ -443,7 +452,7 @@ export function ScheduleDriveDialog() {
                         if (val !== "Other") setCustomVenue("");
                       }}
                     >
-                      <SelectTrigger id="venue" className="h-9 text-xs bg-background">
+                      <SelectTrigger id="venue" className="h-9.5 text-xs bg-background">
                         <SelectValue placeholder="Select venue" />
                       </SelectTrigger>
                       <SelectContent>
@@ -477,29 +486,34 @@ export function ScheduleDriveDialog() {
 
               {/* 2. Schedule, Time & Capacity */}
               <div className="space-y-3 pt-3 border-t border-border/50">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  <Clock className="size-3.5 text-primary" />
-                  <span>Schedule, Time Window & Capacity</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <Clock className="size-3.5 text-primary" />
+                    <span>Schedule, Time Window & Capacity</span>
+                  </div>
+                  <span className="text-[10.5px] text-muted-foreground font-medium">Future dates only</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="grid gap-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid gap-1.5 min-w-0">
                     <Label className="text-[11px] font-semibold text-foreground">
                       Scheduled Date <span className="text-destructive">*</span>
                     </Label>
                     <DatePicker
                       date={date}
                       setDate={setDate}
-                      className="h-9 text-xs font-normal"
+                      fromDate={minFutureDate}
+                      disabled={(d) => isBefore(startOfDay(d), minFutureDate)}
+                      className="h-9.5 text-xs font-medium"
                     />
                   </div>
 
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-1.5 min-w-0">
                     <Label htmlFor="timeWindow" className="text-[11px] font-semibold text-foreground">
                       Time Window
                     </Label>
                     <Select value={timeWindow} onValueChange={setTimeWindow}>
-                      <SelectTrigger id="timeWindow" className="h-9 text-xs bg-background">
+                      <SelectTrigger id="timeWindow" className="h-9.5 text-xs bg-background">
                         <SelectValue placeholder="Select hours" />
                       </SelectTrigger>
                       <SelectContent>
@@ -511,11 +525,18 @@ export function ScheduleDriveDialog() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
 
-                  <div className="grid gap-1.5">
+                <div className="grid gap-1.5 pt-0.5">
+                  <div className="flex items-center justify-between">
                     <Label htmlFor="target" className="text-[11px] font-semibold text-foreground">
-                      Slots / Animals
+                      Slots / Animals Capacity <span className="text-destructive">*</span>
                     </Label>
+                    <span className="text-[10.5px] text-muted-foreground font-medium">
+                      Target: <strong className="text-foreground">{targetPets}</strong> animals
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Input
                       id="target"
                       type="number"
@@ -524,15 +545,32 @@ export function ScheduleDriveDialog() {
                       step={10}
                       value={targetPets}
                       onChange={(e) => setTargetPets(Number(e.target.value) || 0)}
-                      className="h-9 text-xs"
+                      className="h-9 text-xs w-24 shrink-0 font-bold"
                       required
                     />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[50, 100, 150, 200].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setTargetPets(preset)}
+                          className={cn(
+                            "h-7 px-2.5 rounded-lg text-[10.5px] font-bold border transition-all cursor-pointer",
+                            targetPets === preset
+                              ? "bg-primary/15 border-primary/40 text-primary"
+                              : "border-border/70 bg-muted/30 text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {preset} pets
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* 3. Outreach Services Handled (Icon removed per user instruction) */}
-              <div className="space-y-3 pt-3 border-t border-border/50">
+              {/* 3. Outreach Services Handled */}
+              <div className="space-y-2.5 pt-3 border-t border-border/50">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Outreach Services Handled
@@ -546,7 +584,7 @@ export function ScheduleDriveDialog() {
                     type="button"
                     onClick={() => toggleService("consultation")}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
                       services.consultation
                         ? "border-blue-500/50 bg-blue-500/10 text-foreground ring-1 ring-blue-500/20"
                         : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
@@ -557,7 +595,7 @@ export function ScheduleDriveDialog() {
                         "size-7 rounded-lg flex items-center justify-center",
                         services.consultation ? "bg-blue-500/20 text-blue-500" : "bg-muted text-muted-foreground"
                       )}>
-                        <Stethoscope className="size-4" />
+                        <Stethoscope className="size-3.5" />
                       </div>
                       <div className={cn(
                         "size-4 rounded-full flex items-center justify-center border",
@@ -566,10 +604,10 @@ export function ScheduleDriveDialog() {
                         {services.consultation && <CheckCircle2 className="size-3.5 stroke-[3]" />}
                       </div>
                     </div>
-                    <div>
+                    <div className="space-y-0.5">
                       <p className="text-xs font-bold text-foreground">Consultation</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                        General exam, triage, deworming & vitamins.
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        General exam, triage & deworming
                       </p>
                     </div>
                   </button>
@@ -579,7 +617,7 @@ export function ScheduleDriveDialog() {
                     type="button"
                     onClick={() => toggleService("vaccination")}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
                       services.vaccination
                         ? "border-emerald-500/50 bg-emerald-500/10 text-foreground ring-1 ring-emerald-500/20"
                         : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
@@ -590,7 +628,7 @@ export function ScheduleDriveDialog() {
                         "size-7 rounded-lg flex items-center justify-center",
                         services.vaccination ? "bg-emerald-500/20 text-emerald-500" : "bg-muted text-muted-foreground"
                       )}>
-                        <Syringe className="size-4" />
+                        <Syringe className="size-3.5" />
                       </div>
                       <div className={cn(
                         "size-4 rounded-full flex items-center justify-center border",
@@ -599,10 +637,10 @@ export function ScheduleDriveDialog() {
                         {services.vaccination && <CheckCircle2 className="size-3.5 stroke-[3]" />}
                       </div>
                     </div>
-                    <div>
+                    <div className="space-y-0.5">
                       <p className="text-xs font-bold text-foreground">Vaccination</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                        Mass anti-rabies & core immunization.
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        Mass anti-rabies & immunization
                       </p>
                     </div>
                   </button>
@@ -612,7 +650,7 @@ export function ScheduleDriveDialog() {
                     type="button"
                     onClick={() => toggleService("spayNeuter")}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2",
                       services.spayNeuter
                         ? "border-purple-500/50 bg-purple-500/10 text-foreground ring-1 ring-purple-500/20"
                         : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40"
@@ -623,7 +661,7 @@ export function ScheduleDriveDialog() {
                         "size-7 rounded-lg flex items-center justify-center",
                         services.spayNeuter ? "bg-purple-500/20 text-purple-500" : "bg-muted text-muted-foreground"
                       )}>
-                        <Scissors className="size-4" />
+                        <Scissors className="size-3.5" />
                       </div>
                       <div className={cn(
                         "size-4 rounded-full flex items-center justify-center border",
@@ -632,10 +670,10 @@ export function ScheduleDriveDialog() {
                         {services.spayNeuter && <CheckCircle2 className="size-3.5 stroke-[3]" />}
                       </div>
                     </div>
-                    <div>
+                    <div className="space-y-0.5">
                       <p className="text-xs font-bold text-foreground">Spay / Neuter</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
-                        Community surgical kapon program.
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        Community surgical kapon drive
                       </p>
                     </div>
                   </button>
@@ -645,7 +683,7 @@ export function ScheduleDriveDialog() {
 
             {/* ── RIGHT COLUMN ── */}
             <div className="space-y-4">
-              {/* 4. Assigned Attending Veterinarian with Profile Pictures & Locking Rule */}
+              {/* 4. Assigned Attending Veterinarian */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -733,85 +771,108 @@ export function ScheduleDriveDialog() {
                   </Select>
                 )}
 
-                {/* Profile Card of the assigned vet */}
-                <Card className="border border-primary/20 bg-primary/5 rounded-xl overflow-hidden">
-                  <CardContent className="p-3.5 flex items-start gap-3.5">
-                    <Avatar className="size-14 rounded-xl border border-primary/30 shrink-0 shadow-xs">
-                      <AvatarImage
-                        src={selectedVet.avatarUrl || "/dr-helen-tacandong.jpg"}
-                        alt={selectedVet.name}
-                        className="object-cover"
-                      />
-                      <AvatarFallback className="rounded-xl font-bold text-sm bg-primary/10 text-primary">
-                        {selectedVet.name
-                          .replace("Dr.", "")
-                          .trim()
-                          .split(" ")
-                          .map((n) => n[0])
-                          .slice(0, 2)
-                          .join("")}
-                      </AvatarFallback>
-                    </Avatar>
+                {/* Profile Card of the assigned vet (Compact & Responsive) */}
+                <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 flex items-center gap-3">
+                  <Avatar className="size-11 rounded-xl border border-primary/30 shrink-0 shadow-xs">
+                    <AvatarImage
+                      src={selectedVet.avatarUrl || "/dr-helen-tacandong.jpg"}
+                      alt={selectedVet.name}
+                      className="object-cover"
+                    />
+                    <AvatarFallback className="rounded-xl font-bold text-xs bg-primary/10 text-primary">
+                      {selectedVet.name
+                        .replace("Dr.", "")
+                        .trim()
+                        .split(" ")
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")}
+                    </AvatarFallback>
+                  </Avatar>
 
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-xs sm:text-sm font-bold text-foreground">
-                          {selectedVet.name}
-                        </h4>
-                        <Badge variant="secondary" className="text-[9px] font-mono py-0 h-4">
-                          {selectedVet.licenseNo}
-                        </Badge>
-                      </div>
-                      <p className="text-[11px] text-primary font-medium">
-                        {selectedVet.role}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground line-clamp-1">
-                        Specialization: {selectedVet.specialization}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground/80 flex items-center gap-2 truncate">
-                        <span>{selectedVet.email}</span>
-                        <span>•</span>
-                        <span>{selectedVet.phone}</span>
-                      </p>
+                  <div className="space-y-0.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-xs sm:text-sm font-bold text-foreground truncate">
+                        {selectedVet.name}
+                      </h4>
+                      <Badge variant="outline" className="text-[9px] font-mono py-0 h-4 bg-background border-primary/30 text-primary">
+                        PRC #{selectedVet.licenseNo}
+                      </Badge>
                     </div>
-                  </CardContent>
-                </Card>
+                    <p className="text-[11px] text-primary font-medium truncate">
+                      {selectedVet.role} • {selectedVet.title}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground truncate">
+                      {selectedVet.specialization}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* 5. Automatic Announcement Integration Notice */}
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 flex items-start gap-3">
-                <div className="size-7 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Megaphone className="size-4" />
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-start gap-2.5">
+                <div className="size-6 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <Megaphone className="size-3.5" />
                 </div>
-                <div className="text-xs space-y-1 min-w-0">
+                <div className="text-xs space-y-0.5 min-w-0">
                   <div className="flex items-center gap-1.5 font-bold text-foreground">
                     <span>Announcement Broadcast</span>
-                    <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10">
+                    <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-500/15">
                       Auto-Deletes on Done
                     </Badge>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Scheduling automatically publishes an official CVO announcement for <span className="font-semibold text-foreground">Barangay {barangay}</span> residents with full outreach details. When the outreach concludes, the announcement is automatically removed.
+                    Automatically publishes an official CVO announcement for <strong className="text-foreground">Barangay {barangay}</strong> residents with full outreach details. Auto-archived once concluded.
                   </p>
                 </div>
               </div>
 
               {/* 6. Operational Notes */}
               <div className="grid gap-1.5">
-                <Label htmlFor="notes" className="text-[10px] font-semibold text-foreground uppercase tracking-wider text-muted-foreground">
-                  Deployment Notes & Field Checklist (Optional)
+                <Label htmlFor="notes" className="text-[11px] font-semibold text-foreground">
+                  Deployment Notes & Field Checklist <span className="text-[10px] text-muted-foreground font-normal">(Optional)</span>
                 </Label>
                 <Textarea
                   id="notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g. Cold-chain rabies vaccine ice boxes checked; barangay health workers notified; rabies tags batch #2026-B ready."
-                  className="text-[11px] placeholder:text-[11px] leading-relaxed min-h-[60px]"
+                  className="text-xs placeholder:text-[11px] leading-relaxed min-h-[70px] resize-none"
                 />
               </div>
             </div>
           </div>
         </form>
+
+        {/* Mobile Action Bar */}
+        <div className="p-3.5 sm:hidden border-t border-border/60 bg-muted/30 sticky bottom-0 z-20 backdrop-blur-md flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setOpen(false)}
+            className="flex-1 h-9 text-xs rounded-xl cursor-pointer"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="schedule-drive-form"
+            disabled={loading}
+            className="flex-1 h-9 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1.5"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                <span>Deploying...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="size-3.5" />
+                <span>Confirm & Broadcast</span>
+              </>
+            )}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

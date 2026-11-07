@@ -71,6 +71,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, getFieldOpGracePeriod } from "@/lib/utils";
+import { format, parseISO, isValid } from "date-fns";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-metric-cards";
 import { TablePagination } from "@/components/dashboard/table-pagination";
@@ -227,7 +228,26 @@ export default function FieldOperationsPage() {
     }
   };
 
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+
   const handleStartVisit = async (op: CVOFieldOperation) => {
+    const cleanOpDate = op.date.includes("T") ? op.date.split("T")[0] : op.date.trim();
+    if (cleanOpDate !== todayStr) {
+      let formattedDate = cleanOpDate;
+      try {
+        const d = parseISO(cleanOpDate);
+        if (isValid(d)) formattedDate = format(d, "MMMM d, yyyy");
+      } catch {}
+
+      const isFuture = cleanOpDate > todayStr;
+      toast.error("Visit Cannot Be Started Today", {
+        description: isFuture
+          ? `Outreach in Barangay ${op.barangay} is scheduled for ${formattedDate}. Field operations can only be started on the scheduled deployment date.`
+          : `Outreach in Barangay ${op.barangay} was scheduled for ${formattedDate}. Past deployments cannot be set to In Progress.`,
+      });
+      return;
+    }
+
     try {
       await updateFieldOperationStatus(op.id, "in-progress");
       toast.info(`Outreach in Brgy. ${op.barangay} is now In Progress`, {
@@ -472,6 +492,8 @@ export default function FieldOperationsPage() {
                 rows.map((op, idx) => {
                   const pct = op.petsTarget > 0 ? Math.round((op.petsVaccinated / op.petsTarget) * 100) : 0;
                   const vetProfile = findVetProfileByName(op.lead, dbUsers);
+                  const cleanOpDate = op.date.includes("T") ? op.date.split("T")[0] : op.date.trim();
+                  const isOpToday = cleanOpDate === todayStr;
                   const grace = getFieldOpGracePeriod(op.date, op.status);
                   const isLocked = grace.isPastGracePeriod || op.status === "completed" || op.status === "cancelled";
                   const effectiveStatus = (grace.isPastGracePeriod && op.status !== "cancelled") ? "completed" : op.status;
@@ -706,11 +728,39 @@ export default function FieldOperationsPage() {
                                 <>
                                   {op.status === "scheduled" && (
                                     <DropdownMenuItem
-                                      onClick={() => handleStartVisit(op)}
-                                      className="gap-2 cursor-pointer"
+                                      disabled={!isOpToday}
+                                      onClick={() => {
+                                        if (!isOpToday) {
+                                          let formattedDate = cleanOpDate;
+                                          try {
+                                            const d = parseISO(cleanOpDate);
+                                            if (isValid(d)) formattedDate = format(d, "MMMM d, yyyy");
+                                          } catch {}
+                                          toast.error("Visit Cannot Be Started Today", {
+                                            description: `Outreach in Barangay ${op.barangay} is scheduled for ${formattedDate}. Visits can only be started on the actual date.`,
+                                          });
+                                          return;
+                                        }
+                                        handleStartVisit(op);
+                                      }}
+                                      className={cn(
+                                        "gap-2 cursor-pointer",
+                                        !isOpToday && "opacity-60 cursor-not-allowed"
+                                      )}
+                                      title={!isOpToday ? `Can only be started on the scheduled date (${cleanOpDate})` : undefined}
                                     >
-                                      <Play className="size-3.5 text-blue-500" />
-                                      <span>Start Visit (In Progress)</span>
+                                      <Play className={cn("size-3.5", isOpToday ? "text-blue-500" : "text-muted-foreground")} />
+                                      <div className="flex items-center justify-between flex-1 gap-2">
+                                        <span>Start Visit (In Progress)</span>
+                                        {!isOpToday && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[9px] py-0 px-1 border-border/60 text-muted-foreground font-normal"
+                                          >
+                                            {cleanOpDate > todayStr ? "Upcoming" : "Past"}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </DropdownMenuItem>
                                   )}
 

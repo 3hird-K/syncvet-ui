@@ -126,6 +126,232 @@ export function getDailyQueue(dateStr: string = getTodayDateStr()): DailyQueueSt
   };
 }
 
+function persistDailyQueueLocally(state: DailyQueueState): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${state.date}`, JSON.stringify(state));
+  } catch {}
+}
+
+function queueTicketToDbRow(t: QueueTicket) {
+  return {
+    id: t.id,
+    date: t.date,
+    ticket_number: t.ticketNumber,
+    queue_sequence: t.queueSequence,
+    appointment_id: t.appointmentId || null,
+    encounter_no: t.encounterNo || null,
+    owner_id: t.ownerId || null,
+    owner_name: t.ownerName || null,
+    owner_contact: t.ownerContact || null,
+    owner_barangay: t.ownerBarangay || null,
+    pet_id: t.petId || null,
+    pet_name: t.petName,
+    pet_photo_url: t.petPhotoUrl || null,
+    species: t.species || null,
+    breed: t.breed || null,
+    service_id: t.serviceId || null,
+    service_title: t.serviceTitle || null,
+    status: t.status,
+    serving_vet: t.servingVet || null,
+    consultation_room: t.consultationRoom || null,
+    check_in_time: t.checkInTime || null,
+    checked_in_at: t.checkedInAt || null,
+    called_at: t.calledAt || null,
+    completed_at: t.completedAt || null,
+    notes: t.notes || null,
+    checked_in_via: t.checkedInVia || null,
+  };
+}
+
+function dbRowToQueueTicket(row: any): QueueTicket {
+  return {
+    id: String(row.id),
+    ticketNumber: String(row.ticket_number),
+    queueSequence: Number(row.queue_sequence) || 0,
+    appointmentId: row.appointment_id ?? "",
+    encounterNo: row.encounter_no ?? undefined,
+    date: row.date,
+    checkInTime: row.check_in_time ?? "",
+    checkedInAt: row.checked_in_at ? new Date(row.checked_in_at).toISOString() : new Date().toISOString(),
+    ownerId: row.owner_id ?? "",
+    ownerName: row.owner_name ?? "Pet Owner",
+    ownerContact: row.owner_contact ?? undefined,
+    ownerBarangay: row.owner_barangay ?? undefined,
+    petId: row.pet_id ?? undefined,
+    petName: row.pet_name ?? "Pet",
+    petPhotoUrl: row.pet_photo_url ?? undefined,
+    species: row.species ?? "Dog",
+    breed: row.breed ?? undefined,
+    serviceId: row.service_id ?? "consultation",
+    serviceTitle: row.service_title ?? "Clinical Consultation",
+    status: row.status ?? "waiting",
+    servingVet: row.serving_vet ?? undefined,
+    consultationRoom: row.consultation_room ?? undefined,
+    calledAt: row.called_at ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    notes: row.notes ?? undefined,
+    checkedInVia: row.checked_in_via === "manual" ? "manual" : row.checked_in_via === "qr" ? "qr" : undefined,
+  };
+}
+
+/**
+ * Mirror the shared queue_tickets table to this browser's localStorage.
+ * Returns true when the table exists and data was fetched (i.e. Supabase is
+ * the source of truth); false when the table is missing/unavailable so the
+ * legacy local-only behaviour can be used as a fallback.
+ */
+async function syncQueueTicketsTable(
+  dateStr: string
+): Promise<DailyQueueState | null> {
+  const current = getDailyQueue(dateStr);
+  try {
+    const supabase = getPublicSupabaseClient();
+    const { data, error } = await supabase
+      .from("queue_tickets")
+      .select("*")
+      .eq("date", dateStr)
+      .order("queue_sequence", { ascending: true });
+
+    if (error) return null;
+    if (!Array.isArray(data)) return null;
+
+    const dbTickets = data.map(dbRowToQueueTicket);
+
+    // Merge: Supabase is the source of truth, but tickets that only exist in
+    // this browser's localStorage (created before the shared table existed) are
+    // pushed up instead of being discarded.
+    const dbNumbers = new Set(dbTickets.map((t) => t.ticketNumber));
+    const localOnly = current.activeTickets.filter((t) => !dbNumbers.has(t.ticketNumber));
+    if (localOnly.length > 0) {
+      supabase
+        .from("queue_tickets")
+        .upsert(localOnly.map(queueTicketToDbRow), { onConflict: "date,ticket_number" })
+        .then(() => {});
+    }
+
+    const tickets = [...dbTickets, ...localOnly].sort(
+      (a, b) => a.queueSequence - b.queueSequence
+    );
+    const isClosed = current.isClosed;
+
+    // Preserve the current now-serving ticket if it is still in consultation.
+    const nowServing =
+      current.nowServingTicketNumber &&
+      tickets.some(
+        (t) => t.ticketNumber === current.nowServingTicketNumber && t.status === "in-consultation"
+      )
+        ? current.nowServingTicketNumber
+        : tickets.find((t) => t.status === "in-consultation")?.ticketNumber ?? null;
+
+    const activeInConsultation = nowServing
+      ? tickets.find((t) => t.ticketNumber === nowServing)
+      : undefined;
+
+    const newState: DailyQueueState = {
+      ...current,
+      activeTickets: tickets,
+      nowServingTicketNumber: isClosed ? null : nowServing,
+      servingVet: isClosed
+        ? undefined
+        : activeInConsultation?.servingVet || current.servingVet || "Dr. Helen Ann P. Tacandong, DVM",
+      servingRoom: isClosed
+        ? undefined
+        : activeInConsultation?.consultationRoom || current.servingRoom || "Consultation Desk 1",
+      isClosed,
+    };
+
+    persistDailyQueueLocally(newState);
+    return newState;
+  } catch {
+    return null;
+  }
+}
+
+function mirrorQueueToSupabase(state: DailyQueueState): void {
+  try {
+    const supabase = getPublicSupabaseClient();
+    const rows = state.activeTickets.map(queueTicketToDbRow);
+    const numbers = rows.map((r) => r.ticket_number);
+
+    const run = async () => {
+      try {
+        if (rows.length > 0) {
+          await supabase
+            .from("queue_tickets")
+            .upsert(rows, { onConflict: "date,ticket_number" });
+          // Remove DB rows for this date that are no longer in the local state
+          await supabase
+            .from("queue_tickets")
+            .delete()
+            .eq("date", state.date)
+            .not("ticket_number", "in", `(${numbers.map((n) => `"${n}"`).join(",")})`);
+        } else {
+          await supabase.from("queue_tickets").delete().eq("date", state.date);
+        }
+      } catch {
+        // queue_tickets table may not exist yet — ignore and stay local-only
+      }
+    };
+    void run();
+  } catch {
+    // ignore mirror failures; localStorage remains the fallback
+  }
+}
+
+/**
+ * Purge queue tickets that reference a deleted schedule (appointment/consultation),
+ * both from the shared Supabase table and this browser's local queue cache.
+ * Broadcasts the pruned state so every open device updates instantly.
+ */
+export async function deleteQueueTicketsByRef(ref: string): Promise<void> {
+  if (!ref || typeof window === "undefined") return;
+
+  // 1. Shared table
+  try {
+    const supabase = getPublicSupabaseClient();
+    try {
+      await supabase.from("queue_tickets").delete().eq("appointment_id", ref);
+    } catch {}
+    try {
+      await supabase.from("queue_tickets").delete().eq("encounter_no", ref);
+    } catch {}
+  } catch {}
+
+  // 2. Local cache for today (all dates are covered by the shared-table delete above)
+  try {
+    const dateStr = getTodayDateStr();
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}${dateStr}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.activeTickets)) {
+        const before = parsed.activeTickets.length;
+        parsed.activeTickets = parsed.activeTickets.filter(
+          (t: QueueTicket) =>
+            t.appointmentId !== ref && t.encounterNo !== ref && t.id !== ref
+        );
+        if (parsed.activeTickets.length !== before) {
+          if (parsed.nowServingTicketNumber && !parsed.activeTickets.some((t: QueueTicket) => t.ticketNumber === parsed.nowServingTicketNumber)) {
+            parsed.nowServingTicketNumber = null;
+          }
+          localStorage.setItem(`${STORAGE_PREFIX}${dateStr}`, JSON.stringify(parsed));
+          window.dispatchEvent(new CustomEvent("syncvet-queue-updated", { detail: parsed }));
+
+          // Broadcast so the pet owner's tracker and staff dashboards update live
+          try {
+            const supabase = getPublicSupabaseClient();
+            supabase.channel("cvo-queue-realtime-channel").send({
+              type: "broadcast",
+              event: "queue_state_updated",
+              payload: parsed,
+            });
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+}
+
 export function saveDailyQueue(state: DailyQueueState): void {
   if (typeof window === "undefined") return;
   try {
@@ -141,6 +367,9 @@ export function saveDailyQueue(state: DailyQueueState): void {
         payload: state,
       });
     } catch {}
+
+    // Durable mirror to the shared queue_tickets table (if present)
+    mirrorQueueToSupabase(state);
   } catch (err) {
     console.error("Failed saving daily queue state:", err);
   }
@@ -154,6 +383,10 @@ export async function syncQueueFromSupabase(
 ): Promise<DailyQueueState> {
   const current = getDailyQueue(dateStr);
   if (typeof window === "undefined") return current;
+
+  // Preferred source of truth: the shared queue_tickets table (once it exists).
+  const fromTable = await syncQueueTicketsTable(dateStr);
+  if (fromTable) return fromTable;
 
   try {
     const supabase = getPublicSupabaseClient();
@@ -465,6 +698,8 @@ export function checkInPetOwnerToQueue({
   const isRejoin = !!existing && (existing.status === "skipped" || existing.status === "overdue");
 
   if (existing && !isRejoin) {
+    // Ensure the (possibly legacy, local-only) ticket is mirrored to the shared table
+    saveDailyQueue(current);
     return { ticket: existing, isExisting: true, state: current };
   }
 

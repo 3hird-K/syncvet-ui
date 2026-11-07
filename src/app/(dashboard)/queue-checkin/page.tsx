@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -38,6 +38,7 @@ import {
   checkInPetOwnerToQueue,
   getPetOwnerQueueStatus,
   getTodayDateStr,
+  syncQueueFromSupabase,
   type QueueTicket,
 } from "@/lib/cvo-queue";
 import { isBeforeClinicOpen } from "@/lib/utils";
@@ -101,14 +102,20 @@ function QueueCheckinContent() {
           `The clinic check-in opens at 8:00 AM. It is currently ${format(
             new Date(),
             "h:mm a"
-          )}. Please scan the station QR code at 8:00 AM, when clinic operating hours begin (8:00 AM – 5:00 PM).`
+          )}. Please scan the station QR code at 8:00 AM, when clinic operating hours begin (8:00 AM â€“ 5:00 PM).`
         );
         setLoading(false);
         return;
       }
 
+      // Pull the shared queue from Supabase first so an owner scanning on any
+      // device detects their existing ticket instead of creating a duplicate.
+      try {
+        await syncQueueFromSupabase(todayStr);
+      } catch {}
+
       // 1. First, check if pet owner is already checked into today's queue.
-      // A skipped (no-show) ticket does not block re-checking in — the owner is
+      // A skipped (no-show) ticket does not block re-checking in â€” the owner is
       // issued a fresh ticket at the end of the line by the QR check-in below.
       const existingStatus = getPetOwnerQueueStatus(
         {
@@ -130,6 +137,7 @@ function QueueCheckinContent() {
       const seen = new Set<string>();
 
       // A. Query Supabase appointments table
+      let appointmentsFetched = false;
       try {
         const { data, error } = await supabase
           .from("appointments")
@@ -137,7 +145,8 @@ function QueueCheckinContent() {
           .eq("date", todayStr)
           .neq("status", "cancelled");
 
-        if (data && !error) {
+        if (!error && data) {
+          appointmentsFetched = true;
           data.forEach((apt) => {
             const matchesOwner =
               apt.owner_id === ownerId ||
@@ -166,36 +175,40 @@ function QueueCheckinContent() {
         console.warn("Notice: Querying Supabase appointments for queue check-in:", err);
       }
 
-      // B. Fallback: check local storage cached appointments
-      try {
-        const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
-        if (Array.isArray(local)) {
-          local.forEach((l: any) => {
-            if (
-              l.date === todayStr &&
-              l.status !== "cancelled" &&
-              !seen.has(l.id) &&
-              (l.owner_id === ownerId || (l.notes && l.notes.toLowerCase().includes(ownerEmail)))
-            ) {
-              seen.add(l.id);
-              matchingItems.push({
-                type: "appointment",
-                id: l.id,
-                pet_id: l.pet_id,
-                pet_name: l.pet_name || "Pet",
-                species: l.species || "Dog",
-                breed: l.breed || "",
-                petPhotoUrl: l.petPhotoUrl || l.photoUrl,
-                service_id: l.service_id || "vaccination",
-                notes: l.notes,
-                date: l.date,
-              });
-            }
-          });
-        }
-      } catch {}
+      // B. Fallback: localStorage only when Supabase was unreachable.
+      // When Supabase answered, missing rows were deleted by staff, so don't trust the cache.
+      if (!appointmentsFetched) {
+        try {
+          const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
+          if (Array.isArray(local)) {
+            local.forEach((l: any) => {
+              if (
+                l.date === todayStr &&
+                l.status !== "cancelled" &&
+                !seen.has(l.id) &&
+                (l.owner_id === ownerId || (l.notes && l.notes.toLowerCase().includes(ownerEmail)))
+              ) {
+                seen.add(l.id);
+                matchingItems.push({
+                  type: "appointment",
+                  id: l.id,
+                  pet_id: l.pet_id,
+                  pet_name: l.pet_name || "Pet",
+                  species: l.species || "Dog",
+                  breed: l.breed || "",
+                  petPhotoUrl: l.petPhotoUrl || l.photoUrl,
+                  service_id: l.service_id || "vaccination",
+                  notes: l.notes,
+                  date: l.date,
+                });
+              }
+            });
+          }
+        } catch {}
+      }
 
       // C. Query consultations for today (Supabase consultations table)
+      let consultsFetched = false;
       try {
         const { data: consults } = await supabase
           .from("consultations")
@@ -205,6 +218,7 @@ function QueueCheckinContent() {
           .neq("status", "cancelled");
 
         if (consults && Array.isArray(consults)) {
+          consultsFetched = true;
           consults.forEach((c) => {
             const matchesOwner =
               c.owner_id === ownerId ||
@@ -236,9 +250,11 @@ function QueueCheckinContent() {
         console.warn("Notice: Querying Supabase consultations for queue check-in:", err);
       }
 
-      // D. Fallback: check local storage cached consultations (cvo_consultations_v2)
-      try {
-        const localConsults = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
+      // D. Fallback: local consultations only when Supabase was unreachable.
+      // If Supabase answered, missing rows were deleted by staff, so don't trust the cache.
+      if (!consultsFetched) {
+        try {
+          const localConsults = JSON.parse(localStorage.getItem("cvo_consultations_v2") || "[]");
         if (Array.isArray(localConsults)) {
           localConsults.forEach((c: any) => {
             const cDate = c.date || "";
@@ -268,7 +284,8 @@ function QueueCheckinContent() {
             }
           });
         }
-      } catch {}
+        } catch {}
+      }
 
       setEligibleAppointments(matchingItems);
 
@@ -502,7 +519,7 @@ function QueueCheckinContent() {
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-muted/15 py-6 sm:py-10 px-4 flex flex-col items-center justify-start select-none">
       <div className="max-w-[430px] w-full">
-        {/* ── Main Compact Queue Pass Card ── */}
+        {/* â”€â”€ Main Compact Queue Pass Card â”€â”€ */}
         <Card className="rounded-3xl border border-border/80 shadow-xl overflow-hidden bg-card">
           {/* Header with Top Action Icons */}
           <div className="p-4 sm:p-5 pb-3.5 border-b border-border/70 flex items-center justify-between gap-3">
@@ -519,13 +536,13 @@ function QueueCheckinContent() {
               </div>
               <div className="min-w-0">
                 <span className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground block truncate">
-                  Republic of the Philippines • CDO
+                  Republic of the Philippines â€¢ CDO
                 </span>
                 <h1 className="text-xs sm:text-sm font-extrabold text-foreground truncate">
                   City Veterinary Office Clinic Queue
                 </h1>
                 <p className="text-[10px] text-muted-foreground truncate">
-                  Carmen Central Clinic • {todayFormatted}
+                  Carmen Central Clinic â€¢ {todayFormatted}
                 </p>
               </div>
             </div>
@@ -559,7 +576,7 @@ function QueueCheckinContent() {
           </div>
 
           <CardContent className="p-4 sm:p-5 space-y-3.5">
-            {/* ── 1. The Digital Queue Ticket Pass (Hero Boarding Pass) ── */}
+            {/* â”€â”€ 1. The Digital Queue Ticket Pass (Hero Boarding Pass) â”€â”€ */}
             <div className="rounded-2xl bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 text-white p-4 sm:p-5 border border-emerald-500/30 relative overflow-hidden shadow-lg space-y-3">
               {/* Subtle Background Watermark */}
               <div className="absolute right-0 bottom-0 translate-x-4 translate-y-4 opacity-5 pointer-events-none">
@@ -628,7 +645,7 @@ function QueueCheckinContent() {
               </div>
             </div>
 
-            {/* ── 2. Live Waiting Room Status ── */}
+            {/* â”€â”€ 2. Live Waiting Room Status â”€â”€ */}
             <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/80 space-y-2.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-foreground flex items-center gap-1.5 text-[11px]">
@@ -723,11 +740,11 @@ function QueueCheckinContent() {
 
               {currentStatus.isMyTurn ? (
                 <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 font-bold text-center text-xs animate-pulse">
-                  🔔 Ticket {ticket?.ticketNumber} called! Please proceed to Consultation Desk 1 with {ticket?.petName}.
+                  ðŸ”” Ticket {ticket?.ticketNumber} called! Please proceed to Consultation Desk 1 with {ticket?.petName}.
                 </div>
               ) : currentStatus.isNext ? (
                 <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-center text-xs">
-                  ✅ You&apos;re next! Please stay near the desk — ticket {ticket?.ticketNumber} will be called shortly.
+                  âœ… You&apos;re next! Please stay near the desk â€” ticket {ticket?.ticketNumber} will be called shortly.
                 </div>
               ) : (
                 <p className="text-[10.5px] text-muted-foreground text-center pt-0.5 leading-relaxed">

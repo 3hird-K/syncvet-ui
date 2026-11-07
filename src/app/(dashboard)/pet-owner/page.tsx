@@ -73,7 +73,7 @@ import {
 } from "lucide-react";
 import { useCitizenChat } from "@/lib/chat-context";
 import QRCode from "qrcode";
-import { cn, isConsultationOverdue, formatClinicScheduleSlot } from "@/lib/utils";
+import { cn, isConsultationOverdue, formatClinicScheduleSlot, getFieldOpGracePeriod } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessengerIcon } from "@/components/icons/messenger-icon";
@@ -115,6 +115,8 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PetOwnerConsultationDialog } from "@/components/dashboard/pet-owner-consultation-dialog";
+import { EditPetOwnerConsultationDialog } from "@/components/dashboard/edit-pet-owner-consultation-dialog";
+import { EditAppointmentDialog } from "@/components/dashboard/edit-appointment-dialog";
 import { OfficialConsultationSheetDialog } from "@/components/dashboard/official-consultation-sheet-dialog";
 import { RegisterPetDialog, DOG_BREEDS, CAT_BREEDS } from "@/components/dashboard/register-pet-dialog";
 import { EditPetDialog } from "@/components/dashboard/edit-pet-dialog";
@@ -135,6 +137,7 @@ import { syncConsultationsToQueue, getDailyQueue } from "@/lib/cvo-queue";
 import { PetQueueCheckInDialog } from "@/components/dashboard/pet-queue-checkin-dialog";
 import { parsePetWeightKg } from "@/lib/pet-weight";
 import { PetOwnerOutreachCheckInDialog } from "@/components/dashboard/pet-owner-outreach-checkin-dialog";
+import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
 import { toast } from "sonner";
 
 interface ChatMessage {
@@ -252,6 +255,10 @@ export default function PetOwnerPortalPage() {
 
   const [selectedConsultation, setSelectedConsultation] = useState<CVOConsultation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [appointmentToEdit, setAppointmentToEdit] = useState<any | null>(null);
+  const [editAppointmentOpen, setEditAppointmentOpen] = useState(false);
+  const [consultationToEdit, setConsultationToEdit] = useState<CVOConsultation | null>(null);
+  const [editConsultationOpen, setEditConsultationOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [passportOpen, setPassportOpen] = useState(false);
   const [selectedPetForPassport, setSelectedPetForPassport] = useState<any>(null);
@@ -586,6 +593,10 @@ export default function PetOwnerPortalPage() {
 
         for (const appt of local) {
           if (!appt?.id) continue;
+          // Only ever migrate entries explicitly marked as pending sync.
+          // Everything else is a redundant cache of Supabase data; migrating them
+          // would resurrect entries that an admin/vet has deleted.
+          if (appt.local_pending_sync !== true) continue;
           // Check if already present in Supabase appointments
           const { data: existing } = await supabase
             .from("appointments")
@@ -635,18 +646,31 @@ export default function PetOwnerPortalPage() {
       const ownerId = dbUser?.id || user?.id;
       if (!ownerId) return [];
 
+      const validOwnerIds = Array.from(
+        new Set([ownerId, user?.id, dbUser?.id].filter((id): id is string => Boolean(id) && id !== "undefined"))
+      );
+      if (validOwnerIds.length === 0) return [];
+
       const list: any[] = [];
       const seenIds = new Set<string>();
 
       // 1. Try appointments table
+      let appointmentsFetched = false;
       try {
-        const { data, error } = await supabase
+        let apptQuery = supabase
           .from("appointments")
-          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, email, phone_number)")
-          .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
-          .order("date", { ascending: false });
+          .select("*, pets:pet_id(id, name, species, breed, photo_url), users:owner_id(id, full_name, email, phone_number)");
+
+        if (validOwnerIds.length === 1) {
+          apptQuery = apptQuery.eq("owner_id", validOwnerIds[0]);
+        } else {
+          apptQuery = apptQuery.in("owner_id", validOwnerIds);
+        }
+
+        const { data, error } = await apptQuery.order("date", { ascending: false });
 
         if (!error && data) {
+          appointmentsFetched = true;
           data.forEach((item: any) => {
             if (item.status === "cancelled") return;
             if (!seenIds.has(item.id)) {
@@ -666,15 +690,23 @@ export default function PetOwnerPortalPage() {
       }
 
       // 2. Also read service_transactions for bookings
+      let transactionsFetched = false;
       try {
-        const { data: txData } = await supabase
+        let txQuery = supabase
           .from("service_transactions")
           .select("*, pets:pet_id(id, name, species, breed, photo_url)")
-          .or(`owner_id.eq.${ownerId},owner_id.eq.${user?.id}`)
-          .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"])
-          .order("date", { ascending: false });
+          .in("transaction_type", ["Vaccination Booking", "Spay & Neuter Booking"]);
+
+        if (validOwnerIds.length === 1) {
+          txQuery = txQuery.eq("owner_id", validOwnerIds[0]);
+        } else {
+          txQuery = txQuery.in("owner_id", validOwnerIds);
+        }
+
+        const { data: txData } = await txQuery.order("date", { ascending: false });
 
         if (txData) {
+          transactionsFetched = true;
           txData.forEach((tx: any) => {
             if (tx.status === "cancelled") return;
             const refId = tx.reference_id || tx.id;
@@ -704,23 +736,57 @@ export default function PetOwnerPortalPage() {
         // ignore
       }
 
-      // 3. Check localStorage cache
+      // 3. localStorage cache — used only as an offline fallback.
+      //    When Supabase was reachable, entries that no longer exist there were
+      //    deleted by the admin/vet, so prune them instead of resurrecting them.
       try {
+        const supabaseReachable = appointmentsFetched || transactionsFetched;
         const local = JSON.parse(localStorage.getItem("syncvet_local_appointments") || "[]");
-        local.forEach((item: any) => {
-          if (item.status === "cancelled") return;
-          if (!seenIds.has(item.id) && (item.owner_id === ownerId || item.owner_id === user?.id)) {
-            seenIds.add(item.id);
-            list.push(item);
+        if (local.length > 0 && supabaseReachable) {
+          const pruned = local.filter(
+            (item: any) => seenIds.has(item.id) || seenIds.has(item.reference_id)
+          );
+          if (pruned.length !== local.length) {
+            localStorage.setItem("syncvet_local_appointments", JSON.stringify(pruned));
           }
-        });
+        } else if (local.length > 0) {
+          local.forEach((item: any) => {
+            if (item.status === "cancelled") return;
+            if (!seenIds.has(item.id) && validOwnerIds.includes(item.owner_id)) {
+              seenIds.add(item.id);
+              list.push(item);
+            }
+          });
+        }
       } catch (e) {
         // ignore
       }
 
+      // Cascade filter strictly to this owner's currently registered pets
+      // If the owner has no registered pets, no pet appointment applies to their dashboard.
+      const registeredPetIds = new Set(
+        dbPets.map((p: any) => (p.id ? String(p.id).toLowerCase() : "")).filter(Boolean)
+      );
+      const registeredPetNames = new Set(
+        dbPets.map((p: any) => (p.name ? String(p.name).toLowerCase().trim() : "")).filter(Boolean)
+      );
+
+      const ownerFilteredList = list.filter((item: any) => {
+        if (dbPets.length === 0) return false;
+
+        const pId = item.pet_id ? String(item.pet_id).toLowerCase() : "";
+        const pSubId = item.pets?.id ? String(item.pets.id).toLowerCase() : "";
+        const pName = (item.pet_name || item.pets?.name || "").toLowerCase().trim();
+
+        const matchesId = (pId && registeredPetIds.has(pId)) || (pSubId && registeredPetIds.has(pSubId));
+        const matchesName = pName && registeredPetNames.has(pName);
+
+        return matchesId || matchesName;
+      });
+
       const todayStart = startOfDay(new Date());
 
-      const validList = list.map((item: any) => {
+      const validList = ownerFilteredList.map((item: any) => {
         let effectiveStatus = item.status || "confirmed";
         try {
           if (item.date && isConsultationOverdue(item.date, effectiveStatus)) {
@@ -1445,13 +1511,15 @@ export default function PetOwnerPortalPage() {
       rawConsultation?: any;
     }> = [];
 
-    // 1. Appointments (Vaccinations, Spay/Neuter, etc.) - Present and Future schedules only
+    // 1. Appointments (Vaccinations, Spay/Neuter, etc.) - Strictly today's and upcoming schedules
     ownerAppointments.forEach((apt: any) => {
       if (apt.status === "cancelled") return;
 
       const aptDate = (apt.date || "").split("T")[0];
-      // Exclude appointments from the past (strictly present today or future schedules)
-      if (aptDate && aptDate < todayStr) return;
+      // Strictly today or future dates only
+      if (!aptDate || aptDate < todayStr) return;
+
+      const isMissed = apt.status === "missed";
 
       const aptPet = pets.find(
         (p) =>
@@ -1467,7 +1535,6 @@ export default function PetOwnerPortalPage() {
       const isCheckedIn = !!matchedTicket || apt.status === "checked-in" || apt.status === "in-consultation" || !!apt.checked_in_at;
       const isCompleted = apt.status === "completed";
       const isCancelled = apt.status === "cancelled";
-      const isMissed = apt.status === "missed";
       const isUnofficial = !isCheckedIn && !isCompleted && !isCancelled && !isMissed;
 
       list.push({
@@ -1492,15 +1559,16 @@ export default function PetOwnerPortalPage() {
       });
     });
 
-    // 2. Waiting, scheduled (unofficial), or active consultation entries - Present and Future schedules only
+    // 2. Waiting, scheduled (unofficial), or active consultation entries - Strictly today's and upcoming schedules
     ownerConsultations.forEach((c) => {
       if ((c.status as string) === "cancelled") return;
 
       const consultDate = (c.date || "").split("T")[0];
-      // Exclude consultations from the past (strictly present today or future schedules)
-      if (consultDate && consultDate < todayStr) return;
+      // Strictly today or future dates only
+      if (!consultDate || consultDate < todayStr) return;
 
       const isOverdue = isConsultationOverdue(c.date, c.status);
+
       const matchedTicket = todayQueueState.activeTickets.find(
         (t: any) =>
           t.appointmentId === (c.encounterNo || c.id) ||
@@ -2675,44 +2743,13 @@ export default function PetOwnerPortalPage() {
           </div>
         </div>
 
-        {/* Unattended Schedule Notice Banner */}
-        {missedAppointmentsCount > 0 && (
-          <div className="p-3.5 sm:p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in-0">
-            <div className="flex items-start gap-2.5">
-              <div className="size-8 rounded-lg bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/30">
-                <CalendarClock className="size-4" />
-              </div>
-              <div className="space-y-0.5">
-                <p className="font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
-                  {missedAppointmentsCount === 1
-                    ? "Unattended Schedule Notice: 1 appointment was missed"
-                    : `Unattended Schedule Notice: ${missedAppointmentsCount} appointments were missed`}
-                </p>
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  Appointments not attended on their scheduled date are flagged. Please reschedule your pet&apos;s procedure to secure a fresh municipal veterinary clinic slot.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end">
-              <Button
-                size="sm"
-                variant={appointmentFilter === "missed" ? "default" : "outline"}
-                onClick={() => setAppointmentFilter("missed")}
-                className="h-8 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white border-transparent cursor-pointer"
-              >
-                View Missed
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* List of Scheduled Transactions or Empty View */}
         {loadingAppointments ? (
           <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
             <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <span className="text-xs">Loading scheduled transactions...</span>
           </div>
-        ) : allScheduledTransactions.length === 0 ? (
+        ) : displayedScheduledTransactions.length === 0 ? (
           <Card className="p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-muted/10 space-y-3 rounded-2xl">
             <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto border border-primary/20">
               <Calendar className="size-6" />
@@ -2720,13 +2757,13 @@ export default function PetOwnerPortalPage() {
             <div className="space-y-1">
               <h3 className="font-bold text-sm text-foreground">No Scheduled Transactions Found</h3>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                You do not have any active appointments or scheduled transactions for your pets. Book a procedure or request a consultation to get started.
+                You do not have any active appointments or scheduled transactions for your pets today or upcoming. Book a procedure or request a consultation to get started.
               </p>
             </div>
           </Card>
         ) : (
           <div className="space-y-3">
-            {allScheduledTransactions.map((tx) => {
+            {displayedScheduledTransactions.map((tx) => {
               const isSpayNeuter = tx.serviceId === "spay-neuter";
               const isConsultationQueue = tx.kind === "consultation-queue";
               const isVaccination = !isSpayNeuter && !isConsultationQueue;
@@ -3034,6 +3071,21 @@ export default function PetOwnerPortalPage() {
                               </>
                             ) : (
                               <>
+                                {(tx.isUnofficial || tx.status === "confirmed" || tx.status === "waiting") && !tx.queueTicket && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setAppointmentToEdit(tx.rawAppointment);
+                                      setEditAppointmentOpen(true);
+                                    }}
+                                    className="size-8 p-0 rounded-lg border-border/80 hover:bg-primary/10 hover:text-primary hover:border-primary/40 cursor-pointer shadow-2xs transition-colors"
+                                    title="Edit appointment / Reschedule"
+                                    aria-label="Edit appointment"
+                                  >
+                                    <Pencil className="size-4 text-primary" />
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -3074,6 +3126,26 @@ export default function PetOwnerPortalPage() {
                             )
                           ) : (tx.rawConsultation || tx.kind === "consultation-queue") ? (
                             <>
+                              {tx.isUnofficial && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const consultObj =
+                                      tx.rawConsultation ||
+                                      consultations.find((c) => c.id === tx.id || c.encounterNo === tx.id);
+                                    if (consultObj) {
+                                      setConsultationToEdit(consultObj);
+                                      setEditConsultationOpen(true);
+                                    }
+                                  }}
+                                  className="size-8 p-0 rounded-lg border-border/80 hover:bg-primary/10 hover:text-primary hover:border-primary/40 cursor-pointer shadow-2xs transition-colors"
+                                  title="Edit consultation request"
+                                  aria-label="Edit consultation request"
+                                >
+                                  <Pencil className="size-4 text-primary" />
+                                </Button>
+                              )}
                               {tx.rawConsultation && (
                                 <Button
                                   variant="outline"
@@ -3364,15 +3436,56 @@ export default function PetOwnerPortalPage() {
                       </div>
 
                       <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0 w-full md:w-auto">
-                        <PetOwnerConsultationDialog
-                          initialPet={pets[0]}
-                          ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                          trigger={
-                            <Button className="h-8.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full md:w-auto shadow-xs">
-                              <Plus className="size-3.5 mr-1" /> Pre-register Pet for Drive
-                            </Button>
+                        {(() => {
+                          const mbTodayStr = format(new Date(), "yyyy-MM-dd");
+                          const mbCleanDate = myBarangayDrive.date.includes("T") ? myBarangayDrive.date.split("T")[0] : myBarangayDrive.date.trim();
+                          const mbGrace = getFieldOpGracePeriod(myBarangayDrive.date, myBarangayDrive.status);
+                          const mbIsExpired = mbGrace.isPastGracePeriod || myBarangayDrive.status === "completed" || myBarangayDrive.status === "cancelled";
+                          const mbIsFuture = mbCleanDate > mbTodayStr && myBarangayDrive.status !== "in-progress";
+
+                          if (mbIsExpired) {
+                            return (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled
+                                className="h-8.5 text-xs font-semibold text-muted-foreground bg-muted/40 border-border/60 cursor-not-allowed gap-1.5 w-full md:w-auto"
+                              >
+                                <Lock className="size-3.5 text-muted-foreground" />
+                                <span>Outreach Concluded</span>
+                              </Button>
+                            );
                           }
-                        />
+
+                          if (mbIsFuture) {
+                            return (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  toast.info("Outreach Check-In Not Yet Active", {
+                                    description: `Outreach in Barangay ${myBarangayDrive.barangay} is scheduled for ${formatOpDate(mbCleanDate)}. Attendance QR check-in opens on the event day.`,
+                                  });
+                                }}
+                                className="h-8.5 text-xs font-semibold border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer gap-1.5 w-full md:w-auto"
+                              >
+                                <Calendar className="size-3.5 text-amber-600 dark:text-amber-400" />
+                                <span>Scan Opens on {formatOpDate(mbCleanDate)}</span>
+                              </Button>
+                            );
+                          }
+
+                          return (
+                            <ScanQueueQrDialog
+                              trigger={
+                                <Button className="h-8.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full md:w-auto shadow-xs gap-1.5">
+                                  <QrCode className="size-3.5" />
+                                  <span>Scan Attendance QR</span>
+                                </Button>
+                              }
+                            />
+                          );
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
@@ -3390,7 +3503,14 @@ export default function PetOwnerPortalPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setActiveTab("consultations")}
+                      onClick={() => {
+                        setActiveTab("procedures");
+                        if (typeof window !== "undefined") {
+                          const url = new URL(window.location.href);
+                          url.searchParams.set("tab", "procedures");
+                          window.history.pushState({}, "", url.toString());
+                        }
+                      }}
                       className="text-xs h-7.5 shrink-0 cursor-pointer"
                     >
                       Book Clinic Visit
@@ -3486,19 +3606,59 @@ export default function PetOwnerPortalPage() {
                                 <span className="font-mono text-[9px] text-muted-foreground">
                                   {drive.opId}
                                 </span>
-                                <PetOwnerConsultationDialog
-                                  initialPet={pets[0]}
-                                  ownerProfile={{ name: ownerName, contact: ownerContact, barangay: ownerBarangay }}
-                                  trigger={
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 text-[11px] px-2.5 font-semibold border-teal-500/30 text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 cursor-pointer"
-                                    >
-                                      Pre-register Pet
-                                    </Button>
+                                {(() => {
+                                  const driveTodayStr = format(new Date(), "yyyy-MM-dd");
+                                  const cleanDriveDate = drive.date.includes("T") ? drive.date.split("T")[0] : drive.date.trim();
+                                  const driveGrace = getFieldOpGracePeriod(drive.date, drive.status);
+                                  const isDriveExpired = driveGrace.isPastGracePeriod || drive.status === "completed" || drive.status === "cancelled";
+                                  const isDriveFuture = cleanDriveDate > driveTodayStr && drive.status !== "in-progress";
+
+                                  if (isDriveExpired) {
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled
+                                        className="h-7 text-[11px] px-2.5 font-semibold text-muted-foreground bg-muted/40 border-border/60 cursor-not-allowed gap-1"
+                                      >
+                                        <Lock className="size-3 text-muted-foreground" />
+                                        <span>Expired</span>
+                                      </Button>
+                                    );
                                   }
-                                />
+
+                                  if (isDriveFuture) {
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          toast.info("Outreach Check-In Not Yet Active", {
+                                            description: `Outreach in Barangay ${drive.barangay} is scheduled for ${formatOpDate(cleanDriveDate)}. Attendance QR check-in opens on the event day.`,
+                                          });
+                                        }}
+                                        className="h-7 text-[11px] px-2.5 font-semibold border-amber-500/30 text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer gap-1"
+                                      >
+                                        <Calendar className="size-3 text-amber-600 dark:text-amber-400" />
+                                        <span>Opens {formatOpDate(cleanDriveDate)}</span>
+                                      </Button>
+                                    );
+                                  }
+
+                                  return (
+                                    <ScanQueueQrDialog
+                                      trigger={
+                                        <Button
+                                          size="sm"
+                                          className="h-7 text-[11px] px-2.5 font-bold gap-1 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs"
+                                        >
+                                          <QrCode className="size-3" />
+                                          <span>Scan QR</span>
+                                        </Button>
+                                      }
+                                    />
+                                  );
+                                })()}
                               </div>
                             </CardContent>
                           </Card>
@@ -4965,6 +5125,31 @@ export default function PetOwnerPortalPage() {
         open={deleteConsultationOpen}
         onOpenChange={setDeleteConsultationOpen}
         onDeleted={() => {
+          setTodayQueueState(getDailyQueue());
+          queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
+          queryClient.invalidateQueries({ queryKey: ["user-consultations"] });
+        }}
+      />
+
+      {/* ── Edit Appointment Dialog (Scheduled Transactions CRUD) ── */}
+      <EditAppointmentDialog
+        appointment={appointmentToEdit}
+        open={editAppointmentOpen}
+        onOpenChange={setEditAppointmentOpen}
+        onUpdated={() => {
+          setTodayQueueState(getDailyQueue());
+          queryClient.invalidateQueries({ queryKey: ["user-appointments"] });
+          queryClient.invalidateQueries({ queryKey: ["procedure-appointments-slots"] });
+          queryClient.invalidateQueries({ queryKey: ["user-transactions"] });
+        }}
+      />
+
+      {/* ── Edit Consultation Dialog (Scheduled Transactions CRUD) ── */}
+      <EditPetOwnerConsultationDialog
+        consultation={consultationToEdit}
+        open={editConsultationOpen}
+        onOpenChange={setEditConsultationOpen}
+        onUpdated={() => {
           setTodayQueueState(getDailyQueue());
           queryClient.invalidateQueries({ queryKey: ["cvo_consultations"] });
           queryClient.invalidateQueries({ queryKey: ["user-consultations"] });
