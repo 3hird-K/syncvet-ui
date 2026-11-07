@@ -623,7 +623,7 @@ function ConsultationsContent() {
     }
 
     return dbAppointments
-      .filter((apt: any) => apt.status !== "cancelled")
+      .filter((apt: any) => apt.status !== "cancelled" && apt.status !== "missed")
       .map((apt: any) => {
         const matchedPet = dbPets.find(
           (p: any) =>
@@ -642,7 +642,21 @@ function ConsultationsContent() {
           apt.service_id?.includes("vax") ||
           (apt.notes && apt.notes.toLowerCase().includes("vax"));
         const category: QueueCategory = isVax ? "vaccination" : "spay-neuter";
-        const statusMap = apt.status === "completed" ? "completed" : "waiting";
+
+        const isCheckedInToday =
+          (apt.status === "checked-in" || apt.status === "in-consultation" || apt.status === "serving") &&
+          isTodayDate(apt.date);
+
+        let statusMap: "completed" | "waiting" | "in-consultation" | "scheduled" = "scheduled";
+        if (apt.status === "completed") {
+          statusMap = "completed";
+        } else if (apt.status === "in-consultation" || apt.status === "serving") {
+          statusMap = "in-consultation";
+        } else if (isCheckedInToday) {
+          statusMap = "waiting";
+        } else {
+          statusMap = "scheduled";
+        }
 
         const petName = apt.pet_name || matchedPet?.name || "Pet";
         const species = (matchedPet?.species as any) || "Dog";
@@ -1166,6 +1180,8 @@ function ConsultationsContent() {
         return <Badge className="text-[10px] bg-purple-500/15 text-purple-500 hover:bg-purple-500/25 whitespace-nowrap">Treatment</Badge>;
       case "completed":
         return <Badge className="text-[10px] bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 whitespace-nowrap">Completed</Badge>;
+      case "scheduled":
+        return <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 whitespace-nowrap">Scheduled</Badge>;
       case "waiting":
       default:
         return <Badge className="text-[10px] bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 whitespace-nowrap">Waiting</Badge>;
@@ -1311,7 +1327,8 @@ function ConsultationsContent() {
                 </SelectTrigger>
                 <SelectContent className="text-xs">
                   <SelectItem value="all" className="text-xs py-1 cursor-pointer">All Statuses</SelectItem>
-                  <SelectItem value="waiting" className="text-xs py-1 cursor-pointer">Waiting</SelectItem>
+                  <SelectItem value="waiting" className="text-xs py-1 cursor-pointer">Waiting (Checked-In)</SelectItem>
+                  <SelectItem value="scheduled" className="text-xs py-1 cursor-pointer">Scheduled</SelectItem>
                   <SelectItem value="overdue" className="text-xs py-1 cursor-pointer">Overdue</SelectItem>
                   <SelectItem value="completed" className="text-xs py-1 cursor-pointer">Completed</SelectItem>
                 </SelectContent>

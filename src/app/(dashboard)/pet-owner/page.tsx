@@ -1927,6 +1927,18 @@ export default function PetOwnerPortalPage() {
       <div className="max-w-[1140px] mx-auto grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-5 items-start">
         {/* ── LEFT COLUMN (Main Content) ── */}
         <div className="md:col-span-7 lg:col-span-8 space-y-4 min-w-0">
+          {/* ── Real-Time Clinic Arrival Queue Tracker & Live Status (Visible Across All Tabs) ── */}
+          <PetOwnerQueueTracker
+            userId={dbUser?.id || user?.id || ""}
+            userEmail={ownerEmail}
+            userName={ownerName}
+            userContact={ownerContact}
+            userBarangay={ownerBarangay}
+            todayAppointments={todayAppointments}
+            todayConsultations={todayConsultations}
+            allPetNames={pets.map((p) => p.name)}
+          />
+
           <Tabs
             value={activeTab}
             onValueChange={(val) => {
@@ -1942,17 +1954,6 @@ export default function PetOwnerPortalPage() {
           >
             {/* ════ TAB 0: CVO Central Social Media Feed ════ */}
             <TabsContent value="feed" className="space-y-4 m-0">
-
-      {/* ── Real-Time Clinic Arrival Queue Tracker & Live Status ── */}
-      <PetOwnerQueueTracker
-        userId={dbUser?.id || user?.id || ""}
-        userEmail={ownerEmail}
-        userName={ownerName}
-        userContact={ownerContact}
-        userBarangay={ownerBarangay}
-        todayAppointments={todayAppointments}
-        todayConsultations={todayConsultations}
-      />
 
       {/* ── Annual Rabies Vaccination Reminder Alert ── */}
       {boosterAlertPets.length > 0 && (
@@ -3890,7 +3891,44 @@ export default function PetOwnerPortalPage() {
                       </div>
 
                       {/* Action button */}
-                      <div>
+                      <div className="space-y-1.5">
+                        {isAptToday && (() => {
+                          const aptTicket = todayQueueState?.activeTickets?.find(
+                            (t: any) =>
+                              t.appointmentId === nextApt.id ||
+                              (t.petName && nextAptPetName && t.petName.toLowerCase().trim() === nextAptPetName.toLowerCase().trim())
+                          );
+
+                          if (aptTicket) {
+                            const isAptCalled = aptTicket.status === "in-consultation" || todayQueueState?.nowServingTicketNumber === aptTicket.ticketNumber;
+                            return (
+                              <div className={cn(
+                                "p-2 rounded-lg border flex items-center justify-between text-xs",
+                                isAptCalled ? "bg-primary/15 border-primary/40 text-primary font-bold animate-pulse" : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                              )}>
+                                <span className="font-mono font-bold text-[11px]">
+                                  {isAptCalled ? `📢 CALLED NOW • ${aptTicket.ticketNumber}` : `Ticket ${aptTicket.ticketNumber} in Queue`}
+                                </span>
+                                <span className="text-[10px] font-semibold">{aptTicket.consultationRoom || "Desk 1"}</span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <ScanQueueQrDialog
+                              trigger={
+                                <Button
+                                  size="sm"
+                                  className="w-full h-7 text-[10.5px] font-semibold gap-1.5 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition-all active:scale-[0.99]"
+                                >
+                                  <Camera className="size-3" />
+                                  <span>Scan Station QR to Join Queue</span>
+                                </Button>
+                              }
+                            />
+                          );
+                        })()}
+
                         <Button
                           size="sm"
                           variant="outline"
@@ -3910,22 +3948,47 @@ export default function PetOwnerPortalPage() {
 
                 {waitingConsultation && (() => {
                   const waitingPet = pets.find((p) => (waitingConsultation.petId && p.id === waitingConsultation.petId) || (waitingConsultation.petName && p.name.toLowerCase() === waitingConsultation.petName.toLowerCase()));
+                  const cDate = (waitingConsultation.date || "").split("T")[0];
+                  const isConsultToday = cDate === todayStr;
+
+                  const liveTicket = todayQueueState?.activeTickets?.find(
+                    (t: any) =>
+                      t.appointmentId === (waitingConsultation.encounterNo || waitingConsultation.id) ||
+                      t.encounterNo === waitingConsultation.encounterNo ||
+                      (t.petName && waitingConsultation.petName && t.petName.toLowerCase().trim() === waitingConsultation.petName.toLowerCase().trim())
+                  );
+
+                  const isCalled = liveTicket && (liveTicket.status === "in-consultation" || todayQueueState?.nowServingTicketNumber === liveTicket.ticketNumber);
 
                   return (
-                    <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                    <div className={cn(
+                      "p-3 rounded-xl border space-y-2",
+                      isCalled
+                        ? "bg-primary/15 border-primary/40 ring-1 ring-primary/30 animate-pulse"
+                        : liveTicket
+                        ? "bg-emerald-500/5 border-emerald-500/25"
+                        : "bg-amber-500/5 border-amber-500/20"
+                    )}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                          Pending Consultation
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {liveTicket ? "Active Clinic Queue" : "Consultation Schedule"}
                         </span>
                         <div className="flex items-center gap-1">
-                          {waitingConsultation.status === "scheduled" ? (
-                            <Badge className="text-[9px] bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/30 gap-1 font-bold">
+                          {liveTicket ? (
+                            <Badge className={cn(
+                              "text-[9px] font-mono font-bold gap-1",
+                              isCalled ? "bg-primary text-primary-foreground" : "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
+                            )}>
+                              {isCalled ? `📢 CALLED: ${liveTicket.ticketNumber}` : `Ticket ${liveTicket.ticketNumber}`}
+                            </Badge>
+                          ) : isConsultToday ? (
+                            <Badge className="text-[9px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30 gap-1 font-bold">
                               <QrCode className="size-2.5" />
-                              Unofficial • Scan QR
+                              Ready • Scan QR
                             </Badge>
                           ) : (
-                            <Badge className="text-[9px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30 font-bold">
-                              In Live Queue
+                            <Badge className="text-[9px] bg-primary/10 text-primary border-primary/30 font-bold">
+                              Scheduled ({cDate})
                             </Badge>
                           )}
                           <Button
@@ -3957,10 +4020,27 @@ export default function PetOwnerPortalPage() {
                             {waitingConsultation.petName} — {waitingConsultation.serviceType}
                           </p>
                           <p className="text-[11px] text-muted-foreground line-clamp-1">
-                            {waitingConsultation.chiefComplaint}
+                            {liveTicket?.status === "in-consultation"
+                              ? `Please proceed to ${liveTicket.consultationRoom || "Desk 1"}`
+                              : waitingConsultation.chiefComplaint || "Clinical Consultation"}
                           </p>
                         </div>
                       </div>
+
+                      {/* If today and not yet checked in, provide direct scan button */}
+                      {isConsultToday && !liveTicket && (
+                        <ScanQueueQrDialog
+                          trigger={
+                            <Button
+                              size="sm"
+                              className="w-full h-7 text-[10.5px] font-semibold gap-1.5 rounded-lg cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs mt-1"
+                            >
+                              <Camera className="size-3" />
+                              <span>Scan Reception QR to Enter Queue</span>
+                            </Button>
+                          }
+                        />
+                      )}
                     </div>
                   );
                 })()}

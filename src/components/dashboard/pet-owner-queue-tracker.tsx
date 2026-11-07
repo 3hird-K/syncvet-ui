@@ -231,6 +231,7 @@ interface PetOwnerQueueTrackerProps {
   userBarangay?: string;
   todayAppointments: any[];
   todayConsultations?: any[];
+  allPetNames?: string[];
 }
 
 export function PetOwnerQueueTracker({
@@ -241,6 +242,7 @@ export function PetOwnerQueueTracker({
   userBarangay,
   todayAppointments = [],
   todayConsultations = [],
+  allPetNames = [],
 }: PetOwnerQueueTrackerProps) {
   const todayStr = useMemo(() => getTodayDateStr(), []);
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
@@ -251,13 +253,14 @@ export function PetOwnerQueueTracker({
       userName: userName,
       userEmail: userEmail,
       petNames: [
+        ...(allPetNames || []),
         ...todayAppointments.map((a) => a.pet_name || a.petName).filter(Boolean),
         ...(todayConsultations || []).map((c) => c.petName || c.pet_name).filter(Boolean),
-      ],
+      ].filter(Boolean),
       encounterNos: (todayConsultations || []).map((c) => c.encounterNo || c.encounter_no).filter(Boolean),
       appointmentIds: todayAppointments.map((a) => a.id).filter(Boolean),
     }),
-    [userId, userName, userEmail, todayAppointments, todayConsultations]
+    [userId, userName, userEmail, todayAppointments, todayConsultations, allPetNames]
   );
 
   const [queueInfo, setQueueInfo] = useState(() =>
@@ -286,7 +289,7 @@ export function PetOwnerQueueTracker({
     window.addEventListener("syncvet-queue-updated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
 
-    // Cross-device and cross-browser Supabase broadcast channel
+    // Cross-device and cross-browser Supabase broadcast channel + postgres changes
     const channel = supabase
       .channel("cvo-queue-realtime-channel")
       .on("broadcast", { event: "queue_state_updated" }, (payload) => {
@@ -300,9 +303,33 @@ export function PetOwnerQueueTracker({
           setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
         }
       })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "queue_tickets" },
+        () => {
+          syncQueueFromSupabase(todayStr).then(() => {
+            setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        () => {
+          syncQueueFromSupabase(todayStr).then(() => {
+            setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
+          });
+        }
+      )
       .subscribe();
 
+    // High-precision periodic polling fallback (every 3 seconds) ensures instant sync
+    const intervalId = setInterval(() => {
+      setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
+    }, 3000);
+
     return () => {
+      clearInterval(intervalId);
       window.removeEventListener("syncvet-queue-updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
       supabase.removeChannel(channel);
@@ -606,24 +633,26 @@ export function PetOwnerQueueTracker({
       >
         {/* ── Integrated Calling Notice Banner ── */}
         {isCalled && !isTicketOverdue && (
-          <div className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 border-b border-primary/20 bg-primary/10 flex items-center justify-between gap-3 text-xs">
+          <div className="px-3.5 py-3 sm:px-4 sm:py-3 border-b border-primary/30 bg-primary/15 flex items-center justify-between gap-3 text-xs animate-in fade-in-0 duration-300">
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* Premium Primary Squircle Icon */}
-              <div className="flex items-center justify-center size-8 rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/25 shrink-0">
-                <BellRing className="size-4 text-primary-foreground" />
+              {/* Premium Primary Squircle Icon with Pulse Ring */}
+              <div className="relative flex items-center justify-center size-9 rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 shrink-0">
+                <BellRing className="size-5 text-primary-foreground animate-bounce" />
+                <span className="absolute -top-1 -right-1 size-3 rounded-full bg-emerald-500 ring-2 ring-background animate-ping" />
               </div>
 
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight">
-                    YOU ARE BEING CALLED NOW
+                  <span className="font-black text-foreground text-xs sm:text-sm tracking-tight text-primary uppercase">
+                    📢 YOU ARE BEING CALLED NOW!
                   </span>
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-2xs">
+                  <span className="text-[11px] font-mono font-black px-2.5 py-0.5 rounded-full bg-primary text-primary-foreground shadow-xs">
                     {myTicket?.ticketNumber}
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  Please proceed to {myTicket?.consultationRoom || "Desk 1"} with {myTicket?.petName}
+                <p className="text-[11px] sm:text-xs text-foreground/90 font-medium truncate mt-0.5">
+                  Please proceed to <strong>{myTicket?.consultationRoom || "Consultation Desk 1"}</strong> with <strong>{myTicket?.petName}</strong>
+                  {myTicket?.servingVet ? ` • ${myTicket.servingVet}` : ""}
                 </p>
               </div>
             </div>
@@ -650,23 +679,24 @@ export function PetOwnerQueueTracker({
 
         {/* ── Next-in-Line Notice Banner ── */}
         {isNextInLine && (
-          <div className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 border-b border-emerald-500/20 bg-emerald-500/10 flex items-center justify-between gap-3 text-xs">
+          <div className="px-3.5 py-2.5 sm:px-4 sm:py-2.5 border-b border-emerald-500/30 bg-emerald-500/15 flex items-center justify-between gap-3 text-xs animate-in fade-in-0 duration-300">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="flex items-center justify-center size-8 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 shrink-0">
+              <div className="relative flex items-center justify-center size-8.5 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 shrink-0">
                 <Bell className="size-4 text-white" />
+                <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-400 animate-ping" />
               </div>
 
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight">
-                    YOU&apos;RE NEXT IN LINE
+                  <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight text-emerald-700 dark:text-emerald-300">
+                    ⚡ YOU&apos;RE NEXT IN LINE!
                   </span>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs">
                     {myTicket?.ticketNumber}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">
-                  Please stay nearby — you&apos;ll be called to {myTicket?.consultationRoom || "Desk 1"} shortly
+                  0 patients ahead — Please prepare <strong>{myTicket?.petName}</strong> and stay near {myTicket?.consultationRoom || "Desk 1"}
                 </p>
               </div>
             </div>

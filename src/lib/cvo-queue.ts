@@ -986,6 +986,7 @@ export function getPetOwnerQueueStatus(
 
   const ownerId = typeof lookup === "string" ? lookup : lookup.ownerId || "";
   const userName = typeof lookup === "string" ? "" : lookup.userName || "";
+  const userEmail = typeof lookup === "string" ? "" : (lookup.userEmail || "").toLowerCase().trim();
   const petNames = typeof lookup === "string" ? [] : (lookup.petNames || []).map((n) => n.toLowerCase().trim());
   const encounterNos = typeof lookup === "string" ? [] : (lookup.encounterNos || []).map((e) => e.toLowerCase().trim());
   const appointmentIds = typeof lookup === "string" ? [] : (lookup.appointmentIds || []).map((a) => a.toLowerCase().trim());
@@ -996,12 +997,15 @@ export function getPetOwnerQueueStatus(
   const matchesTicket = (t: QueueTicket) => {
     const tOwnerId = (t.ownerId || "").toLowerCase().trim();
     const tOwnerName = (t.ownerName || "").toLowerCase().trim();
+    const tOwnerContact = (t.ownerContact || "").toLowerCase().trim();
+    const tNotes = (t.notes || "").toLowerCase().trim();
     const tPetName = (t.petName || "").toLowerCase().trim();
     const tEncounter = (t.encounterNo || "").toLowerCase().trim();
     const tAppointment = (t.appointmentId || "").toLowerCase().trim();
 
     if (cleanOwnerId && (tOwnerId === cleanOwnerId || tOwnerName.includes(cleanOwnerId) || cleanOwnerId.includes(tOwnerName))) return true;
     if (cleanUserName && (tOwnerName === cleanUserName || tOwnerName.includes(cleanUserName) || cleanUserName.includes(tOwnerName))) return true;
+    if (userEmail && (tOwnerContact.includes(userEmail) || tNotes.includes(userEmail))) return true;
     if (encounterNos.length > 0 && (encounterNos.includes(tEncounter) || encounterNos.includes(tAppointment))) return true;
     if (appointmentIds.length > 0 && appointmentIds.includes(tAppointment)) return true;
     if (petNames.length > 0 && petNames.includes(tPetName)) return true;
@@ -1035,12 +1039,10 @@ export function getPetOwnerQueueStatus(
   let isInConsultation = false;
 
   if (myTicket && !isQueueClosed && !isOverdue) {
-    // Only the ticket explicitly marked as "now serving" is actually being called.
-    // Other tickets may still carry an "in-consultation" status from earlier
-    // calls, so we must not treat every one of them as the owner's call.
-    if (queue.nowServingTicketNumber === myTicket.ticketNumber) {
+    // If ticket is explicitly now serving or marked in-consultation, owner is being called now.
+    if (queue.nowServingTicketNumber === myTicket.ticketNumber || myTicket.status === "in-consultation") {
       isMyTurn = true;
-      isInConsultation = myTicket.status === "in-consultation";
+      isInConsultation = true;
       ticketsAhead = 0;
     } else {
       // Count all active patients ahead of this ticket in the queue sequence.

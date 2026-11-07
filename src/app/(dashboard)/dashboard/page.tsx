@@ -27,18 +27,66 @@ import { Badge } from "@/components/ui/badge";
 import { SlotCapacityManagerDialog } from "@/components/dashboard/slot-capacity-manager-dialog";
 import { useCVO } from "@/lib/cvo-context";
 
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { getDailyQueue, getTodayDateStr, syncQueueFromSupabase } from "@/lib/cvo-queue";
 
 export default function DashboardHomePage() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
   const { consultations, inventory, activeRoleView } = useCVO();
+
+  const todayStr = useMemo(() => getTodayDateStr(), []);
+  const [queueState, setQueueState] = useState(() => getDailyQueue(todayStr));
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setQueueState(getDailyQueue(todayStr));
+    };
+    window.addEventListener("syncvet-queue-updated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+
+    syncQueueFromSupabase(todayStr).then((res) => {
+      if (res) setQueueState(res);
+    });
+
+    const supabase = getPublicSupabaseClient();
+    const channel = supabase
+      .channel("cvo-queue-realtime-dashboard")
+      .on("broadcast", { event: "queue_state_updated" }, (payload) => {
+        if (payload?.payload?.date === todayStr) {
+          setQueueState(payload.payload);
+        }
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "queue_tickets" },
+        () => {
+          syncQueueFromSupabase(todayStr).then((res) => {
+            if (res) setQueueState(res);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("syncvet-queue-updated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+      supabase.removeChannel(channel);
+    };
+  }, [todayStr]);
+
+  const activeTodayQueueCount = useMemo(() => {
+    if (queueState.isClosed) return 0;
+    return queueState.activeTickets.filter(
+      (t) => (t.status === "waiting" || t.status === "in-consultation")
+    ).length;
+  }, [queueState]);
 
   // Check user role from Supabase and Clerk metadata
   const { data: dbUser, isLoading: isDbLoading } = useQuery({
@@ -163,7 +211,7 @@ export default function DashboardHomePage() {
                   variant="outline"
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
                 >
-                  Queue ({consultations.length})
+                  Queue ({activeTodayQueueCount})
                 </Badge>
               </div>
               <div>
