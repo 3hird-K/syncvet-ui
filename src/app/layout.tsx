@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { CookieConsent } from "@/components/cookie-consent";
 import { AccountTerminationWatcher } from "@/components/auth/account-termination-watcher";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,10 +20,26 @@ const playfair = Playfair_Display({
   variable: "--font-playfair",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#059669",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "SyncVet — Smarter Pet Care, Connected | Veterinary Platform",
   description: "Keep your pet’s health information, appointments, vaccinations, and veterinary care organized in one simple and connected platform.",
   metadataBase: new URL("https://syncvet-ui.vercel.app"),
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SyncVet",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   keywords: [
     "veterinary care",
     "pet health records",
@@ -55,9 +72,15 @@ export const metadata: Metadata = {
     images: ["https://syncvet-ui.vercel.app/og-syncvet.png"],
   },
   icons: {
-    icon: "/icon.png",
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.png" },
+    ],
     shortcut: "/favicon.ico",
-    apple: "/icon.png",
+    apple: [
+      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 
@@ -102,7 +125,9 @@ export default function RootLayout({
               }}
             />
             <QueryProvider>
-              {children}
+              <PwaProvider>
+                {children}
+              </PwaProvider>
             </QueryProvider>
             <CookieConsent />
             <Toaster position="bottom-right" expand={true} />

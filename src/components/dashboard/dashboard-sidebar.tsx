@@ -18,7 +18,9 @@ import {
   PanelLeft,
   Megaphone,
   History,
+  Smartphone,
 } from "lucide-react";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -117,6 +119,7 @@ export function SidebarContent({
   const { user, isLoaded } = useUser();
   const clerk = useClerk();
   const queryClient = useQueryClient();
+  const { isInstallable, isInstalled, promptInstall } = usePwa();
 
   useEffect(() => {
     setMounted(true);
@@ -486,6 +489,17 @@ export function SidebarContent({
               <CircleUser className="size-4 text-muted-foreground" />
               <span>Edit Profile</span>
             </DropdownMenuItem>
+
+            {/* PWA Install Option */}
+            {isInstallable && !isInstalled && (
+              <DropdownMenuItem
+                onClick={() => promptInstall()}
+                className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer transition-colors"
+              >
+                <Smartphone className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Install SyncVet App</span>
+              </DropdownMenuItem>
+            )}
 
             {/* Theme Switcher Toggle */}
             <DropdownMenuItem

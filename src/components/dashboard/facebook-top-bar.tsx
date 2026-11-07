@@ -35,7 +35,9 @@ import {
   CircleUser,
   QrCode,
   FileText,
+  Smartphone,
 } from "lucide-react";
+import { usePwa } from "@/components/pwa/pwa-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +67,7 @@ export function FacebookTopBar({
   const clerk = useClerk();
   const { theme, setTheme } = useTheme();
   const { unreadCount, markAllAsRead } = useCitizenChat();
+  const { isInstallable, isInstalled, promptInstall } = usePwa();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("feed");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -387,6 +390,17 @@ export function FacebookTopBar({
               )}
               <span>{mounted && theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
             </DropdownMenuItem>
+
+            {/* PWA Install Option */}
+            {isInstallable && !isInstalled && (
+              <DropdownMenuItem
+                onClick={() => promptInstall()}
+                className="cursor-pointer gap-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+              >
+                <Smartphone className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Install SyncVet App</span>
+              </DropdownMenuItem>
+            )}
 
             {/* Help & Support */}
             <DropdownMenuItem
