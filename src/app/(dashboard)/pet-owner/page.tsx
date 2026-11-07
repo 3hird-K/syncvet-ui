@@ -3907,7 +3907,7 @@ export default function PetOwnerPortalPage() {
                                 isAptCalled ? "bg-primary/15 border-primary/40 text-primary font-bold animate-pulse" : "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
                               )}>
                                 <span className="font-mono font-bold text-[11px]">
-                                  {isAptCalled ? `📢 CALLED NOW • ${aptTicket.ticketNumber}` : `Ticket ${aptTicket.ticketNumber} in Queue`}
+                                  {isAptCalled ? `CALLED NOW • ${aptTicket.ticketNumber}` : `Ticket ${aptTicket.ticketNumber} in Queue`}
                                 </span>
                                 <span className="text-[10px] font-semibold">{aptTicket.consultationRoom || "Desk 1"}</span>
                               </div>
@@ -3953,33 +3953,44 @@ export default function PetOwnerPortalPage() {
 
                   const liveTicket = todayQueueState?.activeTickets?.find(
                     (t: any) =>
-                      t.appointmentId === (waitingConsultation.encounterNo || waitingConsultation.id) ||
+                      !t.id?.startsWith("ticket_sim_") &&
+                      !t.id?.startsWith("sim_") &&
+                      !t.appointmentId?.startsWith("apt-sim-") &&
+                      (t.appointmentId === (waitingConsultation.encounterNo || waitingConsultation.id) ||
                       t.encounterNo === waitingConsultation.encounterNo ||
-                      (t.petName && waitingConsultation.petName && t.petName.toLowerCase().trim() === waitingConsultation.petName.toLowerCase().trim())
+                      (t.petName && waitingConsultation.petName && t.petName.toLowerCase().trim() === waitingConsultation.petName.toLowerCase().trim()))
                   );
 
                   const isCalled = liveTicket && (liveTicket.status === "in-consultation" || todayQueueState?.nowServingTicketNumber === liveTicket.ticketNumber);
+                  const isWaiting = liveTicket && liveTicket.status === "waiting";
+                  const isDone = liveTicket && liveTicket.status === "completed";
 
                   return (
                     <div className={cn(
                       "p-3 rounded-xl border space-y-2",
                       isCalled
                         ? "bg-primary/15 border-primary/40 ring-1 ring-primary/30 animate-pulse"
-                        : liveTicket
+                        : isWaiting
                         ? "bg-emerald-500/5 border-emerald-500/25"
+                        : isDone
+                        ? "bg-muted/40 border-border/40"
                         : "bg-amber-500/5 border-amber-500/20"
                     )}>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {liveTicket ? "Active Clinic Queue" : "Consultation Schedule"}
+                          {isCalled || isWaiting ? "Active Clinic Queue" : isDone ? "Visit Completed" : "Consultation Schedule"}
                         </span>
                         <div className="flex items-center gap-1">
-                          {liveTicket ? (
+                          {liveTicket && (isCalled || isWaiting) ? (
                             <Badge className={cn(
                               "text-[9px] font-mono font-bold gap-1",
                               isCalled ? "bg-primary text-primary-foreground" : "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
                             )}>
-                              {isCalled ? `📢 CALLED: ${liveTicket.ticketNumber}` : `Ticket ${liveTicket.ticketNumber}`}
+                              {isCalled ? `CALLED: ${liveTicket.ticketNumber}` : `Ticket ${liveTicket.ticketNumber}`}
+                            </Badge>
+                          ) : isDone ? (
+                            <Badge className="text-[9px] bg-muted text-muted-foreground border-border/50 font-bold">
+                              Completed ({liveTicket.ticketNumber})
                             </Badge>
                           ) : isConsultToday ? (
                             <Badge className="text-[9px] bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30 gap-1 font-bold">

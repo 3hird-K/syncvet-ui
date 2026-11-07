@@ -14,6 +14,7 @@ import {
   Bell,
   BellRing,
   UserX,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -267,7 +268,26 @@ export function PetOwnerQueueTracker({
     getPetOwnerQueueStatus(lookupOptions, todayStr)
   );
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [dismissedTickets, setDismissedTickets] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem(`syncvet_dismissed_tickets_${todayStr}`) || "[]");
+    } catch {
+      return [];
+    }
+  });
   const lastChimedTicketRef = useRef<string | null>(null);
+
+  const handleDismissTicket = (ticketNumber: string) => {
+    removeQueueTicket(ticketNumber, todayStr);
+    const updated = [...dismissedTickets, ticketNumber];
+    setDismissedTickets(updated);
+    try {
+      localStorage.setItem(`syncvet_dismissed_tickets_${todayStr}`, JSON.stringify(updated));
+    } catch {}
+    setQueueInfo(getPetOwnerQueueStatus(lookupOptions, todayStr));
+    toast.info("Notice dismissed.");
+  };
 
   const isCalled = Boolean(queueInfo.isMyTurn || queueInfo.isInConsultation);
 
@@ -543,7 +563,10 @@ export function PetOwnerQueueTracker({
   // ═════════════════════════════════════════════════════════════════════
   // STATE 1.5: SKIPPED / NO-SHOW TICKET — owner was removed from the queue
   // ═════════════════════════════════════════════════════════════════════
-  if (queueInfo.myTicket?.status === "skipped") {
+  if (
+    queueInfo.myTicket?.status === "skipped" &&
+    !dismissedTickets.includes(queueInfo.myTicket.ticketNumber)
+  ) {
     const skippedTicket = queueInfo.myTicket;
     return (
       <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
@@ -578,6 +601,15 @@ export function PetOwnerQueueTracker({
               </Button>
             }
           />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDismissTicket(skippedTicket.ticketNumber)}
+            className="size-7.5 text-muted-foreground hover:text-foreground hover:bg-rose-500/10 cursor-pointer rounded-lg"
+            title="Dismiss notice"
+          >
+            <X className="size-4" />
+          </Button>
         </div>
       </div>
     );
@@ -586,25 +618,41 @@ export function PetOwnerQueueTracker({
   // ═════════════════════════════════════════════════════════════════════
   // STATE 1.6: COMPLETED TICKET — visit is done
   // ═════════════════════════════════════════════════════════════════════
-  if (queueInfo.myTicket?.status === "completed") {
+  if (
+    queueInfo.myTicket?.status === "completed" &&
+    !dismissedTickets.includes(queueInfo.myTicket.ticketNumber)
+  ) {
     const doneTicket = queueInfo.myTicket;
     return (
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 sm:p-4 flex items-center gap-3 text-xs shadow-2xs">
-        <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
-          <CheckCircle2 className="size-4.5 sm:size-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-foreground text-xs sm:text-sm">
-              Visit Completed
-            </span>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
-              {doneTicket.ticketNumber}
-            </span>
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs shadow-2xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
+            <CheckCircle2 className="size-4.5 sm:size-5" />
           </div>
-          <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            All done for {doneTicket.petName}. Thank you for visiting Carmen Central Clinic.
-          </p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-foreground text-xs sm:text-sm">
+                Visit Completed
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
+                {doneTicket.ticketNumber}
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              All done for {doneTicket.petName}. Thank you for visiting Carmen Central Clinic.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDismissTicket(doneTicket.ticketNumber)}
+            className="size-7.5 text-muted-foreground hover:text-foreground hover:bg-emerald-500/10 cursor-pointer rounded-lg"
+            title="Dismiss notice"
+          >
+            <X className="size-4" />
+          </Button>
         </div>
       </div>
     );
@@ -644,7 +692,7 @@ export function PetOwnerQueueTracker({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-foreground text-xs sm:text-sm tracking-tight text-primary uppercase">
-                    📢 YOU ARE BEING CALLED NOW!
+                    YOU ARE BEING CALLED NOW!
                   </span>
                   <span className="text-[11px] font-mono font-black px-2.5 py-0.5 rounded-full bg-primary text-primary-foreground shadow-xs">
                     {myTicket?.ticketNumber}
@@ -689,7 +737,7 @@ export function PetOwnerQueueTracker({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-extrabold text-foreground text-xs sm:text-sm tracking-tight text-emerald-700 dark:text-emerald-300">
-                    ⚡ YOU&apos;RE NEXT IN LINE!
+                    YOU&apos;RE NEXT IN LINE!
                   </span>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs">
                     {myTicket?.ticketNumber}

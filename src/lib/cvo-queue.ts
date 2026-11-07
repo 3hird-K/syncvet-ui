@@ -70,13 +70,28 @@ export function getDailyQueue(dateStr: string = getTodayDateStr()): DailyQueueSt
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.activeTickets)) {
-        // Clean out legacy auto-injected tickets that were never scanned/checked-in via QR
+        // Clean out legacy auto-injected tickets and dummy simulation tickets
         let validTickets = parsed.activeTickets.filter((t: QueueTicket) => {
           if (t.id && t.id.startsWith("ticket_consultation_") && !t.checkedInVia) {
             return false;
           }
+          if (
+            t.id?.startsWith("ticket_sim_") ||
+            t.id?.startsWith("sim_") ||
+            t.appointmentId?.startsWith("apt-sim-")
+          ) {
+            return false;
+          }
           return true;
         });
+
+        if (validTickets.length !== parsed.activeTickets.length) {
+          try {
+            const supabase = getPublicSupabaseClient();
+            supabase.from("queue_tickets").delete().like("id", "ticket_sim_%").then();
+            supabase.from("queue_tickets").delete().like("appointment_id", "apt-sim-%").then();
+          } catch {}
+        }
 
         let changed = false;
 
@@ -216,13 +231,27 @@ async function syncQueueTicketsTable(
     if (error) return null;
     if (!Array.isArray(data)) return null;
 
-    const dbTickets = data.map(dbRowToQueueTicket);
+    const dbTickets = data
+      .map(dbRowToQueueTicket)
+      .filter(
+        (t) =>
+          !t.id?.startsWith("ticket_sim_") &&
+          !t.id?.startsWith("sim_") &&
+          !t.appointmentId?.startsWith("apt-sim-")
+      );
 
     // Merge: Supabase is the source of truth, but tickets that only exist in
     // this browser's localStorage (created before the shared table existed) are
     // pushed up instead of being discarded.
     const dbNumbers = new Set(dbTickets.map((t) => t.ticketNumber));
-    const localOnly = current.activeTickets.filter((t) => !dbNumbers.has(t.ticketNumber));
+    const localOnly = current.activeTickets
+      .filter((t) => !dbNumbers.has(t.ticketNumber))
+      .filter(
+        (t) =>
+          !t.id?.startsWith("ticket_sim_") &&
+          !t.id?.startsWith("sim_") &&
+          !t.appointmentId?.startsWith("apt-sim-")
+      );
     if (localOnly.length > 0) {
       supabase
         .from("queue_tickets")
@@ -995,6 +1024,15 @@ export function getPetOwnerQueueStatus(
   const cleanUserName = (userName || "").toLowerCase().trim();
 
   const matchesTicket = (t: QueueTicket) => {
+    // Never match simulation dummy tickets
+    if (
+      t.id?.startsWith("ticket_sim_") ||
+      t.id?.startsWith("sim_") ||
+      t.appointmentId?.startsWith("apt-sim-")
+    ) {
+      return false;
+    }
+
     const tOwnerId = (t.ownerId || "").toLowerCase().trim();
     const tOwnerName = (t.ownerName || "").toLowerCase().trim();
     const tOwnerContact = (t.ownerContact || "").toLowerCase().trim();
@@ -1002,6 +1040,11 @@ export function getPetOwnerQueueStatus(
     const tPetName = (t.petName || "").toLowerCase().trim();
     const tEncounter = (t.encounterNo || "").toLowerCase().trim();
     const tAppointment = (t.appointmentId || "").toLowerCase().trim();
+
+    // If the ticket explicitly belongs to another user ID, do not match it
+    if (cleanOwnerId && tOwnerId && tOwnerId !== cleanOwnerId) {
+      return false;
+    }
 
     if (cleanOwnerId && (tOwnerId === cleanOwnerId || tOwnerName.includes(cleanOwnerId) || cleanOwnerId.includes(tOwnerName))) return true;
     if (cleanUserName && (tOwnerName === cleanUserName || tOwnerName.includes(cleanUserName) || cleanUserName.includes(tOwnerName))) return true;
@@ -1012,15 +1055,14 @@ export function getPetOwnerQueueStatus(
     return false;
   };
 
-  // Find pet owner's ticket for today (prioritizing in-consultation, then waiting, then overdue).
-  // Skipped (no-show) and completed tickets are also returned so the owner sees a clear status
-  // (a skipped owner can re-scan the QR to rejoin with a fresh ticket).
+  // Find pet owner's ticket for today (prioritizing in-consultation, then waiting, then completed, then overdue, then skipped).
+  // Completed tickets take precedence over historical missed/skipped tickets.
   const myTicket =
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "in-consultation") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "waiting") ||
+    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "completed") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "overdue") ||
     queue.activeTickets.find((t) => matchesTicket(t) && t.status === "skipped") ||
-    queue.activeTickets.find((t) => matchesTicket(t) && t.status === "completed") ||
     null;
 
   const isOverdue = !!myTicket && myTicket.status === "overdue";
