@@ -57,6 +57,7 @@ import { PageMetricCards, type PageMetric } from "@/components/dashboard/page-me
 import { TablePagination } from "@/components/dashboard/table-pagination";
 import { AddBatchDialog } from "@/components/dashboard/add-batch-dialog";
 import { DeleteBatchDialog } from "@/components/dashboard/delete-batch-dialog";
+import { InventoryForecastCard } from "@/components/dashboard/inventory-forecast-card";
 import { useCVO } from "@/lib/cvo-context";
 import type { CVOInventoryItem } from "@/data/cvo-store";
 import { format, parseISO } from "date-fns";
@@ -438,6 +439,9 @@ export default function VaccineInventoryPage() {
       />
 
       <PageMetricCards metrics={metrics} />
+
+      {/* ML Predictive Demand & Stockout Forecast */}
+      <InventoryForecastCard />
 
       <Card>
         <CardHeader className="px-6 py-4">

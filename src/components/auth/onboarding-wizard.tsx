@@ -165,7 +165,6 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
   const [emergencyPhoneTouched, setEmergencyPhoneTouched] = useState(false);
   const [emergencyRelation, setEmergencyRelation] = useState("Spouse");
   const [selectedPetTypes, setSelectedPetTypes] = useState<string[]>(["Dogs"]);
-  const [certifiedTruth, setCertifiedTruth] = useState(true);
 
   const hasInitializedRef = useRef(false);
 
@@ -225,7 +224,7 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
   // Step Validations
   const canProceedStep1 = firstName.trim().length > 0 && isValidPhone;
   const canProceedStep2 = barangay.trim().length > 0 && streetAddress.trim().length > 0;
-  const canComplete = certifiedTruth && isValidEmergencyPhone;
+  const canComplete = isValidEmergencyPhone;
 
   // Swipe animation variants
   const swipeVariants = {
@@ -310,10 +309,6 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
 
   const handleSubmit = async () => {
     if (!user) return;
-    if (!certifiedTruth) {
-      toast.error("Please check the municipal certification confirmation to proceed");
-      return;
-    }
     if (!isValidEmergencyPhone) {
       setEmergencyPhoneTouched(true);
       toast.error(
@@ -688,48 +683,6 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
                     />
                   </div>
                 </div>
-
-                {/* SMS & Call Consent Toggle (Tactile, cardless interactive row) */}
-                <div
-                  onClick={() => setSmsConsent(!smsConsent)}
-                  className={cn(
-                    "flex items-start gap-2.5 p-2 sm:p-2.5 rounded-lg border transition-all cursor-pointer shadow-2xs select-none",
-                    smsConsent
-                      ? "bg-emerald-500/5 border-emerald-500/30 hover:bg-emerald-500/10"
-                      : "bg-muted/20 border-border/60 hover:bg-muted/40"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "size-7 rounded-md flex items-center justify-center shrink-0 transition-colors mt-0.5",
-                      smsConsent
-                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    <Bell className="size-3.5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground">
-                        Enable Official CVO SMS Notifications
-                      </span>
-                      <div
-                        className={cn(
-                          "size-4 rounded border flex items-center justify-center transition-all",
-                          smsConsent
-                            ? "bg-primary border-primary text-primary-foreground shadow-2xs"
-                            : "border-border/80 bg-background"
-                        )}
-                      >
-                        {smsConsent && <Check className="size-2.5 stroke-[3]" />}
-                      </div>
-                    </div>
-                    <p className="text-[10.5px] text-muted-foreground leading-tight mt-0.5">
-                      Receive text alerts for annual rabies boosters and Barangay mobile vaccination schedules.
-                    </p>
-                  </div>
-                </div>
               </motion.div>
             ) : step === 2 ? (
               /* ── STEP 2: Cagayan de Oro Location (Swipeable) ── */
@@ -1011,36 +964,6 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
                         </button>
                       );
                     })}
-                  </div>
-                </div>
-
-                {/* Municipal Declaration Checkbox */}
-                <div
-                  onClick={() => setCertifiedTruth(!certifiedTruth)}
-                  className={cn(
-                    "flex items-start gap-2.5 p-2 sm:p-2.5 rounded-lg border transition-all cursor-pointer shadow-2xs select-none",
-                    certifiedTruth
-                      ? "bg-emerald-500/5 border-emerald-500/30 hover:bg-emerald-500/10"
-                      : "bg-muted/20 border-border/60 hover:bg-muted/40"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "size-4 rounded border flex items-center justify-center transition-all mt-0.5 shrink-0",
-                      certifiedTruth
-                        ? "bg-primary border-primary text-primary-foreground shadow-2xs"
-                        : "border-border/80 bg-background"
-                    )}
-                  >
-                    {certifiedTruth && <Check className="size-2.5 stroke-[3]" />}
-                  </div>
-                  <div className="text-left space-y-0.5">
-                    <span className="text-xs font-bold text-foreground block">
-                      Municipal Health Declaration & Consent
-                    </span>
-                    <p className="text-[10.5px] text-muted-foreground leading-tight">
-                      I certify that information provided is accurate and consent to official CVO health notifications.
-                    </p>
                   </div>
                 </div>
               </motion.div>

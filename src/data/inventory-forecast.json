@@ -1,0 +1,367 @@
+{
+  "model": "Random Forest Regressor",
+  "generatedAt": "2026-11-11T15:16:01.132683",
+  "metrics": {
+    "mae": 1.56,
+    "r2Score": 0.492
+  },
+  "forecasts": [
+    {
+      "itemId": "c9a321a0-e0ce-40d0-867a-90a83e092a39",
+      "name": "Nobivac 1-Rabies (MSD Animal Health) \u2014 1.0 mL",
+      "category": "Vaccines",
+      "currentStock": 200,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 9.1,
+      "predicted30DayDemand": 273,
+      "daysUntilStockout": 22,
+      "recommendedReorder": 210,
+      "expirationDate": "2027-10-28",
+      "daysToExpiration": 350,
+      "isAtRiskOfExpiring": false,
+      "urgency": "WARNING",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 73
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 273
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 273
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 573,
+          "seasonFactor": "March Rabies Month Surge (2.1x)",
+          "multiplier": 2.1,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 573
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.118903"
+    },
+    {
+      "itemId": "604cc37a-af4a-4d3b-8130-0d8743abef22",
+      "name": "CVO Municipal Rabies Inactivated (DA-BAI Standard)",
+      "category": "Vaccines",
+      "currentStock": 500,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 4.4,
+      "predicted30DayDemand": 132,
+      "daysUntilStockout": 114,
+      "recommendedReorder": 0,
+      "expirationDate": "2026-11-05",
+      "daysToExpiration": -7,
+      "isAtRiskOfExpiring": true,
+      "urgency": "HEALTHY",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 368,
+          "suggestedProcurement": 0
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 236,
+          "suggestedProcurement": 0
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 104,
+          "suggestedProcurement": 0
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 277,
+          "seasonFactor": "March Rabies Month Surge (2.1x)",
+          "multiplier": 2.1,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 173
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.120719"
+    },
+    {
+      "itemId": "9878f4d6-9976-49c8-a409-95f48143ceb5",
+      "name": "Nobivac 1-Rabies (MSD Animal Health) \u2014 1.0 mL",
+      "category": "Vaccines",
+      "currentStock": 24,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 9.1,
+      "predicted30DayDemand": 273,
+      "daysUntilStockout": 3,
+      "recommendedReorder": 386,
+      "expirationDate": "2028-11-16",
+      "daysToExpiration": 735,
+      "isAtRiskOfExpiring": false,
+      "urgency": "CRITICAL",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 249
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 273
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 273,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 273
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 573,
+          "seasonFactor": "March Rabies Month Surge (2.1x)",
+          "multiplier": 2.1,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 573
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.122019"
+    },
+    {
+      "itemId": "89529e72-c4ad-4858-8b76-e3184dbfa91e",
+      "name": "Rabisin (Boehringer Ingelheim) \u2014 1.0 mL Vial",
+      "category": "Vaccines",
+      "currentStock": 99,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 4.2,
+      "predicted30DayDemand": 126,
+      "daysUntilStockout": 24,
+      "recommendedReorder": 90,
+      "expirationDate": "2027-10-28",
+      "daysToExpiration": 350,
+      "isAtRiskOfExpiring": false,
+      "urgency": "WARNING",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 126,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 27
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 126,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 126
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 126,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 126
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 151,
+          "seasonFactor": "City-wide Outreach Campaign",
+          "multiplier": 1.2,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 151
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.123346"
+    },
+    {
+      "itemId": "7cff2730-6e13-4df0-a2a6-26b784826ab2",
+      "name": "Custom Vaccine",
+      "category": "Vaccines",
+      "currentStock": 100,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 4.0,
+      "predicted30DayDemand": 120,
+      "daysUntilStockout": 25,
+      "recommendedReorder": 80,
+      "expirationDate": "2027-10-28",
+      "daysToExpiration": 350,
+      "isAtRiskOfExpiring": false,
+      "urgency": "WARNING",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 120,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 20
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 120,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 120
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 120,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 120
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 144,
+          "seasonFactor": "City-wide Outreach Campaign",
+          "multiplier": 1.2,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 144
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.124770"
+    },
+    {
+      "itemId": "2a09e527-aec9-44a1-a67c-2c6cd772992a",
+      "name": "Defensor 3 (Zoetis) \u2014 1.0 mL Inactivated",
+      "category": "Vaccines",
+      "currentStock": 98,
+      "unit": "doses",
+      "minimumStock": 25,
+      "predictedDailyDemand": 4.4,
+      "predicted30DayDemand": 132,
+      "daysUntilStockout": 22,
+      "recommendedReorder": 100,
+      "expirationDate": "2027-10-28",
+      "daysToExpiration": 350,
+      "isAtRiskOfExpiring": false,
+      "urgency": "WARNING",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 34
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 132
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 132,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 132
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 158,
+          "seasonFactor": "City-wide Outreach Campaign",
+          "multiplier": 1.2,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 158
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.126198"
+    },
+    {
+      "itemId": "a649842d-341b-49ce-b380-d75ca453f6ad",
+      "name": "Amoxicillin Long-Acting 15% Injectable",
+      "category": "Medicines",
+      "currentStock": 60,
+      "unit": "vials",
+      "minimumStock": 25,
+      "predictedDailyDemand": 4.3,
+      "predicted30DayDemand": 129,
+      "daysUntilStockout": 14,
+      "recommendedReorder": 134,
+      "expirationDate": "2026-11-24",
+      "daysToExpiration": 12,
+      "isAtRiskOfExpiring": true,
+      "urgency": "CRITICAL",
+      "monthlyProjections": [
+        {
+          "month": "Dec 2026",
+          "projectedDemand": 129,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 69
+        },
+        {
+          "month": "Jan 2027",
+          "projectedDemand": 129,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 129
+        },
+        {
+          "month": "Feb 2027",
+          "projectedDemand": 129,
+          "seasonFactor": "Baseline Routine Care",
+          "multiplier": 1.0,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 129
+        },
+        {
+          "month": "Mar 2027",
+          "projectedDemand": 155,
+          "seasonFactor": "City-wide Outreach Campaign",
+          "multiplier": 1.2,
+          "projectedEndStock": 0,
+          "suggestedProcurement": 155
+        }
+      ],
+      "updatedAt": "2026-11-11T15:16:01.128438"
+    }
+  ]
+}
