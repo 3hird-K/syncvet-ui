@@ -545,6 +545,7 @@ export function PetOwnerQueueTracker({
 
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
           <ScanQueueQrDialog
+            expectedType="queue"
             trigger={
               <Button
                 size="sm"
@@ -591,6 +592,7 @@ export function PetOwnerQueueTracker({
 
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
           <ScanQueueQrDialog
+            expectedType="queue"
             trigger={
               <Button
                 size="sm"
@@ -616,54 +618,12 @@ export function PetOwnerQueueTracker({
   }
 
   // ═════════════════════════════════════════════════════════════════════
-  // STATE 1.6: COMPLETED TICKET — visit is done
-  // ═════════════════════════════════════════════════════════════════════
-  if (
-    queueInfo.myTicket?.status === "completed" &&
-    !dismissedTickets.includes(queueInfo.myTicket.ticketNumber)
-  ) {
-    const doneTicket = queueInfo.myTicket;
-    return (
-      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 sm:p-4 flex items-center justify-between gap-3 text-xs shadow-2xs">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="size-9 sm:size-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-xs">
-            <CheckCircle2 className="size-4.5 sm:size-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-foreground text-xs sm:text-sm">
-                Visit Completed
-              </span>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
-                {doneTicket.ticketNumber}
-              </span>
-            </div>
-            <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              All done for {doneTicket.petName}. Thank you for visiting Carmen Central Clinic.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDismissTicket(doneTicket.ticketNumber)}
-            className="size-7.5 text-muted-foreground hover:text-foreground hover:bg-emerald-500/10 cursor-pointer rounded-lg"
-            title="Dismiss notice"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
   // STATE 2: ACTIVE QUEUE TICKET (MINIMALIST REDESIGN)
   // ═════════════════════════════════════════════════════════════════════
   const { myTicket, nowServing, ticketsAhead, isMyTurn, isInConsultation, isNext, isQueueClosed, isOverdue } = queueInfo;
   const isTicketOverdue = isOverdue || (isQueueClosed && myTicket?.status === "overdue");
-  const isNextInLine = !isCalled && !isTicketOverdue && isNext;
+  const isDone = myTicket?.status === "completed";
+  const isNextInLine = !isCalled && !isTicketOverdue && !isDone && isNext;
 
   return (
     <div className="relative group transition-all duration-300">
@@ -672,11 +632,13 @@ export function PetOwnerQueueTracker({
           "rounded-2xl border transition-all duration-300 overflow-hidden shadow-2xs",
           isTicketOverdue
             ? "border-rose-500/30 bg-rose-500/5"
-            : isCalled
-              ? "border-primary/40 bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent shadow-sm ring-1 ring-primary/25"
-              : isNextInLine
-                ? "border-emerald-500/30 bg-emerald-500/5"
-                : "border-border/60 bg-muted/20"
+            : isDone
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : isCalled
+                ? "border-primary/40 bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent shadow-sm ring-1 ring-primary/25"
+                : isNextInLine
+                  ? "border-emerald-500/30 bg-emerald-500/5"
+                  : "border-border/60 bg-muted/20"
         )}
       >
         {/* ── Integrated Calling Notice Banner ── */}
@@ -786,7 +748,9 @@ export function PetOwnerQueueTracker({
               <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                 {isTicketOverdue
                   ? "Cut-off reached at 6:00 PM · Carmen Main Clinic"
-                  : `Checked in at ${myTicket?.checkInTime} · Carmen Main Clinic`}
+                  : isDone
+                    ? "Visit completed · Carmen Main Clinic"
+                    : `Checked in at ${myTicket?.checkInTime} · Carmen Main Clinic`}
               </p>
             </div>
           </div>
@@ -806,6 +770,21 @@ export function PetOwnerQueueTracker({
                   </div>
                   <span className="text-[11px] text-muted-foreground block">
                     Transactions closed at 6:00 PM (8:00 AM – 5:00 PM)
+                  </span>
+                </div>
+              ) : isDone ? (
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="font-bold text-emerald-700 dark:text-emerald-300 text-xs">
+                      Visit Completed
+                    </span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                      Done
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground block leading-relaxed">
+                    All done for {myTicket?.petName}. Thank you for visiting Carmen Central Clinic.
                   </span>
                 </div>
               ) : isCalled ? (
@@ -845,7 +824,7 @@ export function PetOwnerQueueTracker({
 
             {/* Quick Actions (only show single sound icon when not called, avoids duplicate) */}
             <div className="flex items-center gap-1 pl-2 border-l border-border/50">
-              {!isCalled && (
+              {!isCalled && !isDone && (
                 <button
                   type="button"
                   onClick={handleToggleSound}
@@ -862,11 +841,16 @@ export function PetOwnerQueueTracker({
               )}
               <button
                 type="button"
-                onClick={handleResetQueue}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                title="Leave queue / Clear ticket"
+                onClick={isDone ? () => myTicket && handleDismissTicket(myTicket.ticketNumber) : handleResetQueue}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors cursor-pointer",
+                  isDone
+                    ? "text-muted-foreground hover:text-foreground hover:bg-emerald-500/10"
+                    : "text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10"
+                )}
+                title={isDone ? "Dismiss completed visit" : "Leave queue / Clear ticket"}
               >
-                <RotateCcw className="size-3.5" />
+                {isDone ? <X className="size-3.5" /> : <RotateCcw className="size-3.5" />}
               </button>
             </div>
           </div>

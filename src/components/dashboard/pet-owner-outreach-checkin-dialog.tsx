@@ -139,9 +139,13 @@ export function PetOwnerOutreachCheckInDialog({
       });
 
       onOpenChange(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error("Failed to record attendance");
+      toast.error("Failed to record attendance", {
+        description:
+          e?.message ||
+          "This attendance QR could not be verified. Please ask the outreach team for assistance.",
+      });
     } finally {
       setIsSubmitting(false);
     }

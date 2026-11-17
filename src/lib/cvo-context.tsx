@@ -1392,17 +1392,27 @@ Reminders for Pet Owners:
       timeZone: "Asia/Manila",
     }).format(new Date());
 
-    // Validate if operation is scheduled for today
+    // Validate that the QR's operation reference matches a real, active schedule
     const matchedOp = fieldOperations.find(
       (o) => o.opId === params.opId || o.id === params.opId
     );
-    if (matchedOp) {
-      const cleanOpDate = matchedOp.date.includes("T") ? matchedOp.date.split("T")[0] : matchedOp.date.trim();
-      if (cleanOpDate !== todayStr) {
-        throw new Error(
-          `Outreach in Barangay ${matchedOp.barangay} is scheduled for ${cleanOpDate}. Attendance QR check-in is valid only on that day.`
-        );
-      }
+    if (!matchedOp) {
+      throw new Error(
+        "This attendance QR code is not linked to any scheduled field operation, so attendance cannot be recorded."
+      );
+    }
+
+    if (matchedOp.status === "completed" || matchedOp.status === "cancelled") {
+      throw new Error(
+        `The field operation in Barangay ${matchedOp.barangay} has concluded. Attendance QR codes are no longer valid.`
+      );
+    }
+
+    const cleanOpDate = matchedOp.date.includes("T") ? matchedOp.date.split("T")[0] : matchedOp.date.trim();
+    if (cleanOpDate !== todayStr) {
+      throw new Error(
+        `Outreach in Barangay ${matchedOp.barangay} is scheduled for ${cleanOpDate}. Attendance QR check-in is valid only on that day.`
+      );
     }
 
     // 1. Increment operation slots (if not already incremented on scan)

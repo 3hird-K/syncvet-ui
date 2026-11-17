@@ -36,7 +36,7 @@ export function DailyQueueQrDialog({ isStaff, trigger }: DailyQueueQrDialogProps
 
   const checkinUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/queue-checkin?date=${todayStr}&station=cvo-carmen&token=cvo-queue-${todayStr}`;
+    return `${window.location.origin}/queue-checkin?type=clinic-queue&date=${todayStr}&station=cvo-carmen&token=cvo-queue-${todayStr}`;
   }, [todayStr]);
 
   // Generate high-resolution QR Code (600px for crisp download & printing)
@@ -281,6 +281,7 @@ export function DailyQueueQrDialog({ isStaff, trigger }: DailyQueueQrDialogProps
           {/* Minimalist Footnote */}
           <p className="text-[10.5px] text-muted-foreground text-center pt-1 border-t border-border/40">
             For pet owners with scheduled appointments today. Walk-ins please proceed to the reception desk.
+            Field operation attendance posters cannot be used at this clinic station.
           </p>
         </div>
       </DialogContent>

@@ -3478,6 +3478,7 @@ export default function PetOwnerPortalPage() {
 
                           return (
                             <ScanQueueQrDialog
+                              expectedType="field-op"
                               trigger={
                                 <Button className="h-8.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full md:w-auto shadow-xs gap-1.5">
                                   <QrCode className="size-3.5" />
@@ -3648,6 +3649,7 @@ export default function PetOwnerPortalPage() {
 
                                   return (
                                     <ScanQueueQrDialog
+                                      expectedType="field-op"
                                       trigger={
                                         <Button
                                           size="sm"
@@ -3916,6 +3918,7 @@ export default function PetOwnerPortalPage() {
 
                           return (
                             <ScanQueueQrDialog
+                              expectedType="queue"
                               trigger={
                                 <Button
                                   size="sm"
@@ -4041,6 +4044,7 @@ export default function PetOwnerPortalPage() {
                       {/* If today and not yet checked in, provide direct scan button */}
                       {isConsultToday && !liveTicket && (
                         <ScanQueueQrDialog
+                          expectedType="queue"
                           trigger={
                             <Button
                               size="sm"

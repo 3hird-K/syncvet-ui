@@ -72,7 +72,18 @@ function QueueCheckinContent() {
       setLoading(true);
       setEligibilityError(null);
 
-      // 0. Verify station QR code date validity (valid on that day only)
+      // 0. Verify this is a clinic queue QR, not a field operation attendance QR.
+      const scannedQrType = (searchParams.get("type") || "").toLowerCase();
+      const scannedOpId = searchParams.get("opId");
+      if (scannedQrType.includes("outreach") || scannedOpId) {
+        setEligibilityError(
+          "This is a Barangay Outreach attendance QR code. It cannot be used to join Today's Clinic Queue. Please scan the clinic reception check-in QR standee instead."
+        );
+        setLoading(false);
+        return;
+      }
+
+      // 0.1 Verify station QR code date validity (valid on that day only)
       const paramDate = searchParams.get("date");
       if (paramDate && paramDate !== todayStr) {
         let formattedParamDate = paramDate;
@@ -448,7 +459,11 @@ function QueueCheckinContent() {
 
   // Ineligible or Expired QR
   if (eligibilityError) {
-    const isExpiredQr = eligibilityError.includes("valid on that day only") || eligibilityError.includes("expired");
+    const isWrongQrType = eligibilityError.includes("Barangay Outreach attendance QR");
+    const isExpiredQr =
+      !isWrongQrType &&
+      (eligibilityError.includes("valid on that day only") || eligibilityError.includes("expired"));
+    const isStationQrIssue = isExpiredQr || isWrongQrType;
 
     return (
       <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4 sm:p-6 bg-muted/15">
@@ -456,16 +471,20 @@ function QueueCheckinContent() {
           <div className="p-5 border-b border-border/60 flex items-center gap-3 bg-muted/30">
             <div
               className={`size-10 rounded-2xl flex items-center justify-center shrink-0 border ${
-                isExpiredQr
+                isStationQrIssue
                   ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25"
                   : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25"
               }`}
             >
-              {isExpiredQr ? <AlertCircle className="size-5" /> : <ShieldAlert className="size-5" />}
+              {isStationQrIssue ? <AlertCircle className="size-5" /> : <ShieldAlert className="size-5" />}
             </div>
             <div>
               <h2 className="text-sm font-bold text-foreground">
-                {isExpiredQr ? "Check-in QR Code Expired" : "Scheduled Booking Required"}
+                {isWrongQrType
+                  ? "Wrong QR Code Scanned"
+                  : isExpiredQr
+                  ? "Check-in QR Code Expired"
+                  : "Scheduled Booking Required"}
               </h2>
               <p className="text-[11px] text-muted-foreground">Carmen Clinic Arrival Desk</p>
             </div>
@@ -478,11 +497,12 @@ function QueueCheckinContent() {
 
             <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-1.5">
               <span className="text-xs font-bold text-foreground block">
-                {isExpiredQr ? "How to Check-in:" : "Next Steps:"}
+                {isStationQrIssue ? "How to Check-in:" : "Next Steps:"}
               </span>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-muted-foreground leading-relaxed">
-                {isExpiredQr ? (
+                {isStationQrIssue ? (
                   <>
+                    <li>Use the clinic queue check-in QR, not the Barangay Outreach attendance QR.</li>
                     <li>Station QR codes are generated each morning and are valid for that day only.</li>
                     <li>Please locate today&apos;s active Check-in Station QR code standee at the reception window.</li>
                     <li>If you have any difficulty, the attending staff will assist you.</li>

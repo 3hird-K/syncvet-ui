@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { format, isValid } from "date-fns";
 import {
   QrCode,
   Camera,
@@ -28,7 +27,13 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useCVO } from "@/lib/cvo-context";
 import { getTodayDateStr } from "@/lib/cvo-queue";
-import { isBeforeClinicOpen, getFieldOpGracePeriod } from "@/lib/utils";
+import { isBeforeClinicOpen } from "@/lib/utils";
+import {
+  parseQrCode,
+  validateQueueQr,
+  validateFieldOpQr,
+  type QrValidation,
+} from "@/lib/qr-validation";
 
 /**
  * Fast-path: Uses native browser BarcodeDetector API (GPU/hardware-accelerated, ~5ms)
@@ -114,6 +119,13 @@ interface ScanQueueQrDialogProps {
   onScanSuccess?: (decodedText: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Restricts which QR family this scanner accepts.
+   * - "queue"    → Today's Clinic Queue check-in QR only
+   * - "field-op" → Barangay Field Operation attendance QR only
+   * - "any"      → Accept either (generic scanner)
+   */
+  expectedType?: "queue" | "field-op" | "any";
 }
 
 export function ScanQueueQrDialog({
@@ -121,6 +133,7 @@ export function ScanQueueQrDialog({
   onScanSuccess,
   open: controlledOpen,
   onOpenChange: setControlledOpen,
+  expectedType = "any",
 }: ScanQueueQrDialogProps) {
   const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -145,20 +158,51 @@ export function ScanQueueQrDialog({
 
   const todayStr = useMemo(() => getTodayDateStr(), []);
   const { fieldOperations = [], incrementFieldOpSlots } = useCVO();
+  const isFieldOpScanner = expectedType === "field-op";
+  const isQueueScanner = expectedType === "queue";
 
   // Handle successful scan
   const handleSuccess = async (decodedText: string) => {
+    const parsedQr = parseQrCode(decodedText);
+
+    // Enforce that this scanner only accepts its own QR family, and that the
+    // scanned code is valid for the flow it belongs to. A field operation poster
+    // must never check anyone into Today's Clinic Queue, and a clinic queue
+    // standee must never record field operation attendance.
+    const runQueueValidation = () => validateQueueQr(parsedQr, todayStr);
+    const runFieldOpValidation = () => validateFieldOpQr(parsedQr, todayStr, fieldOperations);
+
+    let check: QrValidation;
+    if (expectedType === "queue") {
+      check = runQueueValidation();
+    } else if (expectedType === "field-op") {
+      check = runFieldOpValidation();
+    } else if (parsedQr.kind === "field-op") {
+      check = runFieldOpValidation();
+    } else if (parsedQr.kind === "queue" || parsedQr.kind === "appointment") {
+      check = runQueueValidation();
+    } else {
+      check = {
+        valid: false,
+        kind: parsedQr.kind,
+        title: "Unrecognized QR Code",
+        description:
+          "This QR code is not a clinic queue pass or a field operation attendance poster. Please scan the correct SyncVet QR code.",
+      };
+    }
+
+    if (!check.valid) {
+      toast.error(check.title, {
+        description: check.description,
+        duration: 6500,
+      });
+      return;
+    }
+
     // Before 8:00 AM the queue is not open. Reject any queue / appointment-pass QR
     // before it can create a check-in ticket.
-    let isAppointmentPass = false;
-    try {
-      const parsed = JSON.parse(decodedText);
-      if (parsed && typeof parsed === "object" && parsed.appointmentId) {
-        isAppointmentPass = true;
-      }
-    } catch {}
-
-    const isQueueQr = decodedText.includes("queue-checkin") || isAppointmentPass;
+    const isAppointmentPass = parsedQr.kind === "appointment";
+    const isQueueQr = parsedQr.kind === "queue" || isAppointmentPass;
     if (isQueueQr && isBeforeClinicOpen(todayStr)) {
       toast.error("Clinic Not Open Yet", {
         description:
@@ -207,76 +251,19 @@ export function ScanQueueQrDialog({
     } catch {}
 
     // Automatically handle outreach attendance check-in
-    if (decodedText.includes("outreach-checkin") || decodedText.includes("outreach-attendance")) {
-      // Validate date parameter: Attendance QR is strictly valid only on the date of outreach!
-      let outreachDate: string | null = null;
-      let opId: string | null = null;
-      let barangay: string | null = null;
-      try {
-        const url = new URL(decodedText, window.location.origin);
-        outreachDate = url.searchParams.get("date");
-        opId = url.searchParams.get("opId");
-        barangay = url.searchParams.get("barangay");
-      } catch {}
-
-      if (!outreachDate) {
-        const match = decodedText.match(/[?&]date=([0-9]{4}-[0-9]{2}-[0-9]{2})/);
-        if (match) outreachDate = match[1];
-      }
-      if (!opId) {
-        const match = decodedText.match(/[?&]opId=([A-Za-z0-9-_]+)/);
-        if (match) opId = match[1];
-      }
-      if (!barangay) {
-        const match = decodedText.match(/[?&]barangay=([^&]+)/);
-        if (match) barangay = decodeURIComponent(match[1]);
-      }
-
-      // Look up operation record if available for rich validation
+    if (parsedQr.kind === "field-op") {
+      const opId = parsedQr.opId;
       const matchedOp = opId
         ? fieldOperations.find((o) => o.opId === opId || o.id === opId)
         : null;
-
-      if (matchedOp) {
-        if (!outreachDate) outreachDate = matchedOp.date;
-        if (!barangay) barangay = matchedOp.barangay;
-
-        const grace = getFieldOpGracePeriod(matchedOp.date, matchedOp.status);
-        if (grace.isPastGracePeriod || matchedOp.status === "completed" || matchedOp.status === "cancelled") {
-          toast.error("Expired Outreach QR Code", {
-            description: `This field operation in Barangay ${matchedOp.barangay} has concluded. Attendance QR codes are no longer valid.`,
-            duration: 6000,
-          });
-          return;
-        }
-      }
-
-      if (outreachDate) {
-        const cleanDate = outreachDate.includes("T") ? outreachDate.split("T")[0] : outreachDate.trim();
-        if (cleanDate !== todayStr) {
-          let formattedDate = cleanDate;
-          try {
-            const parts = cleanDate.split("-").map(Number);
-            const d = new Date(parts[0], parts[1] - 1, parts[2]);
-            if (isValid(d)) formattedDate = format(d, "MMMM d, yyyy");
-          } catch {}
-
-          const isFuture = cleanDate > todayStr;
-          toast.error(isFuture ? "Outreach QR Not Yet Active" : "Expired Outreach QR", {
-            description: isFuture
-              ? `This attendance QR poster is for outreach scheduled on ${formattedDate}. It is valid for check-in on that day only.`
-              : `This attendance QR was for outreach on ${formattedDate} and has expired. Attendance can only be recorded on the day of the outreach.`,
-            duration: 6000,
-          });
-          return;
-        }
-      }
+      const barangay =
+        parsedQr.url?.searchParams.get("barangay") || matchedOp?.barangay || "Outreach";
 
       // Automatically increment headcount on QR scan!
       if (opId) {
         incrementFieldOpSlots(opId, 1);
         toast.success("Attendance Verified (+1 Headcount)", {
-          description: `Automatically registered attendance for Barangay ${barangay || "Outreach"}!`,
+          description: `Automatically registered attendance for Barangay ${barangay}!`,
         });
       }
 
@@ -289,34 +276,7 @@ export function ScanQueueQrDialog({
     }
 
     // Check if the QR code is for queue checkin
-    if (decodedText.includes("/queue-checkin") || decodedText.includes("queue-checkin")) {
-      // Validate date parameter
-      let qrDate: string | null = null;
-      try {
-        const url = new URL(decodedText, window.location.origin);
-        qrDate = url.searchParams.get("date");
-      } catch {}
-
-      if (!qrDate) {
-        const match = decodedText.match(/[?&]date=([0-9]{4}-[0-9]{2}-[0-9]{2})/);
-        if (match) qrDate = match[1];
-      }
-
-      if (qrDate && qrDate !== todayStr) {
-        let formattedQrDate = qrDate;
-        try {
-          const parts = qrDate.split("-").map(Number);
-          const d = new Date(parts[0], parts[1] - 1, parts[2]);
-          if (isValid(d)) formattedQrDate = format(d, "MMMM d, yyyy");
-        } catch {}
-
-        toast.error("Expired QR Code", {
-          description: `This Check-in QR code was generated for ${formattedQrDate} and is valid on that day only. QR codes from other days cannot be scanned.`,
-          duration: 6000,
-        });
-        return;
-      }
-
+    if (parsedQr.kind === "queue") {
       setTimeout(() => {
         setOpen(false);
         try {
@@ -329,11 +289,12 @@ export function ScanQueueQrDialog({
       return;
     }
 
-    // Default fallback
-    setTimeout(() => {
-      setOpen(false);
-      router.push(`/queue-checkin?date=${todayStr}`);
-    }, 250);
+    // Unknown QR — never silently route it into a check-in flow.
+    toast.error("Unrecognized QR Code", {
+      description:
+        "This QR code is not a clinic queue pass or a field operation attendance poster. Please scan the correct SyncVet QR code.",
+      duration: 6500,
+    });
   };
 
   // Start Camera
@@ -482,10 +443,14 @@ export function ScanQueueQrDialog({
             </div>
             <div>
               <DialogTitle className="text-sm sm:text-base font-extrabold text-foreground">
-                Scan Clinic Arrival QR
+                {isFieldOpScanner
+                  ? "Scan Outreach Attendance QR"
+                  : isQueueScanner
+                  ? "Scan Clinic Queue QR"
+                  : "Scan Clinic Arrival QR"}
               </DialogTitle>
               <p className="text-[11px] text-muted-foreground">
-                Carmen Clinic Queue Station
+                {isFieldOpScanner ? "Barangay Field Operation Station" : "Carmen Clinic Queue Station"}
               </p>
             </div>
           </div>
@@ -575,10 +540,14 @@ export function ScanQueueQrDialog({
           {/* Instructions */}
           <div className="text-center space-y-1">
             <p className="text-xs font-bold text-foreground">
-              Scan the Reception Counter Standee
+              {isFieldOpScanner
+                ? "Scan the Outreach Attendance Poster"
+                : "Scan the Reception Counter Standee"}
             </p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Upon arriving at the City Veterinary Office (Carmen Clinic), scan the QR code displayed at the triage stand to receive your queue ticket.
+              {isFieldOpScanner
+                ? "Point your camera at the attendance QR poster displayed by the field team. Only the poster for today's scheduled outreach will be accepted."
+                : "Upon arriving at the City Veterinary Office (Carmen Clinic), scan the QR code displayed at the triage stand to receive your queue ticket. Field operation attendance posters are not accepted here."}
             </p>
           </div>
 

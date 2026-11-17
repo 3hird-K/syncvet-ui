@@ -248,6 +248,7 @@ export function FieldOpAttendanceDialog({
 
             <div class="footer">
               Non-app attendees: Please proceed to the front desk to register in the manual community walk-in tally.<br/>
+              This poster is for Barangay Outreach attendance only and cannot be used for the Carmen Clinic queue.<br/>
               Official Outreach Ref: ${operation.opId}
             </div>
           </div>

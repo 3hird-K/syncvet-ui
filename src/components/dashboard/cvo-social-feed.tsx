@@ -731,6 +731,7 @@ function stripAnnouncementTags(text?: string): string {
                       </Button>
                     ) : (
                       <ScanQueueQrDialog
+                        expectedType="field-op"
                         trigger={
                           <Button
                             size="sm"

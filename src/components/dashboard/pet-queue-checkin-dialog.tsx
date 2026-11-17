@@ -31,6 +31,7 @@ import {
 } from "@/lib/cvo-queue";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
 import { isBeforeClinicOpen } from "@/lib/utils";
+import { parseQrCode, validateQueueQr } from "@/lib/qr-validation";
 
 interface PetQueueCheckInDialogProps {
   open: boolean;
@@ -298,70 +299,13 @@ export function PetQueueCheckInDialog({
   };
 
   const handleScanSuccess = async (decodedText: string) => {
-    // 1. Extract and validate date from the scanned QR code
-    let qrDate: string | null = null;
-    let isStationQr = false;
-
-    try {
-      if (
-        decodedText.startsWith("http://") ||
-        decodedText.startsWith("https://") ||
-        decodedText.startsWith("/")
-      ) {
-        const parsedUrl = new URL(decodedText, window.location.origin);
-        qrDate = parsedUrl.searchParams.get("date");
-        if (
-          parsedUrl.pathname.includes("queue-checkin") ||
-          parsedUrl.searchParams.has("station") ||
-          parsedUrl.searchParams.has("token")
-        ) {
-          isStationQr = true;
-        }
-      }
-    } catch {}
-
-    if (!qrDate) {
-      const match = decodedText.match(/[?&]date=([0-9]{4}-[0-9]{2}-[0-9]{2})/);
-      if (match) {
-        qrDate = match[1];
-        isStationQr = true;
-      } else {
-        const dateMatch = decodedText.match(/\b([0-9]{4}-[0-9]{2}-[0-9]{2})\b/);
-        if (dateMatch) {
-          qrDate = dateMatch[1];
-        }
-      }
-    }
-
-    if (
-      decodedText.includes("cvo") ||
-      decodedText.includes("queue-checkin") ||
-      decodedText.includes("syncvet")
-    ) {
-      isStationQr = true;
-    }
-
-    // Validation 1: Must be an official station QR code
-    if (!isStationQr && !qrDate) {
-      toast.error("Invalid Station QR Code", {
-        description:
-          "This does not appear to be an official CVO Clinic Check-in QR code. Please scan the QR code displayed at the clinic check-in desk.",
-        duration: 4500,
-      });
-      return;
-    }
-
-    // Validation 2: Station QR code is valid strictly on that day only!
-    if (qrDate && qrDate !== todayStr) {
-      let formattedQrDate = qrDate;
-      try {
-        const parts = qrDate.split("-").map(Number);
-        const d = new Date(parts[0], parts[1] - 1, parts[2]);
-        if (isValid(d)) formattedQrDate = format(d, "MMMM d, yyyy");
-      } catch {}
-
-      toast.error("Expired QR Code", {
-        description: `This Check-in QR code was generated for ${formattedQrDate} and is valid on that day only. QR codes from other days cannot be scanned. Please scan today's active station QR code.`,
+    // Validate the QR family first: this dialog belongs to the clinic queue flow,
+    // so field operation attendance posters must be rejected outright.
+    const parsedQr = parseQrCode(decodedText);
+    const queueCheck = validateQueueQr(parsedQr, todayStr);
+    if (!queueCheck.valid) {
+      toast.error(queueCheck.title, {
+        description: queueCheck.description,
         duration: 6500,
       });
       return;
