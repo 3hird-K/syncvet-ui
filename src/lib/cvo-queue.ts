@@ -514,6 +514,45 @@ export async function syncQueueFromSupabase(
   return current;
 }
 
+export interface ConsultationQueueRef {
+  id?: string;
+  encounterNo?: string;
+  petName?: string;
+  ownerName?: string;
+}
+
+function consultationRefKeys(consultation: ConsultationQueueRef): string[] {
+  const refs = new Set<string>();
+  [consultation.id, consultation.encounterNo].forEach((ref) => {
+    if (!ref) return;
+    refs.add(ref);
+    // Scheduled procedures use `proc-<appointmentId>` ids while queue tickets
+    // store the raw appointment id, so keep both forms.
+    if (ref.startsWith("proc-")) refs.add(ref.slice(5));
+  });
+  return [...refs];
+}
+
+function ticketMatchesConsultation(
+  ticket: QueueTicket,
+  consultation: ConsultationQueueRef,
+  refs: string[]
+): boolean {
+  if (ticket.appointmentId && refs.includes(ticket.appointmentId)) return true;
+  if (ticket.encounterNo && refs.includes(ticket.encounterNo)) return true;
+
+  // Fallback for tickets whose stored appointment/encounter reference no longer
+  // matches the consultation record (e.g. re-created encounter or scheduled
+  // procedure). Only consultation tickets can match by patient + owner name.
+  const pet = (consultation.petName || "").toLowerCase().trim();
+  const owner = (consultation.ownerName || "").toLowerCase().trim();
+  if (!pet || !owner || ticket.serviceId !== "consultation") return false;
+  return (
+    (ticket.petName || "").toLowerCase().trim() === pet &&
+    (ticket.ownerName || "").toLowerCase().trim() === owner
+  );
+}
+
 /**
  * Sync active CVO consultations into today's queue without consuming procedure slots
  */
@@ -527,19 +566,12 @@ export function syncConsultationsToQueue(
   let updated = false;
   const tickets = [...current.activeTickets];
 
-  const matchesConsultation = (t: QueueTicket, c: any, encounterId: string) =>
-    t.appointmentId === encounterId ||
-    (!!t.encounterNo && t.encounterNo === encounterId) ||
-    (t.serviceId === "consultation" &&
-      (t.petName || "").toLowerCase().trim() === (c.petName || "").toLowerCase().trim() &&
-      (t.ownerName || "").toLowerCase().trim() === (c.ownerName || "").toLowerCase().trim());
-
   consultations.forEach((c) => {
     // Only include consultations scheduled for today
     const cDate = c.date || "";
     if (cDate !== dateStr && !cDate.startsWith(dateStr)) return;
 
-    const encounterId = c.encounterNo || c.id;
+    const refs = consultationRefKeys(c as ConsultationQueueRef);
 
     if (c.status === "scheduled" || (c as any).isUnofficial) {
       // Unofficial/reserved schedules must remain in "Scheduled Transactions" only.
@@ -550,7 +582,7 @@ export function syncConsultationsToQueue(
         const ticket = tickets[i];
         const isVerifiedCheckIn =
           ticket.checkedInVia === "qr" || ticket.checkedInVia === "manual";
-        if (matchesConsultation(ticket, c, encounterId) && !isVerifiedCheckIn) {
+        if (ticketMatchesConsultation(ticket, c, refs) && !isVerifiedCheckIn) {
           tickets.splice(i, 1);
           updated = true;
         }
@@ -559,17 +591,20 @@ export function syncConsultationsToQueue(
     }
 
     if (c.status === "completed" || c.status === "cancelled") {
-      const idx = tickets.findIndex(
-        (t) => t.appointmentId === encounterId || (t.encounterNo && t.encounterNo === encounterId)
-      );
+      // The vet recorded the encounter — automatically finish its queue ticket.
+      const idx = tickets.findIndex((t) => ticketMatchesConsultation(t, c, refs));
       if (idx >= 0 && tickets[idx].status !== "completed") {
-        tickets[idx] = { ...tickets[idx], status: "completed" };
+        tickets[idx] = {
+          ...tickets[idx],
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        };
         updated = true;
       }
       return;
     }
 
-    const existingIdx = tickets.findIndex((t) => matchesConsultation(t, c, encounterId));
+    const existingIdx = tickets.findIndex((t) => ticketMatchesConsultation(t, c, refs));
 
     const ticketStatus: QueueTicket["status"] =
       c.status === "in-consultation" || c.status === "treatment"
@@ -615,7 +650,8 @@ export function syncConsultationsToQueue(
   if (updated) {
     // If queue is closed, no ticket is being served.
     // Otherwise keep the ticket already marked as now serving if it is still
-    // in consultation; only fall back to any other in-consultation ticket.
+    // in consultation; if it was auto-completed, move to the next in-consultation
+    // ticket (or clear the "Now Serving" slot).
     const activeInConsultation = current.isClosed
       ? undefined
       : tickets.find(
@@ -626,7 +662,7 @@ export function syncConsultationsToQueue(
     const newState: DailyQueueState = {
       ...current,
       activeTickets: tickets,
-      nowServingTicketNumber: current.isClosed ? null : (activeInConsultation ? activeInConsultation.ticketNumber : current.nowServingTicketNumber),
+      nowServingTicketNumber: current.isClosed ? null : (activeInConsultation ? activeInConsultation.ticketNumber : null),
       servingVet: current.isClosed ? undefined : (activeInConsultation ? activeInConsultation.servingVet || "Dr. Helen Ann P. Tacandong, DVM" : current.servingVet),
       servingRoom: current.isClosed ? undefined : (activeInConsultation ? activeInConsultation.consultationRoom || "Consultation Desk 1" : current.servingRoom),
       isClosed: current.isClosed,
@@ -636,6 +672,94 @@ export function syncConsultationsToQueue(
   }
 
   return current;
+}
+
+/**
+ * Auto-complete the Today's Queue ticket tied to a consultation the vet has
+ * marked as completed. Updates this browser's queue instantly, broadcasts the
+ * new state to every open device, and targets the shared `queue_tickets` table
+ * so staff devices that haven't loaded the ticket locally also stay in sync.
+ */
+export function completeQueueForConsultation(
+  consultation: ConsultationQueueRef,
+  dateStr: string = getTodayDateStr()
+): DailyQueueState {
+  const base = getDailyQueue(dateStr);
+  if (typeof window === "undefined") return base;
+
+  const refs = consultationRefKeys(consultation);
+  const completedAt = new Date().toISOString();
+  let updated = false;
+
+  const tickets = base.activeTickets.map((ticket) => {
+    if (ticket.status !== "waiting" && ticket.status !== "in-consultation") return ticket;
+    if (!ticketMatchesConsultation(ticket, consultation, refs)) return ticket;
+    updated = true;
+    return { ...ticket, status: "completed" as const, completedAt };
+  });
+
+  let updatedState = base;
+  if (updated) {
+    const nextServing = base.isClosed
+      ? null
+      : tickets.find(
+          (t) =>
+            t.ticketNumber === base.nowServingTicketNumber &&
+            t.status === "in-consultation"
+        ) || tickets.find((t) => t.status === "in-consultation");
+
+    updatedState = {
+      ...base,
+      activeTickets: tickets,
+      nowServingTicketNumber: nextServing ? nextServing.ticketNumber : null,
+      servingVet: nextServing ? nextServing.servingVet || base.servingVet : base.servingVet,
+      servingRoom: nextServing ? nextServing.consultationRoom || base.servingRoom : base.servingRoom,
+    };
+
+    persistDailyQueueLocally(updatedState);
+    try {
+      window.dispatchEvent(new CustomEvent("syncvet-queue-updated", { detail: updatedState }));
+      getPublicSupabaseClient().channel("cvo-queue-realtime-channel").send({
+        type: "broadcast",
+        event: "queue_state_updated",
+        payload: updatedState,
+      });
+    } catch {}
+  }
+
+  // Target the shared table directly as well: the vet may complete the
+  // consultation from a device whose local queue has not loaded this ticket.
+  void (async () => {
+    try {
+      const supabase = getPublicSupabaseClient();
+      const { data } = await supabase
+        .from("queue_tickets")
+        .select("*")
+        .eq("date", dateStr);
+
+      const ids = (Array.isArray(data) ? data : [])
+        .map(dbRowToQueueTicket)
+        .filter((t) => t.status === "waiting" || t.status === "in-consultation")
+        .filter((t) => ticketMatchesConsultation(t, consultation, refs))
+        .map((t) => t.id);
+
+      if (ids.length > 0) {
+        await supabase
+          .from("queue_tickets")
+          .update({ status: "completed", completed_at: completedAt })
+          .in("id", ids);
+      }
+
+      // Keep the linked appointment from re-entering the active queue.
+      for (const ref of refs) {
+        try {
+          await supabase.from("appointments").update({ status: "completed" }).eq("id", ref);
+        } catch {}
+      }
+    } catch {}
+  })();
+
+  return updatedState;
 }
 
 /**

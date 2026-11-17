@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { useUser } from "@clerk/nextjs";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { getFieldOpGracePeriod } from "@/lib/utils";
-import { deleteQueueTicketsByRef } from "@/lib/cvo-queue";
+import { deleteQueueTicketsByRef, completeQueueForConsultation } from "@/lib/cvo-queue";
 
 interface CVOContextType {
   consultations: CVOConsultation[];
@@ -620,6 +620,21 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     // Optimistic TanStack Query update
     queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) => [newConsultation, ...old]);
 
+    // A consultation recorded as completed also finishes its Today's Queue
+    // ticket so the pet owner sees "Visit Completed" right away.
+    if (c.status === "completed") {
+      try {
+        completeQueueForConsultation({
+          id: encounterNo,
+          encounterNo,
+          petName: c.petName,
+          ownerName: c.ownerName,
+        });
+      } catch (err) {
+        console.warn("Queue auto-complete notice", err);
+      }
+    }
+
     // Serialize CVO form metadata so full clinical systems and services are preserved
     const formMeta: Record<string, any> = {};
     if (c.status === "scheduled") {
@@ -713,10 +728,28 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateConsultationStatus = (id: string, status: CVOConsultation["status"]) => {
+    const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
+
     // Optimistic TanStack Query update
     queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
       old.map((c) => (c.id === id ? { ...c, status } : c))
     );
+
+    // Keep Today's Clinic Queue in lockstep: as soon as the vet completes the
+    // consultation, its queue ticket is auto-completed and the pet owner's
+    // tracker flips to "Visit Completed" in real time.
+    if (status === "completed") {
+      try {
+        completeQueueForConsultation({
+          id: existing?.id || id,
+          encounterNo: existing?.encounterNo,
+          petName: existing?.petName,
+          ownerName: existing?.ownerName,
+        });
+      } catch (err) {
+        console.warn("Queue auto-complete notice", err);
+      }
+    }
 
     // Sync to Supabase
     void (async () => {
@@ -731,10 +764,26 @@ export function CVOProvider({ children }: { children: React.ReactNode }) {
     })();
   };
   const updateConsultation = (id: string, updates: Partial<CVOConsultation>) => {
+    const existing = consultations.find((c) => c.id === id || c.encounterNo === id);
+
     // Optimistic TanStack Query update
     queryClient.setQueryData<CVOConsultation[]>(["cvo_consultations"], (old = []) =>
       old.map((c) => (c.id === id || c.encounterNo === id ? { ...c, ...updates } : c))
     );
+
+    // Same queue lockstep for the clinical exam form / status dropdown.
+    if (updates.status === "completed") {
+      try {
+        completeQueueForConsultation({
+          id: existing?.id || id,
+          encounterNo: existing?.encounterNo,
+          petName: updates.petName || existing?.petName,
+          ownerName: updates.ownerName || existing?.ownerName,
+        });
+      } catch (err) {
+        console.warn("Queue auto-complete notice", err);
+      }
+    }
 
     // Sync to Supabase
     void (async () => {

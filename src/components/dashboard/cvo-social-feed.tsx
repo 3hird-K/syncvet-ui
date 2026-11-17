@@ -19,8 +19,6 @@ import {
   User,
   Sparkles,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
   MoreHorizontal,
   Archive,
   QrCode,
@@ -41,6 +39,7 @@ import { CreateAnnouncementDialog } from "@/components/dashboard/create-announce
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
 import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
 import { ScanQueueQrDialog } from "@/components/dashboard/scan-queue-qr-dialog";
+import { ExpandableText } from "@/components/dashboard/expandable-text";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
@@ -642,9 +641,11 @@ function stripAnnouncementTags(text?: string): string {
                     {item.title}
                   </h4>
 
-                  <p className="text-xs sm:text-[13px] text-foreground/90 leading-relaxed whitespace-pre-line">
-                    {mainText}
-                  </p>
+                  <ExpandableText
+                    text={mainText}
+                    collapsedLines={5}
+                    className="text-xs sm:text-[13px] text-foreground/90 leading-relaxed"
+                  />
 
                   {hashtagLine && (
                     <p className="text-xs text-[#1877F2] dark:text-blue-400 font-medium pt-1">

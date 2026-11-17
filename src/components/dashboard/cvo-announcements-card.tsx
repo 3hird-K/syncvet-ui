@@ -17,8 +17,6 @@ import {
   CheckCircle2,
   Clock,
   User,
-  ChevronDown,
-  ChevronUp,
   MoreVertical,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +32,7 @@ import {
 import { CreateAnnouncementDialog } from "@/components/dashboard/create-announcement-dialog";
 import { EditAnnouncementDialog } from "@/components/dashboard/edit-announcement-dialog";
 import { DeleteAnnouncementDialog } from "@/components/dashboard/delete-announcement-dialog";
+import { ExpandableText } from "@/components/dashboard/expandable-text";
 import type { CVOAnnouncement, AnnouncementCategory } from "@/types/announcement";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -85,7 +84,6 @@ export function CVOAnnouncementsCard({
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
   const queryClient = useQueryClient();
   const [localList, setLocalList] = useState<CVOAnnouncement[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [announcementToEdit, setAnnouncementToEdit] = useState<CVOAnnouncement | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState<CVOAnnouncement | null>(null);
@@ -394,14 +392,15 @@ export function CVOAnnouncementsCard({
           announcements.map((item) => {
             const badge = getCategoryBadge(item.category);
             const Icon = badge.icon;
-            const isExpanded = expandedId === item.id;
             const isUrgent = item.priority === "urgent" || item.priority === "high";
+            const contentText = item.content
+              .replace(/\[(?:EVENT_DATE|OP_ID|EXPIRES):[^\]]+\]/gi, "")
+              .trim();
 
             return (
               <div
                 key={item.id}
-                onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                className={`p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                className={`p-3.5 rounded-xl border transition-all duration-200 ${
                   item.is_pinned
                     ? "bg-amber-500/5 dark:bg-amber-500/10 border-amber-500/30 hover:border-amber-500/50"
                     : "bg-card hover:bg-muted/30 border-border/70 hover:border-border"
@@ -460,13 +459,11 @@ export function CVOAnnouncementsCard({
                 </h4>
 
                 {/* Content */}
-                <p
-                  className={`text-xs text-muted-foreground mt-1.5 leading-relaxed ${
-                    isExpanded ? "whitespace-pre-line" : "line-clamp-2"
-                  }`}
-                >
-                  {item.content.replace(/\[(?:EVENT_DATE|OP_ID|EXPIRES):[^\]]+\]/gi, "").trim()}
-                </p>
+                <ExpandableText
+                  text={contentText}
+                  collapsedLines={2}
+                  className="text-xs text-muted-foreground mt-1.5 leading-relaxed"
+                />
 
                 {/* Footer Strip: Target Area + Author Tag */}
                 <div className="mt-2.5 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
