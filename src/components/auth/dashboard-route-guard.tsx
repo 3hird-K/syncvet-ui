@@ -5,6 +5,11 @@ import { useRouter, usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import {
+  fetchOnboardingProfile,
+  hasOnboardingDataInDb,
+  ONBOARDING_PROFILE_QUERY_KEY,
+} from "@/lib/onboarding";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
@@ -38,15 +43,14 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
   const { data: dbUser, isLoading: isDbLoading } = useQuery({
-    queryKey: ["current-user-role", user?.id],
+    queryKey: [ONBOARDING_PROFILE_QUERY_KEY, user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase
-        .from("users")
-        .select("role, profile_completed, phone_number, address")
-        .eq("id", user.id)
-        .maybeSingle();
-      return data;
+      return fetchOnboardingProfile(
+        supabase,
+        user.id,
+        user.primaryEmailAddress?.emailAddress
+      );
     },
     enabled: isLoaded && !!user?.id,
   });
@@ -54,9 +58,6 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
   const metadata = user?.unsafeMetadata as {
     roleTitle?: string;
     accountType?: string;
-    profileCompleted?: boolean;
-    phoneNumber?: string;
-    address?: string;
   } | undefined;
   const userEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase();
   const isAdminEmail = userEmail === "dime.neil03@gmail.com";
@@ -81,14 +82,14 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
     (route) => pathname === route || pathname.startsWith(route + "/")
   );
 
-  // Check if pet owner user has not completed onboarding (Staff: Admin and Vet never need onboarding)
+  // Redirect pet owners to onboarding only when no onboarding data exists in the
+  // database. Staff (Admin/Vet) never need onboarding.
   const isProfileIncomplete =
     isLoaded &&
     !isDbLoading &&
     !isStaff &&
     isPetOwner &&
-    dbUser?.profile_completed !== true &&
-    !(metadata?.profileCompleted === true && !!(dbUser?.phone_number || metadata?.phoneNumber));
+    !hasOnboardingDataInDb(dbUser);
 
   // 1. Pet Owner attempting to view municipal staff operations
   const isPetOwnerUnauthorized = isLoaded && !isDbLoading && isPetOwner && isStaffRoute;

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useClerkSupabaseClient } from "@/lib/supabase/client";
+import { ONBOARDING_PROFILE_QUERY_KEY } from "@/lib/onboarding";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -36,10 +37,11 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
         const publicMeta = (currentUser.publicMetadata || {}) as Record<string, unknown>;
         const combinedMeta = { ...publicMeta, ...unsafeMeta };
 
-        // Check if user already exists in Supabase to preserve any admin-assigned role
+        // Check if user already exists in Supabase to preserve the admin-assigned
+        // role and any onboarding data already saved there.
         const { data: existingUser } = await supabase
           .from("users")
-          .select("role")
+          .select("role, profile_completed, phone_number, address")
           .eq("id", currentUser.id)
           .maybeSingle();
 
@@ -61,16 +63,22 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
         } else {
           role = "Pet Owner";
         }
+        // Never overwrite saved onboarding data with empty Clerk values.
         const address =
-          (unsafeMeta.address as string) || (publicMeta.address as string) || null;
+          (unsafeMeta.address as string) ||
+          (publicMeta.address as string) ||
+          existingUser?.address ||
+          null;
         const phoneNumber =
           (unsafeMeta.mobileNumber as string) ||
           (unsafeMeta.phoneNumber as string) ||
           currentUser.primaryPhoneNumber?.phoneNumber ||
+          existingUser?.phone_number ||
           null;
         const profileCompleted =
           (unsafeMeta.profileCompleted as boolean) ??
           (publicMeta.profileCompleted as boolean) ??
+          existingUser?.profile_completed ??
           false;
 
         // Upsert user into Supabase `public.users` table
@@ -97,10 +105,11 @@ export function UserSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) {
           console.warn("Supabase user sync notice:", error.message);
         } else {
-          // Invalidate sidebar and role queries immediately so the UI reflects the synced role
+          // Invalidate sidebar, role and onboarding queries so the UI reflects the synced data
           queryClient.invalidateQueries({ queryKey: ["current-user-role", currentUser.id] });
           queryClient.invalidateQueries({ queryKey: ["current-user-role-sidebar", currentUser.id] });
           queryClient.invalidateQueries({ queryKey: ["current-user-role-messages", currentUser.id] });
+          queryClient.invalidateQueries({ queryKey: [ONBOARDING_PROFILE_QUERY_KEY, currentUser.id] });
         }
 
         // Auto-assign roleTitle and accountType in Clerk unsafeMetadata if not yet set

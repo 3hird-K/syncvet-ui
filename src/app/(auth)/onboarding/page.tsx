@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import {
+  fetchOnboardingProfile,
+  hasOnboardingDataInDb,
+  ONBOARDING_PROFILE_QUERY_KEY,
+} from "@/lib/onboarding";
 import { normalizeSyncVetRole } from "@/data/syncvet-users";
 import { OnboardingWizard } from "@/components/auth/onboarding-wizard";
 import { Loader2 } from "lucide-react";
@@ -14,31 +19,16 @@ export default function OnboardingPage() {
   const { user, isLoaded, isSignedIn } = useUser();
   const supabase = useMemo(() => getPublicSupabaseClient(), []);
 
-  // Check if user already exists and fetch role & completion status
+  // Check if user already exists and fetch role & onboarding data from the database
   const { data: dbUser, isLoading: isDbLoading } = useQuery({
-    queryKey: ["onboarding-profile-check", user?.id, user?.primaryEmailAddress?.emailAddress],
+    queryKey: [ONBOARDING_PROFILE_QUERY_KEY, user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      try {
-        let { data } = await supabase
-          .from("users")
-          .select("role, profile_completed, phone_number, address")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (!data && user.primaryEmailAddress?.emailAddress) {
-          const res = await supabase
-            .from("users")
-            .select("role, profile_completed, phone_number, address")
-            .ilike("email", user.primaryEmailAddress.emailAddress)
-            .maybeSingle();
-          data = res.data;
-        }
-
-        return data;
-      } catch {
-        return null;
-      }
+      return fetchOnboardingProfile(
+        supabase,
+        user.id,
+        user.primaryEmailAddress?.emailAddress
+      );
     },
     enabled: isLoaded && !!user?.id,
   });
@@ -62,13 +52,13 @@ export default function OnboardingPage() {
   // Administrators and Veterinarians NEVER need onboarding pages
   const isStaff = isAdminEmail || userRole === "Administrator" || userRole === "Veterinarian";
 
+  // The database is the source of truth: skip onboarding whenever the user's
+  // record already contains onboarding data.
   const isProfileComplete = useMemo(() => {
     if (isStaff) return true;
     if (!isLoaded || isDbLoading) return false;
-    const completedInDb = dbUser?.profile_completed === true && !!dbUser?.phone_number && !!dbUser?.address;
-    const completedInClerk = unsafeMeta?.profileCompleted === true && !!unsafeMeta?.phoneNumber && !!unsafeMeta?.address;
-    return completedInDb || completedInClerk;
-  }, [isStaff, isLoaded, isDbLoading, dbUser, unsafeMeta]);
+    return hasOnboardingDataInDb(dbUser);
+  }, [isStaff, isLoaded, isDbLoading, dbUser]);
 
   useEffect(() => {
     if (!isLoaded) return;

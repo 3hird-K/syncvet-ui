@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { getPublicSupabaseClient } from "@/lib/supabase/client";
+import { ONBOARDING_PROFILE_QUERY_KEY } from "@/lib/onboarding";
 import { cvoBarangays } from "@/data/cvo-store";
 import { toast } from "sonner";
 import Logo from "@/assets/logo-dark.png";
@@ -381,7 +382,8 @@ export function OnboardingWizard({ onCompleted }: OnboardingWizardProps) {
         console.log("Supabase resident profile successfully saved:", upsertedUser?.id || user.id);
       }
 
-      // Invalidate queries so tables and sidebars update immediately
+      // Invalidate queries so tables, sidebars and onboarding status update immediately
+      queryClient.invalidateQueries({ queryKey: [ONBOARDING_PROFILE_QUERY_KEY, user.id] });
       queryClient.invalidateQueries({ queryKey: ["current-user-role", user.id] });
       queryClient.invalidateQueries({ queryKey: ["current-user-role-sidebar", user.id] });
       queryClient.invalidateQueries({ queryKey: ["users"] });
