@@ -16,7 +16,7 @@ import {
 import { MOTION_VARIANTS } from "./motion-wrapper";
 
 const APK_DOWNLOAD_URL =
-  "https://www.dropbox.com/scl/fi/fz9maf2qy55zx7683mxwf/syncvet.apk?rlkey=bpow4wzey0ylnzj3z73ynp2kq&st=6gwsgp8u&dl=1";
+  "https://www.dropbox.com/scl/fi/eeyzfliyhdmsq0zgms5m3/syncvet-nov19.apk?rlkey=57a4jrls6vxqphm4x8kudjkac&st=xs9labdf&dl=1";
 
 export function LandingHero() {
   const heroRef = useRef<HTMLElement>(null);
